@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Tooling caches
+.eslintcache
+.vite/
+
+# Editor/OS noise
+.DS_Store
+*.local

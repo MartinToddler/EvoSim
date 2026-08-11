@@ -1,0 +1,116 @@
+// ESLint flat config for the EON workspace.
+//
+// Beyond the standard recommended rule sets, this config mechanically enforces
+// the CLAUDE.md "engine purity" and determinism contract for packages/engine:
+// no browser APIs, no React/Pixi imports, no Math.random / wall-clock access.
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import prettier from "eslint-config-prettier";
+import reactHooks from "eslint-plugin-react-hooks";
+
+const BROWSER_GLOBALS = [
+  "window",
+  "document",
+  "navigator",
+  "localStorage",
+  "sessionStorage",
+  "indexedDB",
+  "fetch",
+  "XMLHttpRequest",
+  "WebSocket",
+  "Worker",
+  "postMessage",
+  "requestAnimationFrame",
+  "cancelAnimationFrame",
+  "location",
+  "history",
+  "performance",
+];
+
+// Timers and wall-clock scheduling must never influence authoritative simulation.
+const TIMER_GLOBALS = ["setTimeout", "setInterval", "setImmediate", "queueMicrotask"];
+
+export default tseslint.config(
+  {
+    ignores: ["**/node_modules/**", "**/dist/**", "**/coverage/**", "pnpm-lock.yaml"],
+  },
+  js.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        projectService: {
+          allowDefaultProject: ["eslint.config.mjs", "apps/web/vite.config.ts"],
+        },
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    // Determinism guard for the pure simulation engine (CLAUDE.md hard rules).
+    files: ["packages/engine/**/*.ts"],
+    rules: {
+      "no-restricted-globals": ["error", ...BROWSER_GLOBALS, ...TIMER_GLOBALS],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: ["react", "react-dom", "pixi.js"],
+          patterns: ["react/*", "react-dom/*", "pixi.js/*", "@pixi/*"],
+        },
+      ],
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "Math",
+          property: "random",
+          message: "Use the seeded project PRNG (Xoshiro128) instead of Math.random().",
+        },
+        {
+          object: "Date",
+          property: "now",
+          message: "Wall-clock time must never influence authoritative simulation state.",
+        },
+        {
+          object: "performance",
+          property: "now",
+          message: "Wall-clock time must never influence authoritative simulation state.",
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "NewExpression[callee.name='Date']",
+          message: "Wall-clock time must never influence authoritative simulation state.",
+        },
+      ],
+    },
+  },
+  {
+    // Protocol DTOs must stay presentation-free as well.
+    files: ["packages/protocol/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: ["react", "react-dom", "pixi.js"],
+          patterns: ["react/*", "react-dom/*", "pixi.js/*", "@pixi/*"],
+        },
+      ],
+    },
+  },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    plugins: {
+      "react-hooks": reactHooks,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+    },
+  },
+  {
+    // Plain JS config files are not part of any TS project.
+    files: ["**/*.{js,mjs,cjs}"],
+    ...tseslint.configs.disableTypeChecked,
+  },
+  prettier,
+);

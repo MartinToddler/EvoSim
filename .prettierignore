@@ -1,0 +1,11 @@
+# Specification documents are kept verbatim as delivered.
+/docs/*.md
+/CLAUDE.md
+/README.md
+/TASKS.md
+
+# Generated / vendored
+pnpm-lock.yaml
+dist/
+coverage/
+node_modules/
