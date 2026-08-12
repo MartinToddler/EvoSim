@@ -1,7 +1,6 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { EnvironmentStore } from "./EnvironmentStore";
-import { recomputePlantGradient } from "./plants";
 import type { FounderRegion } from "./validateWorld";
 
 /**
@@ -11,10 +10,10 @@ import type { FounderRegion } from "./validateWorld";
  * numbers: docs/10 §18 requires lossless storage, and a 65 536-entry array is
  * ~128 KB as binary against megabytes as decimal text.
  *
- * Only authoritative arrays are captured. The derived caches (passability,
- * plant gradient) are recomputed on restore, which is both smaller and safer:
- * a stale cache in a save can never disagree with the state it was derived
- * from.
+ * Only authoritative arrays are captured. Passability is recomputed on restore,
+ * which is both smaller and safer: a stale cache in a save can never disagree
+ * with the state it was derived from. The plant gradient is not stored at all —
+ * it is computed where it is read (see plants.ts).
  */
 export interface EnvironmentSnapshot {
   size: number;
@@ -118,6 +117,5 @@ export function restoreEnvironment(
   environment.globalTemperatureOffsetCentiC = snapshot.globalTemperatureOffsetCentiC;
 
   environment.recomputePassability();
-  recomputePlantGradient(environment);
   return environment;
 }

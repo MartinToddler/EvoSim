@@ -48,9 +48,6 @@ export class EnvironmentStore {
   // --- Derived caches (recomputed, never serialized) -------------------------
   /** 1 where a terrestrial organism can walk, 0 in water. */
   readonly passable: Uint8Array;
-  /** Plant density gradient per cell, Q-scaled, for sensing (docs/03 §22). */
-  readonly plantGradientXQ: Int16Array;
-  readonly plantGradientYQ: Int16Array;
 
   constructor(size: number, cellSizeLU: number) {
     assert(
@@ -78,8 +75,6 @@ export class EnvironmentStore {
     this.plantGrowthRemainderQ = new Uint16Array(this.cellCount);
 
     this.passable = new Uint8Array(this.cellCount);
-    this.plantGradientXQ = new Int16Array(this.cellCount);
-    this.plantGradientYQ = new Int16Array(this.cellCount);
   }
 
   /** Cell index from grid coordinates. Coordinates are clamped to the grid. */
@@ -138,7 +133,8 @@ export class EnvironmentStore {
    * The order here is part of the hashing contract (docs/10 §17): changing it
    * changes every world hash and requires an ENGINE_VERSION bump. Derived
    * caches are deliberately excluded — they are pure functions of these arrays
-   * and are recomputed on load.
+   * and are recomputed on load. The plant gradient is not among them: it is
+   * computed where it is read rather than stored (see plants.ts).
    */
   hashInto(hasher: StateHash): void {
     hasher.word(this.size);

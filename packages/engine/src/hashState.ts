@@ -10,13 +10,19 @@ import type { SimulationEngine } from "./SimulationEngine";
  * changes hashes and therefore requires an ENGINE_VERSION bump, regenerated
  * goldens and a changelog entry (CLAUDE.md).
  *
- * Canonical sequence (engine 0.2.0):
+ * Canonical sequence (engine 0.3.0):
  *   1. magic word 0x454f4e48 ("EONH")
  *   2. tick as TWO words: low 32 bits, then high bits
  *   3. seed
  *   4. PRNG state words s0..s3
  *   5. authoritative config digest (two hex halves as words)
  *   6. environment arrays (see EnvironmentStore.hashInto)
+ *   7. organism slot state and per-slot arrays (OrganismStore.hashInto)
+ *   8. genomes and brain weights for the used slot prefix (GenomeStore.hashInto)
+ *
+ * Derived state is deliberately absent: the spatial index, the phenotype cache
+ * and every scratch buffer are pure functions of what is hashed above, and are
+ * rebuilt at fixed points in the tick order.
  *
  * The tick is hashed as a safe integer rather than a single word because a
  * uint32 tick would make states exactly 2^32 ticks apart hash identically
@@ -50,6 +56,8 @@ export function computeStateHash(engine: SimulationEngine): string {
   hasher.word(parseInt(configHash.slice(8, 16), 16));
 
   engine.environment.hashInto(hasher);
+  engine.organisms.hashInto(hasher);
+  engine.genomes.hashInto(hasher, engine.organisms.slotHighWater);
 
   return hasher.digest();
 }

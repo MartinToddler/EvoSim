@@ -85,7 +85,7 @@ These references justify platform choices. Simulation rules in this package are 
 
 ---
 
-## Development (repository setup — Milestones 0–1)
+## Development
 
 Prerequisites: Node 22 (`.nvmrc`) and pnpm 10.
 
@@ -97,17 +97,30 @@ pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,1000
 pnpm --filter @eon/web dev   # run the web shell locally
 ```
 
-Current status: Milestones 0–2 complete — workspace, determinism skeleton (hardened after
-review) and the procedural environment. Milestone 3 (organisms) has not started.
+Current status: Milestones 0–3 complete — workspace, determinism skeleton (hardened after
+review), the procedural environment, and organism mechanics. Milestone 4 (reproduction and
+mutation) has not started, so the founder cohort can only shrink.
 
-The world is real and inspectable headlessly:
+The simulation is real and inspectable headlessly:
 
 ```text
 world      256x256 cells, generation attempt 0
-land       61.2%  biomes Water=38.8% Grassland=48.0% Desert=5.6% Tundra=6.9% Mountain=0.7%
+land       61.2%  biomes Water=38.8% Grassland=48.0% Forest=0.0% Desert=5.6% Tundra=6.9% Mountain=0.7%
 plants     capacity 168.8M, biomass 84.4M (50.0% of capacity)
 founders   cell 40426 at (234, 157) in a 35507-cell landmass
+organisms  256 spawned, entity IDs 1..256
+
+tick      0 | pop  256 | mean energy   10023 | mean growth 0.45 | plant intake 0.0k | deaths 0
+tick   1000 | pop  256 | mean energy   56108 | mean growth 0.98 | plant intake 27705.9k | deaths 0
+tick   3000 | pop  250 | mean energy   53234 | mean growth 1.00 | plant intake 85104.4k | deaths 6 (starvation 6)
+tick   6000 | pop  225 | mean energy   55493 | mean growth 1.00 | plant intake 169897.8k | deaths 31 (starvation 31)
+tick  10000 | pop    0 | mean energy       0 | mean growth 0.00 | plant intake 0.0k | deaths 256 (starvation 31, oldAge 225)
 ```
+
+The founders forage, grow to maturity on what they find, compete hard enough that some starve,
+and — since nothing reproduces yet — die together of old age at their genetic maximum of 6100
+ticks. Nothing about them is scripted: after spawn they run the same quantized network as any
+descendant will.
 
 Two configurations, deliberately separated (ADR 0002 §4):
 
@@ -119,11 +132,14 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.2.0, protocol 1, snapshot schema 3, config
-schema 3. Design decisions are recorded in `docs/adr/`:
+entry (see `CLAUDE.md`). Current versions: engine 0.3.0, protocol 1, snapshot schema 4, config
+schema 4. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
 - `0002-milestone-1-hardening.md` — state encapsulation, config immutability, the
   authoritative/host config split and 64-bit-safe ticks.
 - `0003-milestone-2-environment.md` — value noise, world generation and its calibration, plant
   growth, the founder region.
+- `0004-milestone-3-organism-mechanics.md` — the organism SoA, gene mappings, sensors, the
+  quantized brain, movement and feeding, and why the specified founder had to be recalibrated
+  before it could eat.

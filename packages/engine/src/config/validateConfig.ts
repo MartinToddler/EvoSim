@@ -1,5 +1,5 @@
 import type { DeepReadonly } from "@eon/shared";
-import { Q, qmul } from "../math/fixed";
+import { ANGLE_STEPS, Q, qmul } from "../math/fixed";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
 import type { SimulationConfig } from "./SimulationConfig";
@@ -124,6 +124,8 @@ export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
   validateTime(config);
   validatePlants(config);
   validateOrganism(config);
+  validateGeneRanges(config);
+  validateSenses(config);
   validateBrain(config);
   validateMutation(config);
   validateCombat(config);
@@ -390,6 +392,9 @@ function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
     movement.sizeMaxTurnPenaltyQ < Q,
     "organism.movement.sizeMaxTurnPenaltyQ must stay below Q or the largest organism could not turn",
   );
+  // Zero is a legitimate "organisms pass through each other" ablation; above Q
+  // a pair would overshoot past each other and oscillate.
+  checkQFraction(movement.softSeparationStrengthQ, "organism.movement.softSeparationStrengthQ");
 
   const { health } = organism;
   checkQFraction(health.starvationDamageQPerTick, "organism.health.starvationDamageQPerTick");
@@ -413,6 +418,10 @@ function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
   checkQMultiplierAtLeastOne(
     health.severeThermalBasalMultiplierMaxQ,
     "organism.health.severeThermalBasalMultiplierMaxQ",
+  );
+  checkPositiveInt(
+    health.thermalStressMinToleranceCentiC,
+    "organism.health.thermalStressMinToleranceCentiC",
   );
 
   const { feeding } = organism;
@@ -450,6 +459,110 @@ function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
     qmul(carcass.baseCarcassDecayFractionQPerDecayStep, Q + carcass.hotDecayBonusMaxQ) <= Q,
     "organism.carcass: base decay scaled by the maximum hot bonus must not exceed 100% per decay step",
   );
+}
+
+/**
+ * Gene mapping ranges (docs/08 §7).
+ *
+ * The rule is structural only: a range must be ordered and representable, and
+ * must fit the typed array that caches the derived phenotype. Whether a range
+ * is *ecologically* sensible is a calibration question. An empty range
+ * (min === max) is explicitly legal — pinning a gene is a standard ablation
+ * for isolating one trait in a selection experiment (docs/07 §5).
+ */
+function validateGeneRanges(config: DeepReadonly<SimulationConfig>): void {
+  const g = config.organism.geneRanges;
+
+  const orderedRange = (min: number, max: number, name: string, limit: number): void => {
+    checkInt(min, `${name} minimum`);
+    checkInt(max, `${name} maximum`);
+    check(min <= max, `organism.geneRanges: ${name} minimum must not exceed its maximum`);
+    check(
+      max <= limit,
+      `organism.geneRanges: ${name} maximum ${max} exceeds the representable limit ${limit}`,
+    );
+  };
+
+  // Uint16 caches hold radius, speed, acceleration, turn, vision and ages.
+  const U16 = 65535;
+  orderedRange(g.adultRadiusMinPos, g.adultRadiusMaxPos, "adultRadius", U16);
+  check(g.adultRadiusMinPos > 0, "organism.geneRanges: adultRadiusMinPos must be positive");
+  orderedRange(g.maxSpeedMinVel, g.maxSpeedMaxVel, "maxSpeed", U16);
+  checkNonNegativeInt(g.maxSpeedMinVel, "organism.geneRanges.maxSpeedMinVel");
+  orderedRange(g.accelerationMinVel, g.accelerationMaxVel, "acceleration", U16);
+  checkNonNegativeInt(g.accelerationMinVel, "organism.geneRanges.accelerationMinVel");
+  orderedRange(g.maxTurnMinSteps, g.maxTurnMaxSteps, "maxTurn", ANGLE_STEPS / 2);
+  checkNonNegativeInt(g.maxTurnMinSteps, "organism.geneRanges.maxTurnMinSteps");
+  orderedRange(g.visionRangeMinPos, g.visionRangeMaxPos, "visionRange", U16);
+  checkNonNegativeInt(g.visionRangeMinPos, "organism.geneRanges.visionRangeMinPos");
+  // A field of view is a whole-turn fraction; beyond a full turn it is meaningless.
+  orderedRange(g.visionFovMinSteps, g.visionFovMaxSteps, "visionFov", ANGLE_STEPS);
+  checkNonNegativeInt(g.visionFovMinSteps, "organism.geneRanges.visionFovMinSteps");
+
+  for (const [name, value] of [
+    ["adultRadiusExponentQ", g.adultRadiusExponentQ],
+    ["maxSpeedExponentQ", g.maxSpeedExponentQ],
+    ["visionRangeExponentQ", g.visionRangeExponentQ],
+  ] as const) {
+    checkPositiveQCoefficient(value, `organism.geneRanges.${name}`);
+  }
+
+  orderedRange(g.metabolicPaceMinQ, g.metabolicPaceMaxQ, "metabolicPace", U16);
+  check(
+    g.metabolicPaceMinQ > 0,
+    "organism.geneRanges.metabolicPaceMinQ must be positive; a zero pace would stop metabolism entirely",
+  );
+
+  checkCentiCelsius(g.thermalOptimumMinCentiC, "organism.geneRanges.thermalOptimumMinCentiC");
+  checkCentiCelsius(g.thermalOptimumMaxCentiC, "organism.geneRanges.thermalOptimumMaxCentiC");
+  check(
+    g.thermalOptimumMinCentiC <= g.thermalOptimumMaxCentiC,
+    "organism.geneRanges: thermalOptimum minimum must not exceed its maximum",
+  );
+  orderedRange(
+    g.thermalToleranceMinCentiC,
+    g.thermalToleranceMaxCentiC,
+    "thermalTolerance",
+    TEMPERATURE_CENTI_C_LIMIT,
+  );
+  checkNonNegativeInt(g.thermalToleranceMinCentiC, "organism.geneRanges.thermalToleranceMinCentiC");
+
+  orderedRange(g.maturityAgeMinTicks, g.maturityAgeMaxTicks, "maturityAge", U16);
+  checkPositiveInt(g.maturityAgeMinTicks, "organism.geneRanges.maturityAgeMinTicks");
+  orderedRange(g.maxAgeMinTicks, g.maxAgeMaxTicks, "maxAge", U16);
+  checkPositiveInt(g.maxAgeMinTicks, "organism.geneRanges.maxAgeMinTicks");
+  // A lifespan shorter than maturity would make reproduction unreachable for
+  // every genome, not merely for unlucky ones.
+  check(
+    g.maxAgeMinTicks > g.maturityAgeMinTicks,
+    "organism.geneRanges: the shortest maximum age must exceed the earliest maturity age",
+  );
+
+  checkQFraction(g.offspringInvestmentMinQ, "organism.geneRanges.offspringInvestmentMinQ");
+  checkQFraction(g.offspringInvestmentMaxQ, "organism.geneRanges.offspringInvestmentMaxQ");
+  check(
+    g.offspringInvestmentMinQ <= g.offspringInvestmentMaxQ,
+    "organism.geneRanges: offspringInvestment minimum must not exceed its maximum",
+  );
+}
+
+function validateSenses(config: DeepReadonly<SimulationConfig>): void {
+  const { senses, world } = config;
+  checkNonNegativeInt(senses.crowdingRadiusLU, "senses.crowdingRadiusLU");
+  check(
+    senses.crowdingRadiusLU <= world.spatialCellSizeLU,
+    "senses.crowdingRadiusLU must not exceed the spatial cell size, or the crowding query would " +
+      "have to scan more than the immediate neighbour cells",
+  );
+  checkPositiveInt(senses.crowdingSaturationCount, "senses.crowdingSaturationCount");
+  checkNonNegativeInt(senses.terrainProbeDistanceLU, "senses.terrainProbeDistanceLU");
+  checkPositiveInt(senses.terrainForwardProbeSamples, "senses.terrainForwardProbeSamples");
+  checkPositiveInt(senses.oscillatorPeriodTicks, "senses.oscillatorPeriodTicks");
+  check(
+    senses.oscillatorPeriodTicks % 2 === 0,
+    "senses.oscillatorPeriodTicks must be even so the triangular oscillator is symmetric",
+  );
+  checkQFraction(senses.internalNoiseAmplitudeQ, "senses.internalNoiseAmplitudeQ");
 }
 
 function validateBrain(config: DeepReadonly<SimulationConfig>): void {

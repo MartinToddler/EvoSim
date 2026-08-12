@@ -115,6 +115,49 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
   },
 
   organism: {
+    // docs/08 §7 in engine units. Conversions: LU → sub-units ×256,
+    // LU/tick → velocity units ×65536, degrees → steps ×4096/360.
+    geneRanges: {
+      adultRadiusMinPos: 320, // 1.25 LU
+      adultRadiusMaxPos: 1152, // 4.50 LU
+      adultRadiusExponentQ: 5530, // 1.35
+
+      maxSpeedMinVel: 2294, // 0.035 LU/tick
+      maxSpeedMaxVel: 19661, // 0.30 LU/tick
+      maxSpeedExponentQ: 5120, // 1.25
+
+      accelerationMinVel: 98, // 0.0015 LU/tick²
+      accelerationMaxVel: 1638, // 0.025 LU/tick²
+
+      maxTurnMinSteps: 6, // 0.53°/tick
+      maxTurnMaxSteps: 159, // 13.97°/tick
+
+      visionRangeMinPos: 2560, // 10 LU
+      visionRangeMaxPos: 24576, // 96 LU
+      visionRangeExponentQ: 5734, // 1.4
+
+      visionFovMinSteps: 398, // 35°
+      visionFovMaxSteps: 3072, // 270°
+
+      metabolicPaceMinQ: 2662, // 0.65
+      metabolicPaceMaxQ: 5939, // 1.45
+
+      thermalOptimumMinCentiC: -1000, // -10 °C
+      thermalOptimumMaxCentiC: 3500, // +35 °C
+
+      thermalToleranceMinCentiC: 300, // 3 °C
+      thermalToleranceMaxCentiC: 2400, // 24 °C
+
+      maturityAgeMinTicks: 400,
+      maturityAgeMaxTicks: 2200,
+
+      maxAgeMinTicks: 2200,
+      maxAgeMaxTicks: 10000,
+
+      offspringInvestmentMinQ: 328, // 0.08
+      offspringInvestmentMaxQ: 1434, // 0.35
+    },
+
     massScalePerRadiusSquared: 100,
     baseMaxEnergy: 1000,
     maxEnergyPerMass: 120,
@@ -144,6 +187,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       waterHealthDamageQPerTick: 12,
       armorMaxSpeedPenaltyQ: 1434, // 0.35
       sizeMaxTurnPenaltyQ: 1024, // 0.25
+      softSeparationStrengthQ: 1024, // 0.25 of the overlap per tick
     },
 
     health: {
@@ -154,6 +198,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       passiveHealingEnergyBaseCost: 8,
       passiveHealingEnergyMassCoeffQ: 41, // 0.01
       severeThermalBasalMultiplierMaxQ: 12288, // 3.0
+      thermalStressMinToleranceCentiC: 100, // 1 °C floor for the stress divisor
     },
 
     feeding: {
@@ -174,7 +219,14 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     },
   },
 
-  senses: {},
+  senses: {
+    crowdingRadiusLU: 24, // ~5 adult body diameters
+    crowdingSaturationCount: 8,
+    terrainProbeDistanceLU: 12, // under one environment cell (16 LU) ahead
+    terrainForwardProbeSamples: 2,
+    oscillatorPeriodTicks: 64,
+    internalNoiseAmplitudeQ: 512, // 0.125 of the signal is stateless noise
+  },
 
   brain: {
     inputCount: 20,

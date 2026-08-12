@@ -1,11 +1,25 @@
 import { assert, deepFreezeJson } from "@eon/shared";
+import { runBrainsAndBuildIntents } from "./brain/intents";
+import { senseAll } from "./brain/sensors";
 import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 import { hashConfig } from "./config/hashConfig";
 import { validateConfig } from "./config/validateConfig";
+import { buildFeedingClaims, resolveFeedingClaims } from "./ecology/feedingClaims";
+import type { EngineContext } from "./EngineContext";
+import { EngineScratch } from "./EngineScratch";
 import { computeStateHash } from "./hashState";
 import { attachEngineInternals } from "./internal";
+import { GenomeStore } from "./organisms/GenomeStore";
+import { OrganismStore } from "./organisms/OrganismStore";
+import { finalizeDeaths } from "./organisms/death";
+import { applyMetabolismGrowthThermalAging } from "./organisms/metabolism";
+import { integrateMovement, resolveTerrainAndSoftCollisions } from "./organisms/movement";
+import { captureOrganisms, restoreOrganisms } from "./organisms/organismSnapshot";
+import { PhenotypeStore } from "./organisms/phenotype";
+import { spawnFounderPopulation } from "./organisms/spawn";
 import { Xoshiro128, type Xoshiro128State } from "./random/Xoshiro128";
 import { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
+import { SpatialGrid } from "./spatial/SpatialGrid";
 import { ENGINE_VERSION, SNAPSHOT_SCHEMA_VERSION } from "./version";
 import type { EnvironmentStore } from "./world/EnvironmentStore";
 import { createWorld } from "./world/createWorld";
@@ -62,12 +76,17 @@ export class SimulationEngine {
   readonly configHash: string;
   /** Authoritative environment grid (docs/03 §14). */
   readonly environment: EnvironmentStore;
-  /** Deterministically chosen region where founders will spawn (docs/03 §26). */
+  /** Authoritative live organism state as Structure-of-Arrays (docs/03 §6). */
+  readonly organisms: OrganismStore;
+  /** Authoritative inherited state: genes and brain weights (docs/10 §7). */
+  readonly genomes: GenomeStore;
+  /** Deterministically chosen region where founders spawn (docs/03 §26). */
   readonly founderRegion: FounderRegion;
   /** Which generation attempt produced this world; 0 means the seed worked directly. */
   readonly generationAttempt: number;
 
   readonly #rng: Xoshiro128;
+  readonly #context: EngineContext;
   #tick = 0;
 
   constructor(options: SimulationEngineOptions) {
@@ -97,7 +116,36 @@ export class SimulationEngine {
     this.founderRegion = world.founderRegion;
     this.generationAttempt = world.attempt;
 
-    attachEngineInternals(this, { rng: this.#rng });
+    const capacity = this.config.limits.maxOrganisms;
+    this.organisms = new OrganismStore(capacity);
+    this.genomes = new GenomeStore(capacity);
+
+    this.#context = {
+      seed: this.seed,
+      config: this.config,
+      environment: this.environment,
+      organisms: this.organisms,
+      genomes: this.genomes,
+      phenotypes: new PhenotypeStore(capacity),
+      spatialPre: new SpatialGrid(
+        this.config.world.sizeLU,
+        this.config.world.spatialCellSizeLU,
+        capacity,
+      ),
+      spatialPost: new SpatialGrid(
+        this.config.world.sizeLU,
+        this.config.world.spatialCellSizeLU,
+        capacity,
+      ),
+      scratch: new EngineScratch(capacity, this.environment.cellCount),
+      rng: this.#rng,
+    };
+
+    // The founder population is part of the world's initial state, so it exists
+    // before tick 0 is hashed. It is the only PRNG consumer in Milestone 3.
+    spawnFounderPopulation(this.#context, this.founderRegion);
+
+    attachEngineInternals(this, { rng: this.#rng, context: this.#context });
 
     // Freeze the instance itself, not just the config. `readonly` is erased at
     // runtime, so without this a caller could assign `engine.configHash` and
@@ -144,6 +192,19 @@ export class SimulationEngine {
     const restored = restoreEnvironment(snapshot.environment, engine.config);
     engine.#adoptEnvironment(restored);
 
+    // Likewise the saved population replaces the founders the constructor just
+    // spawned. Restoring drops them and rewinds the ID counter, so a resumed
+    // world does not silently carry 256 extra consumed entity IDs.
+    restoreOrganisms(
+      snapshot.organisms,
+      engine.organisms,
+      engine.genomes,
+      engine.#context.phenotypes,
+      engine.config,
+    );
+    engine.#context.spatialPre.clear();
+    engine.#context.spatialPost.clear();
+
     return engine;
   }
 
@@ -162,8 +223,6 @@ export class SimulationEngine {
     target.plantGrowthRemainderQ.set(source.plantGrowthRemainderQ);
     target.globalTemperatureOffsetCentiC = source.globalTemperatureOffsetCentiC;
     target.passable.set(source.passable);
-    target.plantGradientXQ.set(source.plantGradientXQ);
-    target.plantGradientYQ.set(source.plantGradientYQ);
   }
 
   /** Current authoritative tick (number of completed steps). */
@@ -190,12 +249,28 @@ export class SimulationEngine {
 
     // Authoritative phase order, docs/03 §7. Phases arrive milestone by
     // milestone; the numbering is fixed so insertions cannot silently reorder
-    // existing ones.
+    // existing ones. Reordering is an ENGINE_VERSION event.
+    const ctx = this.#context;
     //   0 applyCommands                     — Milestone 9
     if (this.#tick % this.config.time.environmentInterval === 0) {
       updateEnvironment(this.environment, this.config); // 1 scheduledEnvironmentUpdate
     }
-    //   2..17 organisms, ecology, species   — Milestones 3-8
+    ctx.spatialPre.rebuild(this.organisms); //          2 buildPreMovementSpatialIndex
+    senseAll(ctx, this.#tick); //                       3 sense
+    runBrainsAndBuildIntents(ctx); //                   4 runBrainsAndBuildIntents
+    integrateMovement(ctx); //                          5 integrateMovement
+    resolveTerrainAndSoftCollisions(ctx); //            6 resolveTerrainAndSoftCollisions
+    ctx.spatialPost.rebuild(this.organisms); //         7 buildPostMovementSpatialIndex
+    buildFeedingClaims(ctx); //                         8 buildFeedingClaims
+    resolveFeedingClaims(ctx); //                       9 resolveFeedingClaims
+    //   10 buildCombatClaims                — Milestone 5
+    //   11 resolveCombatSimultaneously      — Milestone 5
+    applyMetabolismGrowthThermalAging(ctx); //         12 applyMetabolismGrowthThermalAging
+    finalizeDeaths(ctx); //                            13 finalizeDeathsAndCreateCarcasses
+    //   14 resolveReproduction              — Milestone 4
+    //   15 scheduledCarcassDecay            — Milestone 5
+    //   16 scheduledSpeciesAnalysis         — Milestone 8
+    //   17 scheduledStatisticsAndEvents     — Milestone 8
     //   18 optionalRenderSnapshot           — Milestone 6
 
     this.#tick += 1;
@@ -234,6 +309,7 @@ export class SimulationEngine {
       rngState: this.getRngState(),
       config: cloneConfig(this.config),
       environment: captureEnvironment(this.environment, this.founderRegion),
+      organisms: captureOrganisms(this.organisms, this.genomes),
     };
   }
 }

@@ -19,6 +19,7 @@ export {
 } from "./math/fixed";
 export { wrapAngle, addAngle, signedAngleDiff, degreesToSteps } from "./math/angle";
 export { SIN_LUT, sinLut, cosLut } from "./math/trigLut";
+export { isqrt, qsqrt, powQ } from "./math/isqrt";
 
 // Canonical hashing (task B06).
 export { StateHash, HASH_TAG, hashWords } from "./math/hash";
@@ -34,6 +35,7 @@ export type {
   TimeConfig,
   PlantConfig,
   OrganismConfig,
+  GeneRangeConfig,
   SenseConfig,
   BrainConfig,
   MutationConfig,
@@ -76,7 +78,8 @@ export {
   computePlantCapacity,
   recomputeAllPlantCapacities,
   growPlants,
-  recomputePlantGradient,
+  plantGradientXQAt,
+  plantGradientYQAt,
   totalPlantBiomass,
   totalPlantCapacity,
   temperatureSuitabilityQ,
@@ -89,6 +92,114 @@ export {
   EnvironmentSnapshotError,
   type EnvironmentSnapshot,
 } from "./world/environmentSnapshot";
+
+// Organisms, genome, brain, spatial index and ecology (Milestone 3, D01–D13).
+export {
+  Gene,
+  GENE_COUNT,
+  GENE_NAMES,
+  GENE_RAW_MAX,
+  HUE_DEGREES,
+  geneToQ,
+  geneFromQ,
+  dietSignedQ,
+  digestionEfficiencyQ,
+  herbivoreAffinityQ,
+  carnivoreAffinityQ,
+  adultRadiusPos,
+  geneMaxSpeedVel,
+  accelerationVel,
+  geneMaxTurnSteps,
+  visionRangePos,
+  visionFovSteps,
+  metabolicPaceQ,
+  thermalOptimumCentiC,
+  thermalToleranceCentiC,
+  maturityAgeTicks,
+  maxAgeTicks,
+  offspringInvestmentQ,
+  hueDegrees,
+  effectiveMaxSpeedVel,
+  effectiveMaxTurnSteps,
+} from "./genetics/genes";
+export { FOUNDER_GENE_Q, createFounderGenes } from "./genetics/founderGenome";
+export {
+  BRAIN_INPUT_COUNT,
+  BRAIN_HIDDEN_COUNT,
+  BRAIN_OUTPUT_COUNT,
+  BRAIN_WEIGHT_COUNT,
+  BRAIN_INPUT_NAMES,
+  BRAIN_OUTPUT_NAMES,
+  BrainInput,
+  BrainOutput,
+  IH_OFFSET,
+  HO_OFFSET,
+  IO_OFFSET,
+  ihWeightIndex,
+  hoWeightIndex,
+  ioWeightIndex,
+} from "./brain/BrainLayout";
+export { inferBrain, positiveOutputQ } from "./brain/inferBrain";
+export { FOUNDER_SKIP_WEIGHTS, createFounderBrainWeights } from "./brain/founderBrain";
+export { OrganismStore } from "./organisms/OrganismStore";
+export { GenomeStore } from "./organisms/GenomeStore";
+export {
+  PhenotypeStore,
+  derivePhenotype,
+  massFromRadiusPos,
+  currentRadiusPos,
+  maxEnergyForMass,
+} from "./organisms/phenotype";
+export { thermalStressQ, SEVERE_THERMAL_STRESS_Q } from "./organisms/thermal";
+export {
+  growthTargetQ,
+  basalCost,
+  thermalBasalMultiplierQ,
+  applyMetabolismGrowthThermalAging,
+} from "./organisms/metabolism";
+export {
+  DeathCause,
+  DEATH_CAUSE_COUNT,
+  DEATH_CAUSE_NAMES,
+  finalizeDeaths,
+  markDeath,
+} from "./organisms/death";
+export {
+  VELOCITY_SCALE,
+  integrateMovement,
+  resolveTerrainAndSoftCollisions,
+} from "./organisms/movement";
+export {
+  FOUNDER_SPECIES_ID,
+  FOUNDER_PLACEMENT_ATTEMPTS,
+  spawnOrganism,
+  spawnFounderPopulation,
+  type SpawnRequest,
+} from "./organisms/spawn";
+export {
+  captureOrganisms,
+  restoreOrganisms,
+  OrganismSnapshotError,
+  type OrganismSnapshot,
+} from "./organisms/organismSnapshot";
+export { SpatialGrid } from "./spatial/SpatialGrid";
+export {
+  FOV_COS_SCALE,
+  findNearestVisibleCreature,
+  countCrowding,
+  type NearestCreature,
+} from "./spatial/queries";
+export {
+  FeedingTarget,
+  plantBiteUnits,
+  buildFeedingClaims,
+  resolveFeedingClaims,
+  totalAllocatedBiomass,
+} from "./ecology/feedingClaims";
+export { senseAll } from "./brain/sensors";
+export { runBrainsAndBuildIntents } from "./brain/intents";
+export { EngineScratch } from "./EngineScratch";
+export type { EngineContext } from "./EngineContext";
 
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG

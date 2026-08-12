@@ -1,4 +1,5 @@
 import { EonAssertionError } from "@eon/shared";
+import type { EngineContext } from "./EngineContext";
 import type { Xoshiro128 } from "./random/Xoshiro128";
 import type { SimulationEngine } from "./SimulationEngine";
 
@@ -26,6 +27,15 @@ import type { SimulationEngine } from "./SimulationEngine";
 export interface EngineInternals {
   /** The authoritative PRNG. Advancing it outside a tick phase corrupts determinism. */
   readonly rng: Xoshiro128;
+  /**
+   * Everything a tick phase may touch, including the derived spatial index,
+   * the phenotype cache and the scratch buffers.
+   *
+   * Phases receive this context rather than the engine, so the hot path never
+   * performs a WeakMap lookup and each phase is unit-testable against a
+   * synthetic context.
+   */
+  readonly context: EngineContext;
 }
 
 const INTERNALS = new WeakMap<SimulationEngine, EngineInternals>();

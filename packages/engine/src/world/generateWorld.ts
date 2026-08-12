@@ -4,11 +4,7 @@ import { Q, clamp, clampQ, qmul } from "../math/fixed";
 import { NOISE_SALT, layeredNoiseQ, smoothstepQ, valueNoiseQ } from "../math/noise";
 import { EnvironmentStore } from "./EnvironmentStore";
 import { classifyBiome } from "./biomes";
-import {
-  recomputeAllPlantCapacities,
-  recomputePlantGradient,
-  temperatureSuitabilityQ,
-} from "./plants";
+import { recomputeAllPlantCapacities, temperatureSuitabilityQ } from "./plants";
 
 /**
  * Deterministic procedural world generation (tasks C03–C06, docs/03 §§15–20).
@@ -293,7 +289,6 @@ export function generateEnvironment(
   seedInitialBiomass(environment, config);
 
   environment.recomputePassability();
-  recomputePlantGradient(environment);
 
   return environment;
 }

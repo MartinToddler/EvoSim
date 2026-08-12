@@ -215,14 +215,25 @@ describe("tick range safety", () => {
   });
 });
 
-describe("Milestone 1 acceptance: 10k empty ticks deterministic", () => {
+/**
+ * Determinism acceptance.
+ *
+ * These ran to 10 000 ticks when a tick was empty. Ticks now carry a full
+ * organism simulation, so the long-horizon cases moved to the dedicated
+ * Milestone 3 acceptance suite and the golden fixture, which pin an exact hash
+ * at tick 10 000 — a strictly stronger check than comparing two runs in one
+ * process, because a golden also catches drift across platforms and versions.
+ * What is left here is the same property at a length that keeps the unit suite
+ * quick.
+ */
+describe("determinism acceptance: repeated runs agree", () => {
   it("two engines with identical seed+config produce identical hashes", () => {
     const a = newEngine();
     const b = newEngine();
     expect(a.computeStateHash()).toBe(b.computeStateHash());
-    a.stepMany(10_000);
-    b.stepMany(10_000);
-    expect(a.tick).toBe(10_000);
+    a.stepMany(1_000);
+    b.stepMany(1_000);
+    expect(a.tick).toBe(1_000);
     expect(a.computeStateHash()).toBe(b.computeStateHash());
   });
 
@@ -238,25 +249,27 @@ describe("Milestone 1 acceptance: 10k empty ticks deterministic", () => {
   });
 });
 
-describe("Milestone 1 acceptance: serialize/resume core hash exact", () => {
+describe("serialize/resume core hash exact", () => {
   it("snapshot restore reproduces the exact state hash", () => {
     const original = newEngine();
-    original.stepMany(2_500);
+    original.stepMany(500);
     const restored = engineFromSnapshot(original.serialize());
-    expect(restored.tick).toBe(2_500);
+    expect(restored.tick).toBe(500);
     expect(restored.computeStateHash()).toBe(original.computeStateHash());
   });
 
   it("continuous run equals run -> snapshot -> restore -> continue", () => {
+    // The 10 000-tick version of this lives in the Milestone 3 acceptance
+    // suite, which runs it once against a full population.
     const continuous = newEngine();
-    continuous.stepMany(10_000);
+    continuous.stepMany(1_000);
 
     const interrupted = newEngine();
-    interrupted.stepMany(2_500);
+    interrupted.stepMany(250);
     const resumed = engineFromSnapshot(interrupted.serialize());
-    resumed.stepMany(7_500);
+    resumed.stepMany(750);
 
-    expect(resumed.tick).toBe(10_000);
+    expect(resumed.tick).toBe(1_000);
     expect(resumed.computeStateHash()).toBe(continuous.computeStateHash());
   });
 

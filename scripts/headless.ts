@@ -14,8 +14,11 @@
 import {
   BIOME_COUNT,
   BIOME_NAMES,
+  DEATH_CAUSE_COUNT,
+  DEATH_CAUSE_NAMES,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
+  Q,
   SNAPSHOT_SCHEMA_VERSION,
   CONFIG_SCHEMA_VERSION,
   SimulationEngine,
@@ -161,6 +164,43 @@ function printWorldSummary(engine: SimulationEngine): void {
     `founders   cell ${founderRegion.centerCellIndex} at (${founderRegion.centerGridX}, ` +
       `${founderRegion.centerGridY}) in a ${founderRegion.componentCells}-cell landmass`,
   );
+  console.log(
+    `organisms  ${engine.organisms.liveCount} spawned, entity IDs 1..${engine.organisms.nextEntityId - 1}`,
+  );
+}
+
+/**
+ * Population line printed at each checkpoint (docs/10 §26: prove the
+ * simulation is real without any rendering).
+ */
+function populationLine(engine: SimulationEngine): string {
+  const { organisms } = engine;
+  let energy = 0;
+  let development = 0;
+  let intake = 0;
+  for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+    if (organisms.alive[slot] !== 1) {
+      continue;
+    }
+    energy += organisms.energy[slot] as number;
+    development += organisms.developmentQ[slot] as number;
+    intake += organisms.plantEnergyEaten[slot] as number;
+  }
+  const alive = Math.max(organisms.liveCount, 1);
+  const causes: string[] = [];
+  for (let cause = 0; cause < DEATH_CAUSE_COUNT; cause += 1) {
+    const count = organisms.deathsByCause[cause] as number;
+    if (count > 0) {
+      causes.push(`${DEATH_CAUSE_NAMES[cause]} ${count}`);
+    }
+  }
+  return (
+    `pop ${String(organisms.liveCount).padStart(4)} | ` +
+    `mean energy ${String(Math.round(energy / alive)).padStart(7)} | ` +
+    `mean growth ${(development / alive / Q).toFixed(2)} | ` +
+    `plant intake ${(intake / 1e3).toFixed(1)}k | ` +
+    `deaths ${organisms.totalDeaths}${causes.length > 0 ? ` (${causes.join(", ")})` : ""}`
+  );
 }
 
 function main(): void {
@@ -190,6 +230,7 @@ function main(): void {
       nextCheckpointIndex < checkpoints.length &&
       checkpoints[nextCheckpointIndex] === engine.tick
     ) {
+      console.log(`tick ${String(engine.tick).padStart(6, " ")} | ${populationLine(engine)}`);
       console.log(
         `hash @ tick ${String(engine.tick).padStart(6, " ")}: ${engine.computeStateHash()}`,
       );

@@ -1,7 +1,7 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import type { EnvironmentStore } from "./EnvironmentStore";
-import { growPlants, recomputePlantGradient } from "./plants";
+import { growPlants } from "./plants";
 
 /**
  * Scheduled environment update — phase 1 of the authoritative tick order
@@ -17,8 +17,4 @@ export function updateEnvironment(
   config: DeepReadonly<SimulationConfig>,
 ): void {
   growPlants(environment, config);
-  // The gradient cache feeds organism sensing (docs/03 §22) and is derived
-  // purely from the biomass field, so it is refreshed with it rather than
-  // being serialized.
-  recomputePlantGradient(environment);
 }

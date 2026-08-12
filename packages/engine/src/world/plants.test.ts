@@ -8,7 +8,8 @@ import {
   computePlantCapacity,
   growPlants,
   moistureSuitabilityQ,
-  recomputePlantGradient,
+  plantGradientXQAt,
+  plantGradientYQAt,
   temperatureSuitabilityQ,
   totalPlantBiomass,
 } from "./plants";
@@ -191,7 +192,7 @@ describe("growPlants (docs/03 §20)", () => {
   });
 });
 
-describe("recomputePlantGradient (docs/03 §22)", () => {
+describe("plant gradient (docs/03 §22)", () => {
   it("points toward richer cells", () => {
     const store = new EnvironmentStore(4, 16);
     store.biome.fill(Biome.Grassland);
@@ -202,20 +203,18 @@ describe("recomputePlantGradient (docs/03 §22)", () => {
         store.plantBiomass[gy * 4 + gx] = gx * 2_000;
       }
     }
-    recomputePlantGradient(store);
 
     // Interior cell: food is to the right, so the x gradient is positive.
     const interior = 1 * 4 + 1;
-    expect(store.plantGradientXQ[interior] as number).toBeGreaterThan(0);
-    expect(store.plantGradientYQ[interior] as number).toBe(0);
+    expect(plantGradientXQAt(store, interior)).toBeGreaterThan(0);
+    expect(plantGradientYQAt(store, interior)).toBe(0);
   });
 
   it("is zero on a uniform field", () => {
     const store = grasslandStore(10_000, 5_000);
-    recomputePlantGradient(store);
     for (let i = 0; i < store.cellCount; i += 1) {
-      expect(store.plantGradientXQ[i] as number).toBe(0);
-      expect(store.plantGradientYQ[i] as number).toBe(0);
+      expect(plantGradientXQAt(store, i)).toBe(0);
+      expect(plantGradientYQAt(store, i)).toBe(0);
     }
   });
 
@@ -226,12 +225,31 @@ describe("recomputePlantGradient (docs/03 §22)", () => {
     for (let i = 0; i < store.cellCount; i += 1) {
       store.plantBiomass[i] = i % 2 === 0 ? 0 : 65535;
     }
-    recomputePlantGradient(store);
     for (let i = 0; i < store.cellCount; i += 1) {
-      expect(store.plantGradientXQ[i] as number).toBeGreaterThanOrEqual(-Q);
-      expect(store.plantGradientXQ[i] as number).toBeLessThanOrEqual(Q);
-      expect(store.plantGradientYQ[i] as number).toBeGreaterThanOrEqual(-Q);
-      expect(store.plantGradientYQ[i] as number).toBeLessThanOrEqual(Q);
+      expect(plantGradientXQAt(store, i)).toBeGreaterThanOrEqual(-Q);
+      expect(plantGradientXQAt(store, i)).toBeLessThanOrEqual(Q);
+      expect(plantGradientYQAt(store, i)).toBeGreaterThanOrEqual(-Q);
+      expect(plantGradientYQAt(store, i)).toBeLessThanOrEqual(Q);
+    }
+  });
+
+  it("reflects grazing immediately, with no refresh step in between", () => {
+    // The gradient used to be a cached array refreshed only by the environment
+    // update. Organisms eat every tick, so the cache went stale and a snapshot
+    // restore — which recomputed it — diverged from the continuous run.
+    const store = grasslandStore(10_000, 5_000);
+    const cell = store.cellIndex(4, 4);
+    expect(plantGradientXQAt(store, cell)).toBe(0);
+    store.plantBiomass[store.cellIndex(5, 4)] = 9_000;
+    expect(plantGradientXQAt(store, cell)).toBeGreaterThan(0);
+  });
+
+  it("samples itself at the world border instead of reading past the edge", () => {
+    const store = grasslandStore(10_000, 5_000);
+    const size = store.size;
+    for (const cell of [0, size - 1, (size - 1) * size, size * size - 1]) {
+      expect(plantGradientXQAt(store, cell)).toBe(0);
+      expect(plantGradientYQAt(store, cell)).toBe(0);
     }
   });
 });

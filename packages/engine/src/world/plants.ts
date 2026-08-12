@@ -183,37 +183,52 @@ export function growPlants(
 }
 
 /**
- * Recompute the cached plant gradient used by organism sensing (docs/03 §22).
+ * Local plant gradient for organism sensing (docs/03 §22).
  *
  * Organisms never see individual plants: they read local density plus this
- * central-difference gradient of the biomass field, normalized to Q against
- * the local capacity so that "food is that way" means the same thing in a
- * desert and in a forest.
+ * central difference of the biomass field, normalized to Q against the cell's
+ * own capacity so that "food is that way" means the same thing in a desert and
+ * in a forest. Border cells sample themselves on the missing side.
+ *
+ * ## Why this is computed on demand rather than cached
+ *
+ * It WAS a cached array refreshed by the environment update. That was correct
+ * only while nothing changed biomass between updates. Once organisms started
+ * grazing every tick, the cache became a derived value whose inputs moved
+ * faster than its refresh: it was up to 20 ticks stale, and — worse — a
+ * snapshot restore recomputed it from the *current* biomass, so a resumed run
+ * sensed a slightly different world than the continuous one and diverged.
+ * docs/10 §17 names exactly this trap: a cache that can influence future state
+ * must be hashed or provably recomputable, and this one was neither.
+ *
+ * Computing it where it is consumed makes it a pure function of the biomass
+ * field, always fresh and never serialized. It also costs less: a handful of
+ * reads per organism per tick against a 65 536-cell sweep every 20 ticks.
+ * Sensing runs before feeding in the tick order, so every organism still reads
+ * one coherent snapshot of the field (docs/03 §9).
  */
-export function recomputePlantGradient(environment: EnvironmentStore): void {
-  const { size, plantBiomass, plantCapacity, plantGradientXQ, plantGradientYQ } = environment;
+export function plantGradientXQAt(environment: EnvironmentStore, cell: number): number {
+  const { size, plantBiomass } = environment;
+  const gx = cell % size;
+  const left = plantBiomass[gx > 0 ? cell - 1 : cell] as number;
+  const right = plantBiomass[gx < size - 1 ? cell + 1 : cell] as number;
+  return gradientQ(right - left, environment.plantCapacity[cell] as number);
+}
 
-  const last = size - 1;
+/** Vertical counterpart of {@link plantGradientXQAt}; +y is south on screen. */
+export function plantGradientYQAt(environment: EnvironmentStore, cell: number): number {
+  const { size, plantBiomass } = environment;
+  const gy = (cell - (cell % size)) / size;
+  const up = plantBiomass[gy > 0 ? cell - size : cell] as number;
+  const down = plantBiomass[gy < size - 1 ? cell + size : cell] as number;
+  return gradientQ(down - up, environment.plantCapacity[cell] as number);
+}
 
-  // Runs on every environment update over all 65 536 cells, so it uses direct
-  // index arithmetic rather than the clamping cell lookup. Border cells sample
-  // themselves on the missing side, which is what clamping did.
-  for (let gy = 0; gy < size; gy += 1) {
-    const rowBase = gy * size;
-    for (let gx = 0; gx < size; gx += 1) {
-      const index = rowBase + gx;
-      const left = plantBiomass[gx > 0 ? index - 1 : index] as number;
-      const right = plantBiomass[gx < last ? index + 1 : index] as number;
-      const up = plantBiomass[gy > 0 ? index - size : index] as number;
-      const down = plantBiomass[gy < last ? index + size : index] as number;
-
-      // Normalize against a non-zero reference so barren cells report 0 rather
-      // than dividing by zero.
-      const reference = Math.max(plantCapacity[index] as number, 1);
-      plantGradientXQ[index] = clamp(Math.trunc(((right - left) * Q) / (2 * reference)), -Q, Q);
-      plantGradientYQ[index] = clamp(Math.trunc(((down - up) * Q) / (2 * reference)), -Q, Q);
-    }
-  }
+/** Normalize a central difference against the local capacity, clamped to ±Q. */
+function gradientQ(difference: number, capacity: number): number {
+  // A non-zero reference so barren cells report 0 instead of dividing by zero.
+  const reference = Math.max(capacity, 1);
+  return clamp(Math.trunc((difference * Q) / (2 * reference)), -Q, Q);
 }
 
 /** Total plant biomass across the world (diagnostics and validity checks). */

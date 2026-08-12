@@ -6,6 +6,80 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [0.3.0] — 2026-08-12 — Milestone 3: organism mechanics
+
+Versions: `ENGINE_VERSION` 0.2.0 → **0.3.0**, `CONFIG_SCHEMA_VERSION` 3 → **4**,
+`SNAPSHOT_SCHEMA_VERSION` 3 → **4**, `PROTOCOL_VERSION` unchanged (1). All golden hashes
+regenerated; 0.2.x snapshots are intentionally unloadable. Decisions in
+`docs/adr/0004-milestone-3-organism-mechanics.md`.
+
+### Added
+
+- **Structure-of-Arrays organism store** (D01): every field a TypedArray indexed by slot, LIFO
+  free list, monotonic never-reused uint32 entity IDs with 0 invalid, ascending-slot authoritative
+  iteration. Released slots are cleared so the state hash cannot depend on the history of the dead.
+- **16-gene ecological genome and phenotype mappings** (D02/D03): quantized Uint16 genes, a signed
+  diet gene with squared-affinity digestion efficiency, and the docs/08 §7 ranges in engine units.
+  The derived phenotype is cached per organism and recomputed from the genome on load.
+- **Deterministic integer roots and powers** (`math/isqrt.ts`): exact `isqrt`, plus `powQ` for the
+  nonlinear size/speed/vision responses. `Math.sqrt` and `**` are implementation-approximated by
+  ECMA-262 and cannot appear in authoritative code.
+- **Spatial hash** (D04): 128×128 head/next grid rebuilt twice per tick, keeping vision and
+  crowding queries off the O(N²) path.
+- **Twenty sensors** (D05) exactly as docs/08 §18 defines them, with direction reaching the brain
+  as forward/lateral components rather than a bearing. No sensor is omniscient: there is no species
+  identity, no predator flag and no global knowledge.
+- **Quantized 20 → 12 → 5 network with skip connections** (D06) and the calibrated founder genome
+  and controller (D07), both hash-tested fixtures.
+- **Intent arrays** (D08): throttle, turn, eat, attack, reproduce, declared in one phase and
+  resolved in later ones so no organism benefits from a lower slot index.
+- **Movement, terrain and soft collisions** (D09): fixed-step integration with a sub-sub-unit
+  remainder, armor speed penalty, size turn penalty, water slowdown and grace period, a clamping
+  world boundary and order-independent overlap separation.
+- **Plant feeding claims** (D10): per-cell aggregation, proportional allocation and an integer
+  remainder handed to the lowest entity IDs. Biomass is conserved exactly.
+- **Metabolism, growth, thermal stress, aging and death** (D11–D13): capability-scaled basal
+  upkeep, movement energy from realized effort, energy-limited growth, starvation, drowning,
+  thermal damage above a documented severe threshold, passive healing and a hard genetic maximum
+  age. Deaths are collected during physiology and finalized in ascending slot order.
+- **Founder population** spawns into the founder region before tick 0, from the world PRNG. It is
+  the only PRNG consumer in this milestone; every tick phase is deterministic without drawing.
+- **Organism snapshots**: the used slot prefix, genomes, brains and the free list verbatim.
+- Headless runner reports population, mean energy, mean development, plant intake and deaths by
+  cause at every checkpoint (docs/10 §26).
+
+### Fixed
+
+- **The specified founder starved without ever attempting to feed.** docs/08 §18 pins
+  `carcassProximity` at -Q whenever no carcass is in range — always, before Milestone 5 — and
+  docs/08 §20 gives the founder's eat output a +0.40 weight on it, so the intended bonus acted as a
+  permanent -0.40 tax. Measured on the reference world the eat output was 0.354 against a 0.55
+  threshold at every tick of every founder's life, and all 256 starved by tick ~600. The founder's
+  eat bias is recalibrated to +1.10 (+0.10 as specified, +0.40 cancelling the absent-carcass state,
+  +0.60 placing the feeding floor at a quarter of a cell's capacity). This is calibration of an
+  ordinary inheritable weight, which docs/07 §15 and docs/08 §21 anticipate — not a survival bonus.
+- **The cached plant gradient made snapshot resume diverge.** Milestone 2 cached the gradient and
+  refreshed it on the 20-tick environment cadence, which was sound only while nothing changed
+  biomass in between. Organisms graze every tick, so the cache went stale — and a restore
+  recomputed it from the current biomass, making a resumed run sense a different world than the
+  continuous one. The bug hid whenever the snapshot fell on a multiple of the environment interval.
+  The gradient is now computed where it is read (`plantGradientXQAt` / `plantGradientYQAt`), which
+  makes it a pure function of the biomass field and is also cheaper: the 100 000-tick soak dropped
+  from 80 s to 33 s.
+- **`geneFromQ` was off by one quantum.** Scaling by `GENE_RAW_MAX / Q` looks like the inverse of
+  the gene normalization but is not (65535/4096 is 15.99975, not 16), so the round trip lost a step
+  and would have shifted founder genes downward.
+
+### Changed
+
+- Determinism acceptance in `SimulationEngine.test.ts` runs at 1000 ticks; the 10 000-tick cases
+  moved to the Milestone 3 acceptance suite and the golden fixture, which pin exact hashes.
+- `SpatialGrid.rebuild` clears only previously occupied cells. Blanket-clearing two 128×128 grids
+  costs 32 768 writes per tick whatever the population is, which dominated the 100 000-tick soak.
+- Vision and crowding queries hoist their typed arrays into locals and reject candidates that
+  cannot beat the incumbent before the field-of-view test: 32.7 → 29.6 ms per tick at 5000
+  organisms, with identical hashes.
+
 ## [0.2.0] — 2026-08-12 — Milestone 2: environment
 
 Versions: `ENGINE_VERSION` 0.1.1 → **0.2.0**, `CONFIG_SCHEMA_VERSION` 2 → **3**,

@@ -33,19 +33,19 @@ Check only after code + tests + acceptance criteria pass.
 - [x] C09 environment golden tests.
 
 ## D Organisms
-- [ ] D01 SoA organism store/free slots.
-- [ ] D02 gene arrays/mappings.
-- [ ] D03 growth/mass/energy.
-- [ ] D04 spatial hash.
-- [ ] D05 sensor vector.
-- [ ] D06 quantized NN.
-- [ ] D07 founder fixture.
-- [ ] D08 intents.
-- [ ] D09 movement/terrain/collision.
-- [ ] D10 plant claim resolution.
-- [ ] D11 basal/movement/thermal costs.
-- [ ] D12 starvation/healing/old age.
-- [ ] D13 death finalization.
+- [x] D01 SoA organism store/free slots.
+- [x] D02 gene arrays/mappings.
+- [x] D03 growth/mass/energy.
+- [x] D04 spatial hash.
+- [x] D05 sensor vector.
+- [x] D06 quantized NN.
+- [x] D07 founder fixture.
+- [x] D08 intents.
+- [x] D09 movement/terrain/collision.
+- [x] D10 plant claim resolution.
+- [x] D11 basal/movement/thermal costs.
+- [x] D12 starvation/healing/old age.
+- [x] D13 death finalization.
 
 ## E Evolution
 - [ ] E01 reproduction conditions.

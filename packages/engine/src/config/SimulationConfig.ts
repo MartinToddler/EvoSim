@@ -13,9 +13,7 @@
  * - `*LU` fields are logical world units; `*Ticks` are simulation ticks.
  *
  * Schema evolution: adding/removing/renaming any field bumps
- * CONFIG_SCHEMA_VERSION (see version.ts). The `senses` section and the gene
- * mapping ranges (docs/08 §7) are intentionally deferred to the milestone
- * that implements them (M3 organisms) and will arrive with a schema bump.
+ * CONFIG_SCHEMA_VERSION (see version.ts).
  */
 
 export interface WorldConfig {
@@ -172,8 +170,82 @@ export interface PlantConfig {
   };
 }
 
+/**
+ * Gene → phenotype mapping ranges (docs/04 §3, docs/08 §7).
+ *
+ * Every ecological gene is stored quantized and mapped onto one of these
+ * ranges by `genetics/genes.ts`. Units are the engine's native integer units,
+ * not the human units of docs/08, so the mapping needs no floating point:
+ *
+ * - `*Pos`  — world sub-units, POS_SCALE (256) per LU;
+ * - `*Vel`  — velocity units, VELOCITY_SCALE (256) per sub-unit per tick,
+ *             i.e. 65 536 per LU/tick;
+ * - `*Steps` — heading steps, ANGLE_STEPS (4096) per full turn;
+ * - `*Q`     — normalized Q fractions/multipliers;
+ * - `*CentiC`, `*Ticks` — hundredths of °C and simulation ticks.
+ *
+ * The three `*ExponentQ` fields are the nonlinear response exponents of
+ * docs/08 §7 (size 1.35, speed 1.25, vision 1.4) applied by the deterministic
+ * integer `powQ`.
+ */
+export interface GeneRangeConfig {
+  /** Adult body radius, 1.25 … 4.50 LU. */
+  adultRadiusMinPos: number;
+  adultRadiusMaxPos: number;
+  adultRadiusExponentQ: number;
+
+  /** Genetic maximum speed, 0.035 … 0.30 LU/tick (before the armor penalty). */
+  maxSpeedMinVel: number;
+  maxSpeedMaxVel: number;
+  maxSpeedExponentQ: number;
+
+  /** Acceleration, 0.0015 … 0.025 LU/tick². */
+  accelerationMinVel: number;
+  accelerationMaxVel: number;
+
+  /** Maximum turn per tick, 0.5° … 14° (before the size penalty). */
+  maxTurnMinSteps: number;
+  maxTurnMaxSteps: number;
+
+  /** Vision range, 10 … 96 LU. */
+  visionRangeMinPos: number;
+  visionRangeMaxPos: number;
+  visionRangeExponentQ: number;
+
+  /** Total field of view, 35° … 270°. */
+  visionFovMinSteps: number;
+  visionFovMaxSteps: number;
+
+  /** Metabolic pace multiplier, 0.65 … 1.45. */
+  metabolicPaceMinQ: number;
+  metabolicPaceMaxQ: number;
+
+  /** Thermal optimum, -10 … +35 °C. */
+  thermalOptimumMinCentiC: number;
+  thermalOptimumMaxCentiC: number;
+
+  /** Thermal tolerance half-width, 3 … 24 °C. */
+  thermalToleranceMinCentiC: number;
+  thermalToleranceMaxCentiC: number;
+
+  /** Age at maturity, 400 … 2200 ticks. */
+  maturityAgeMinTicks: number;
+  maturityAgeMaxTicks: number;
+
+  /** Hard maximum age, 2200 … 10 000 ticks. */
+  maxAgeMinTicks: number;
+  maxAgeMaxTicks: number;
+
+  /** Offspring investment, 0.08 … 0.35 of parent max energy. */
+  offspringInvestmentMinQ: number;
+  offspringInvestmentMaxQ: number;
+}
+
 /** Body, energy, metabolism and health constants (docs/08 §§8–13, 15). */
 export interface OrganismConfig {
+  /** Gene → phenotype mapping ranges (docs/08 §7). */
+  geneRanges: GeneRangeConfig;
+
   /** mass = massScalePerRadiusSquared * radiusLU² (docs/04 §3). */
   massScalePerRadiusSquared: number;
   /** maxEnergy = baseMaxEnergy + currentMass * maxEnergyPerMass. */
@@ -227,6 +299,12 @@ export interface OrganismConfig {
     armorMaxSpeedPenaltyQ: number;
     /** Max-turn penalty at full size (0.25). */
     sizeMaxTurnPenaltyQ: number;
+    /**
+     * Fraction of a soft-collision overlap resolved per tick (docs/03 §13).
+     * Organisms may overlap; this only nudges them apart, and a value of Q
+     * would separate them completely in one tick, which reads as a rigid body.
+     */
+    softSeparationStrengthQ: number;
   };
 
   /** Starvation/thermal/health constants (docs/08 §13). Health range is 0..Q. */
@@ -241,6 +319,12 @@ export interface OrganismConfig {
     passiveHealingEnergyMassCoeffQ: number;
     /** Thermal basal multiplier ceiling under severe stress (~3.0 → 12288). */
     severeThermalBasalMultiplierMaxQ: number;
+    /**
+     * Floor for the divisor in `stress = excess / max(tolerance, minimum)`
+     * (docs/04 §8). Without it an organism with near-zero thermal tolerance
+     * would divide by zero.
+     */
+    thermalStressMinToleranceCentiC: number;
   };
 
   /** Feeding action constants (docs/08 §12). */
@@ -270,11 +354,33 @@ export interface OrganismConfig {
 }
 
 /**
- * Sensor configuration (docs/04 §§12–16). Intentionally empty in schema v1;
- * populated by Milestone 3 (task D05) together with a CONFIG_SCHEMA_VERSION
- * bump.
+ * Sensor configuration (docs/04 §§12–16, task D05).
+ *
+ * Only the sensors that need a tunable scale appear here. Vision range and
+ * field of view are genetic, not configured, and no sensor may reveal
+ * anything an organism could not plausibly perceive — there is deliberately
+ * no "is a predator" or species input (docs/04 §12).
  */
-export type SenseConfig = Record<string, never>;
+export interface SenseConfig {
+  /** Radius in LU inside which neighbours count toward the crowding sensor. */
+  crowdingRadiusLU: number;
+  /** Neighbour count at which the crowding sensor saturates at +Q. */
+  crowdingSaturationCount: number;
+  /** Distance ahead (and to either side) probed for terrain danger, in LU. */
+  terrainProbeDistanceLU: number;
+  /**
+   * Evenly spaced samples along the forward danger probe. More than one makes
+   * the forward sensor rise gradually as water approaches instead of flipping.
+   */
+  terrainForwardProbeSamples: number;
+  /** Period of the internal triangular oscillator, in ticks (docs/04 §16). */
+  oscillatorPeriodTicks: number;
+  /**
+   * Amplitude of the stateless hash noise mixed into the internal signal.
+   * Stateless by design: querying or rendering must never advance the PRNG.
+   */
+  internalNoiseAmplitudeQ: number;
+}
 
 /** Fixed v0.1 neural topology and quantization (docs/04 §§10–11, docs/08 §18). */
 export interface BrainConfig {

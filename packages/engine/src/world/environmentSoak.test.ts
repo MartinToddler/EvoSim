@@ -26,7 +26,7 @@ describe("100k tick environment soak", () => {
    * State hash after 100 000 ticks for seed 0xE0A12026 + DEFAULT_CONFIG.
    * Regenerate together with the golden fixture whenever ENGINE_VERSION changes.
    */
-  const GOLDEN_SOAK_HASH = "f88b60bb3f502983";
+  const GOLDEN_SOAK_HASH = "8ea1c3d5387f8e91";
 
   it("stays valid and deterministic across 100k ticks", { timeout: 300_000 }, () => {
     const engine = new SimulationEngine({ seed: 0xe0a12026, config: DEFAULT_CONFIG });
@@ -64,8 +64,11 @@ describe("100k tick environment soak", () => {
       vegetatedWater: 0,
     });
 
-    // Ungrazed vegetation grows from the configured half-capacity start toward
-    // carrying capacity, and saturates rather than growing without bound.
+    // Vegetation grows from the configured half-capacity start toward carrying
+    // capacity, and saturates rather than growing without bound. The founder
+    // cohort grazes locally, but 256 organisms in a 65 536-cell world cannot
+    // reverse the world-wide trend — the local depletion they do cause is
+    // asserted in the Milestone 3 acceptance suite instead.
     expect(midpointBiomass).toBeGreaterThan(initialBiomass);
     expect(finalBiomass).toBeGreaterThanOrEqual(midpointBiomass);
     expect(finalBiomass).toBeLessThanOrEqual(capacity);

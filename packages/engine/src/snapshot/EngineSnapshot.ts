@@ -1,15 +1,16 @@
 import type { SimulationConfig } from "../config/SimulationConfig";
+import type { OrganismSnapshot } from "../organisms/organismSnapshot";
 import type { Xoshiro128State } from "../random/Xoshiro128";
 import type { EnvironmentSnapshot } from "../world/environmentSnapshot";
 
 /**
- * Core engine snapshot v1 (Milestone 1 subset of docs/10 §18).
+ * Core engine snapshot (docs/10 §18).
  *
- * Captures everything needed to continue the Milestone 1 engine exactly:
- * tick, seed, full PRNG state and config. Later milestones extend this with
- * environment arrays, organism/genome stores, carcasses, species, command
- * cursor and statistics accumulators — each extension bumps
- * SNAPSHOT_SCHEMA_VERSION.
+ * Captures everything needed to continue the engine exactly: tick, seed, full
+ * PRNG state, config, the authoritative environment arrays and the live
+ * organism population with its genomes and slot bookkeeping. Later milestones
+ * extend this with carcasses, species, the command cursor and the remaining
+ * statistics accumulators — each extension bumps SNAPSHOT_SCHEMA_VERSION.
  *
  * This is the abstract in-memory serialization primitive (plain JSON-safe
  * data). The durable binary container with header magic and payload checksum
@@ -29,6 +30,12 @@ export interface EngineCoreSnapshot {
    * world has grown, been grazed or been edited, so it must be stored.
    */
   environment: EnvironmentSnapshot;
+  /**
+   * Live organisms, their genomes and the slot/free-list state. The free list
+   * must be stored verbatim: rebuilding it would change which slot the next
+   * birth lands in, and with it every future state (docs/10 §18).
+   */
+  organisms: OrganismSnapshot;
 }
 
 /**
