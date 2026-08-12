@@ -50,6 +50,12 @@ importers:
       '@eon/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@eon/renderer':
+        specifier: workspace:*
+        version: link:../../packages/renderer
+      '@eon/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       react:
         specifier: 19.2.8
         version: 19.2.8

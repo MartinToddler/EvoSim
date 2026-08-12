@@ -89,6 +89,7 @@ export {
   EnvironmentSnapshotError,
   type EnvironmentSnapshot,
 } from "./world/environmentSnapshot";
+export { hashEnvironment, ENVIRONMENT_HASH_MAGIC } from "./world/hashEnvironment";
 
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG

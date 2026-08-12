@@ -12,6 +12,7 @@
     "lint": "eslint . --max-warnings 0 && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "dev": "pnpm --filter @eon/web dev",
     "build": "pnpm --filter @eon/web build",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "headless": "tsx scripts/headless.ts"

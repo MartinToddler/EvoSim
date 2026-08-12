@@ -1,63 +1,17 @@
-import {
-  CONFIG_SCHEMA_VERSION,
-  DEFAULT_CONFIG,
-  ENGINE_VERSION,
-  SNAPSHOT_SCHEMA_VERSION,
-} from "@eon/engine";
-import { PROTOCOL_VERSION } from "@eon/protocol";
+import { EnvironmentDebugView } from "./dev/EnvironmentDebugView";
 
 /**
- * Milestone 0/1 application shell.
+ * Application shell.
  *
- * Deliberately empty of simulation, world and rendering — those arrive with
- * later milestones (worker in M6, renderer in M6, observation UI in M7). The
- * shell only proves the workspace wiring: the app consumes version constants
- * and config metadata straight from the pure engine package.
+ * Through Milestone 2.5 the app has exactly one screen: the environment debug
+ * view. That is deliberate — the product's real screens (world list, simulation
+ * screen with the Pixi renderer and the observation UI) belong to Milestones 6–7,
+ * and there is nothing to observe until organisms exist in Milestone 3.
+ *
+ * The debug view is a development tool. When the real screens land it becomes a
+ * route or the docs/06 §18 debug overlay behind a dev toggle, and it is confined to
+ * `src/dev/` plus `@eon/renderer/debug` so that either move is a small one.
  */
 export function App() {
-  return (
-    <main style={{ fontFamily: "system-ui, sans-serif", margin: "2rem auto", maxWidth: "40rem" }}>
-      <h1>Project EON</h1>
-      <p>
-        Deterministic artificial-life sandbox — engine determinism skeleton (Milestones 0–1). World
-        generation, organisms and rendering arrive in later milestones.
-      </p>
-      <table>
-        <tbody>
-          <tr>
-            <th scope="row" style={{ textAlign: "left", paddingRight: "1rem" }}>
-              Engine version
-            </th>
-            <td>{ENGINE_VERSION}</td>
-          </tr>
-          <tr>
-            <th scope="row" style={{ textAlign: "left", paddingRight: "1rem" }}>
-              Protocol version
-            </th>
-            <td>{PROTOCOL_VERSION}</td>
-          </tr>
-          <tr>
-            <th scope="row" style={{ textAlign: "left", paddingRight: "1rem" }}>
-              Snapshot schema
-            </th>
-            <td>{SNAPSHOT_SCHEMA_VERSION}</td>
-          </tr>
-          <tr>
-            <th scope="row" style={{ textAlign: "left", paddingRight: "1rem" }}>
-              Config schema
-            </th>
-            <td>{CONFIG_SCHEMA_VERSION}</td>
-          </tr>
-          <tr>
-            <th scope="row" style={{ textAlign: "left", paddingRight: "1rem" }}>
-              Default world size
-            </th>
-            <td>
-              {DEFAULT_CONFIG.world.sizeLU} × {DEFAULT_CONFIG.world.sizeLU} LU
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </main>
-  );
+  return <EnvironmentDebugView />;
 }

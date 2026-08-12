@@ -32,6 +32,22 @@ Check only after code + tests + acceptance criteria pass.
 - [x] C08 founder spawn region.
 - [x] C09 environment golden tests.
 
+## C.5 Milestone 2.5 debug environment view (development tool)
+
+Out of band: not a roadmap milestone from docs/07 Part D, and it owns no roadmap letter. A tool for
+looking at Milestone 2 worlds before the renderer exists. It does **not** close G10 (the in-renderer
+debug overlay) or any part of the G/H blocks. See
+`docs/adr/0004-milestone-2-5-debug-environment-view.md`.
+
+- [x] C5-01 pure environment → RGBA layer painter: elevation, biome, temperature, moisture,
+      fertility, plant capacity, current biomass.
+- [x] C5-02 diagnostic environment digest + aggregate read-outs (land fraction, mean temperature,
+      mean fertility, biome distribution, plant totals).
+- [x] C5-03 Canvas 2D dev view: seed entry, preset seeds, layer switching, pan/zoom, hover probe,
+      founder marker, world regeneration.
+- [x] C5-04 transformation tests: synthetic grids plus a generated world; engine-constant drift
+      guard.
+
 ## D Organisms
 - [ ] D01 SoA organism store/free slots.
 - [ ] D02 gene arrays/mappings.

@@ -6,6 +6,43 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — Milestone 2.5: debug environment view
+
+Versions: **all four authoritative version constants unchanged** (`ENGINE_VERSION` 0.2.0,
+`PROTOCOL_VERSION` 1, `SNAPSHOT_SCHEMA_VERSION` 3, `CONFIG_SCHEMA_VERSION` 3) and **no golden hash
+changed** — this is a development tool, and CLAUDE.md requires UI-only work to leave engine hashes
+alone. Decisions in `docs/adr/0004-milestone-2-5-debug-environment-view.md`.
+
+### Added
+
+- **Environment debug view** (`apps/web/src/dev/`): a Canvas 2D development tool that generates a
+  world from a typed or preset seed and draws it. Seven switchable layers (elevation, biome,
+  temperature, moisture, fertility, plant capacity, current biomass), pan/zoom with
+  nearest-neighbour scaling, a per-cell hover probe, cell gridlines when zoomed in, and a founder
+  region marker. `pnpm dev` now opens it directly.
+- **Pure layer painter** (`packages/renderer/src/debug/`): `paintEnvironmentLayer()` projects a
+  plain-data `EnvironmentDebugFields` view to RGBA bytes, plus integer colour ramps, the biome
+  palette, per-layer legends and `summarizeEnvironmentFields()`. No Pixi, no DOM and no `@eon/engine`
+  import, so it runs in Node tests and can back the docs/06 §18 debug overlay (task G10) unchanged.
+- **World read-outs**: seed, environment hash, world state hash, config hash, engine version, tick,
+  generation attempt, land fraction, mean/min/max temperature, mean fertility, mean moisture, mean
+  elevation, plant capacity and biomass totals with saturation, biome distribution and the founder
+  region.
+- `hashEnvironment()` in `@eon/engine`: a diagnostic digest of the environment arrays alone, under
+  its own magic word, answering "is this the same map?" independently of the canonical state hash's
+  "is this the same world history?". A pure read — verified not to disturb tick or state hash.
+- Six preset seeds, one of which exercises the deterministic world-generation retry path, plus a
+  strict seed parser that rejects `"100abc"`, `"1.5"` and out-of-range values instead of coercing
+  them (the defect ADR 0002 §6 fixed in the headless CLI).
+- Two buttons advancing the world by 1 000 / 10 000 ticks. Beyond the milestone brief and recorded
+  as such: at tick 0 biomass is a fixed fraction of capacity everywhere, so the "current biomass"
+  layer only carries information once plant growth has run.
+- Root `pnpm dev` script, so the documented command works from the workspace root.
+- 103 new tests across 9 files: colour-ramp arithmetic, the seven-layer painter against synthetic grids, the
+  aggregate summary, the strict seed parser, preset validity, the engine → fields adapter against a
+  real generated world, and cross-checks that the debug view's duplicated constants still match the
+  engine and that observing a world does not perturb its determinism.
+
 ## [0.2.0] — 2026-08-12 — Milestone 2: environment
 
 Versions: `ENGINE_VERSION` 0.1.1 → **0.2.0**, `CONFIG_SCHEMA_VERSION` 2 → **3**,

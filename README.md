@@ -94,11 +94,26 @@ pnpm install         # install locked dependencies
 pnpm verify          # typecheck + lint + test + build (task A06)
 pnpm test            # Vitest across all packages
 pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000
-pnpm --filter @eon/web dev   # run the web shell locally
+pnpm dev             # environment debug view at http://localhost:5173
 ```
 
 Current status: Milestones 0–2 complete — workspace, determinism skeleton (hardened after
-review) and the procedural environment. Milestone 3 (organisms) has not started.
+review) and the procedural environment — plus the Milestone 2.5 debug environment view.
+Milestone 3 (organisms) has not started.
+
+### Environment debug view (Milestone 2.5)
+
+`pnpm dev` opens a development tool that generates a world from a seed and draws the authoritative
+environment grid on a Canvas 2D map: switchable elevation / biome / temperature / moisture /
+fertility / plant-capacity / current-biomass layers, pan and zoom, a per-cell hover probe, six preset
+seeds (one of which exercises the world-generation retry path) and read-outs for the seed,
+environment hash, world state hash, land fraction, mean temperature and mean fertility.
+
+It is a debug tool, not the renderer: it makes no simulation decision, runs no worker and contains no
+Pixi. The pure environment → pixel projection lives in `packages/renderer/src/debug/` (no DOM, no
+engine import, covered by Node tests) and the tool itself in `apps/web/src/dev/`, so it can be
+deleted as one directory or reused as the docs/06 §18 debug overlay in Milestone 6. Design notes in
+`docs/adr/0004-milestone-2-5-debug-environment-view.md`.
 
 The world is real and inspectable headlessly:
 
@@ -127,3 +142,5 @@ schema 3. Design decisions are recorded in `docs/adr/`:
   authoritative/host config split and 64-bit-safe ticks.
 - `0003-milestone-2-environment.md` — value noise, world generation and its calibration, plant
   growth, the founder region.
+- `0004-milestone-2-5-debug-environment-view.md` — the debug visualizer: where its code lives, why
+  the renderer stays engine-free, the layer palette decisions, and what was deliberately not built.
