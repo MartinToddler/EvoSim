@@ -182,22 +182,27 @@ export class OrganismStore {
    * never a silent cull (docs/03 §2).
    */
   allocateSlot(): number {
-    let slot: number;
-    if (this.#freeCount > 0) {
-      this.#freeCount -= 1;
-      slot = this.freeSlots[this.#freeCount] as number;
-    } else if (this.#slotHighWater < this.capacity) {
-      slot = this.#slotHighWater;
-      this.#slotHighWater += 1;
-    } else {
+    if (this.#freeCount === 0 && this.#slotHighWater >= this.capacity) {
       return -1;
     }
 
+    // Checked before anything is mutated: an assertion thrown after the free
+    // stack had already been popped would leave the store holding a slot that
+    // is neither live nor free.
     assert(
       this.#nextEntityId <= 0xffffffff,
       "entity IDs are exhausted: the uint32 identity space would have to be reused, which " +
         "would silently merge distinct lineages",
     );
+
+    let slot: number;
+    if (this.#freeCount > 0) {
+      this.#freeCount -= 1;
+      slot = this.freeSlots[this.#freeCount] as number;
+    } else {
+      slot = this.#slotHighWater;
+      this.#slotHighWater += 1;
+    }
 
     const id = this.#nextEntityId;
     this.#nextEntityId += 1;
@@ -296,6 +301,10 @@ export class OrganismStore {
     this.#freeCount = freeCount;
     this.#nextEntityId = nextEntityId;
     this.freeSlots.fill(0);
+    // A slot listed twice would be handed to two organisms, which is exactly
+    // the slot aliasing the ID/slot split exists to prevent — so a malformed
+    // free list is rejected rather than trusted (docs/06 §27).
+    const seenFreeSlots = new Set<number>();
     for (let i = 0; i < freeCount; i += 1) {
       const slot = freeSlots[i] as number;
       assert(
@@ -303,6 +312,8 @@ export class OrganismStore {
         `restored free slot out of range: ${slot}`,
       );
       assert(this.alive[slot] === 0, `restored free slot ${slot} is marked alive`);
+      assert(!seenFreeSlots.has(slot), `restored free slot ${slot} appears twice in the free list`);
+      seenFreeSlots.add(slot);
       this.freeSlots[i] = slot;
     }
 
@@ -319,6 +330,16 @@ export class OrganismStore {
       this.#slotByEntityId.set(id, slot);
       this.#liveCount += 1;
     }
+
+    // Every used slot is either live or on the free list; the live engine
+    // maintains that identity on every allocate/release. A restored state that
+    // breaks it has leaked slots, which would silently shrink the usable
+    // population for the rest of the world's life.
+    assert(
+      this.#liveCount + freeCount === slotHighWater,
+      `restored slot bookkeeping is inconsistent: ${this.#liveCount} live + ${freeCount} free ` +
+        `!== ${slotHighWater} used slots`,
+    );
   }
 
   /**

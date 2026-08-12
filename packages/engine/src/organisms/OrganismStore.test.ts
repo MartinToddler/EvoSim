@@ -74,6 +74,22 @@ describe("OrganismStore slot allocation", () => {
     expect(store.kills[slot]).toBe(0);
   });
 
+  it("leaves the free list intact when entity IDs are exhausted", () => {
+    // The identity space is 2^32 wide, so this is only reachable through a
+    // restore — but an allocation that throws after popping the free stack
+    // would leave a slot that is neither live nor free, and the store would
+    // silently lose capacity for the rest of the world's life.
+    const store = new OrganismStore(2);
+    store.alive[0] = 1;
+    store.entityId[0] = 1;
+    store.adoptSlotState(2, [1], 1, 0x100000000);
+
+    expect(() => store.allocateSlot()).toThrow(EonAssertionError);
+    expect(store.freeCount).toBe(1);
+    expect(store.liveCount).toBe(1);
+    expect(store.slotHighWater).toBe(2);
+  });
+
   it("refuses to release a slot that is not alive", () => {
     const store = new OrganismStore(4);
     expect(() => store.releaseSlot(0)).toThrow(EonAssertionError);
@@ -155,5 +171,23 @@ describe("OrganismStore restore", () => {
     // The saved free slot is reused before any fresh slot.
     expect(store.allocateSlot()).toBe(1);
     expect(store.entityId[1]).toBe(8);
+  });
+
+  it("rejects a free list that names the same slot twice", () => {
+    // A duplicated entry would be handed out twice, putting two organisms in
+    // one slot — the slot aliasing the ID/slot split exists to prevent.
+    const store = new OrganismStore(4);
+    store.alive[0] = 1;
+    store.entityId[0] = 1;
+    expect(() => store.adoptSlotState(3, [1, 1], 2, 2)).toThrow(EonAssertionError);
+  });
+
+  it("rejects a restore that leaks a used slot", () => {
+    // Slot 1 is neither alive nor on the free list: it could never be reused,
+    // permanently shrinking the usable population.
+    const store = new OrganismStore(4);
+    store.alive[0] = 1;
+    store.entityId[0] = 1;
+    expect(() => store.adoptSlotState(2, [], 0, 2)).toThrow(EonAssertionError);
   });
 });

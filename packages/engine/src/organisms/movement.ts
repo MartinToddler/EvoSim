@@ -195,15 +195,28 @@ export function resolveTerrainAndSoftCollisions(ctx: EngineContext): void {
             if (distSq === 0) {
               // Exactly coincident: no direction exists, so derive one from the
               // entity IDs (docs/03 §13) rather than from iteration order.
+              //
+              // Both the hash inputs and the sign are ordered by entity ID, not
+              // by slot. Slots are recycled, so hashing (lowerSlotId,
+              // higherSlotId) would give the same two organisms a different
+              // separation direction depending only on who died recently —
+              // storage order leaking into authoritative state, which is what
+              // the entity-ID tie-break rule exists to prevent (CLAUDE.md).
+              const selfId = organisms.entityId[slot] as number;
+              const otherId = organisms.entityId[other] as number;
+              const selfIsLower = selfId < otherId;
               const noise = statelessNoiseU32(
                 seed,
-                organisms.entityId[slot] as number,
-                organisms.entityId[other] as number,
+                selfIsLower ? selfId : otherId,
+                selfIsLower ? otherId : selfId,
               );
               const angle = noise & (ANGLE_STEPS - 1);
               const amount = qmul(contact, strengthQ) >> 1;
-              pushX = Math.trunc((cosLut(angle) * amount) / TRIG_SCALE);
-              pushY = Math.trunc((sinLut(angle) * amount) / TRIG_SCALE);
+              // `push` is applied as +push to `other` and -push to `slot`, so
+              // the drawn angle always points at the HIGHER entity ID.
+              const sign = selfIsLower ? 1 : -1;
+              pushX = sign * Math.trunc((cosLut(angle) * amount) / TRIG_SCALE);
+              pushY = sign * Math.trunc((sinLut(angle) * amount) / TRIG_SCALE);
             } else {
               const distance = isqrt(distSq);
               const amount = qmul(contact - distance, strengthQ) >> 1;

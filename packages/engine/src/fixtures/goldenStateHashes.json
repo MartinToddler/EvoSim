@@ -1,6 +1,6 @@
 {
-  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry.",
-  "engineVersion": "0.3.0",
+  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. The hashes are unchanged from engine 0.3.0: 0.3.1 fixed the coincident-body separation direction (ADR 0005), and two organisms never occupy exactly the same position anywhere in this fixture, so the branch that changed is never reached by it.",
+  "engineVersion": "0.3.1",
   "configSchemaVersion": 4,
   "seedHex": "0xE0A12026",
   "configHash": "87f9421a9ffe0b16",

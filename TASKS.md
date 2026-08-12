@@ -47,6 +47,12 @@ Check only after code + tests + acceptance criteria pass.
 - [x] D12 starvation/healing/old age.
 - [x] D13 death finalization.
 
+Milestone 3 review gate: **PASS** (engine 0.3.1, ADR 0005). Deterministic 10k reproduced twice and
+against the golden fixture; snapshot/resume verified at ticks 1, 2497, 2500 and 6050; founder
+viability confirmed across six seeds. Three defects found and fixed: coincident-body separation
+ordered by slot instead of entity ID, `allocateSlot` losing a slot if entity IDs were exhausted,
+and snapshot restore trusting a malformed free list. Golden hashes unchanged.
+
 ## E Evolution
 - [ ] E01 reproduction conditions.
 - [ ] E02 child energy/spawn.

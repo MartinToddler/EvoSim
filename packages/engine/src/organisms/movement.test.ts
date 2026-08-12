@@ -320,6 +320,35 @@ describe("soft collisions", () => {
     expect(moved).toBe(true);
   });
 
+  it("gives coincident bodies the same escape whichever slot holds which ID", () => {
+    // docs/03 §13 derives the direction from an entity-ID hash. Once slots are
+    // recycled (Milestone 4) the same two organisms can hold either slot, and
+    // hashing them in slot order would send them apart differently depending
+    // only on who died recently — storage order deciding an outcome.
+    const separate = (idInLowerSlot: number, idInHigherSlot: number): Record<number, string> => {
+      const world = createTestWorld();
+      const center = world.cellCenter(10, 10);
+      const low = spawnTestOrganism(world, { ...center, angle: 0 });
+      const high = spawnTestOrganism(world, { ...center, angle: 0 });
+      world.organisms.entityId[low] = idInLowerSlot;
+      world.organisms.entityId[high] = idInHigherSlot;
+      setIntent(world, low, {});
+      setIntent(world, high, {});
+      stepMovement(world);
+      return {
+        [idInLowerSlot]: `${world.organisms.x[low]},${world.organisms.y[low]}`,
+        [idInHigherSlot]: `${world.organisms.x[high]},${world.organisms.y[high]}`,
+      };
+    };
+
+    const lowIdFirst = separate(7, 9);
+    const lowIdSecond = separate(9, 7);
+    expect(lowIdSecond[7]).toBe(lowIdFirst[7]);
+    expect(lowIdSecond[9]).toBe(lowIdFirst[9]);
+    // And they really did move apart, so the assertion above is not vacuous.
+    expect(lowIdFirst[7]).not.toBe(lowIdFirst[9]);
+  });
+
   it("leaves distant organisms untouched", () => {
     const world = createTestWorld();
     const a = spawnTestOrganism(world, { ...world.cellCenter(5, 5), angle: 0 });

@@ -98,8 +98,8 @@ pnpm --filter @eon/web dev   # run the web shell locally
 ```
 
 Current status: Milestones 0–3 complete — workspace, determinism skeleton (hardened after
-review), the procedural environment, and organism mechanics. Milestone 4 (reproduction and
-mutation) has not started, so the founder cohort can only shrink.
+review), the procedural environment, and organism mechanics (reviewed and hardened, ADR 0005).
+Milestone 4 (reproduction and mutation) has not started, so the founder cohort can only shrink.
 
 The simulation is real and inspectable headlessly:
 
@@ -132,7 +132,7 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.3.0, protocol 1, snapshot schema 4, config
+entry (see `CLAUDE.md`). Current versions: engine 0.3.1, protocol 1, snapshot schema 4, config
 schema 4. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
@@ -143,3 +143,6 @@ schema 4. Design decisions are recorded in `docs/adr/`:
 - `0004-milestone-3-organism-mechanics.md` — the organism SoA, gene mappings, sensors, the
   quantized brain, movement and feeding, and why the specified founder had to be recalibrated
   before it could eat.
+- `0005-milestone-3-review-fixes.md` — the independent Milestone 3 review: the coincident-body
+  separation order bug, two slot-bookkeeping defects, and the determinism, conservation,
+  allocation and performance checks that the milestone passed.

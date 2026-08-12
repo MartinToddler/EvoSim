@@ -346,6 +346,28 @@ describe("deterministic 10k founder simulation", () => {
     expect(resumed.computeStateHash()).toBe(reference.engine.computeStateHash());
   });
 
+  it("resumes from a tick that is not a multiple of the environment interval", () => {
+    // The environment update runs every 20 ticks, and organisms graze every
+    // tick. Anything derived from the biomass field that a restore recomputes
+    // from the CURRENT field rather than carrying forward is invisible when
+    // the snapshot happens to land on an environment step, and diverges when
+    // it does not (ADR 0004 §4a). Resuming off the cadence is what catches it.
+    const at = 2_497;
+    expect(at % DEFAULT_CONFIG.time.environmentInterval).not.toBe(0);
+
+    const straight = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
+    straight.stepMany(3_000);
+
+    const interrupted = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
+    interrupted.stepMany(at);
+    const resumed = engineFromSnapshot(interrupted.serialize());
+    expect(resumed.computeStateHash()).toBe(interrupted.computeStateHash());
+
+    resumed.stepMany(3_000 - at);
+    expect(resumed.tick).toBe(3_000);
+    expect(resumed.computeStateHash()).toBe(straight.computeStateHash());
+  });
+
   it("round-trips a snapshot with dead slots on the free list", () => {
     // Taken after the cohort has started dying, so the snapshot carries a
     // non-empty free list. Rebuilding that list by scanning for dead slots

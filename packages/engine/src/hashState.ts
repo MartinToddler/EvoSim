@@ -10,7 +10,7 @@ import type { SimulationEngine } from "./SimulationEngine";
  * changes hashes and therefore requires an ENGINE_VERSION bump, regenerated
  * goldens and a changelog entry (CLAUDE.md).
  *
- * Canonical sequence (engine 0.3.0):
+ * Canonical sequence (engine 0.3.1; unchanged since 0.3.0):
  *   1. magic word 0x454f4e48 ("EONH")
  *   2. tick as TWO words: low 32 bits, then high bits
  *   3. seed

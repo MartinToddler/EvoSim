@@ -6,6 +6,38 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [0.3.1] — 2026-08-12 — Milestone 3 independent review
+
+Versions: `ENGINE_VERSION` 0.3.0 → **0.3.1**; snapshot, config and protocol schema versions
+unchanged. **Golden hashes are unchanged** — the behavior that changed is never reached by the
+reference fixture, and the fixture file records why. Findings and evidence in
+`docs/adr/0005-milestone-3-review-fixes.md`.
+
+### Fixed
+
+- **Coincident bodies separated in slot order instead of entity-ID order.** When two organisms sit
+  at exactly the same position, docs/03 §13 derives the separation direction from an entity-ID
+  hash. The implementation hashed `(idOfLowerSlot, idOfHigherSlot)`, so once slots are recycled
+  (Milestone 4) the same two organisms would fly apart differently depending only on who died
+  recently — storage order deciding an authoritative outcome. Both the hash arguments and the push
+  direction are now ordered by entity ID. The reference world never places two organisms on exactly
+  the same sub-unit, so no golden hash moved; `ENGINE_VERSION` is bumped because the engine
+  computes something different in a state that is reachable in general, and snapshot restore must
+  keep refusing to continue a 0.3.0 world under 0.3.1 rules.
+- **`OrganismStore.allocateSlot` could lose a slot.** The entity-ID exhaustion assertion ran after
+  the free stack had been popped, so a slot could end up neither alive nor free — permanently
+  unusable. The cap check and the assertion now both precede any mutation.
+- **Snapshot restore trusted a malformed free list.** `adoptSlotState` accepted a free list naming
+  the same slot twice (which would put two organisms in one slot) and one that omitted a dead slot
+  (which would leak it forever). Restore now rejects duplicates and enforces
+  `liveCount + freeCount === slotHighWater`.
+
+### Added
+
+- Regression tests for all three fixes, plus a snapshot/resume test taken at a tick that is **not**
+  a multiple of the environment interval — the case that hid the stale plant-gradient cache fixed
+  in 0.3.0.
+
 ## [0.3.0] — 2026-08-12 — Milestone 3: organism mechanics
 
 Versions: `ENGINE_VERSION` 0.2.0 → **0.3.0**, `CONFIG_SCHEMA_VERSION` 3 → **4**,
