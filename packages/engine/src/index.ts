@@ -48,8 +48,47 @@ export { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig
 export { validateConfig, ConfigValidationError } from "./config/validateConfig";
 export { hashConfig, canonicalJsonStringify, ConfigSerializationError } from "./config/hashConfig";
 
-// World constants shared with config (full world model arrives in Milestone 2).
-export { Biome, BIOME_COUNT } from "./world/biomes";
+// Deterministic value noise (task C02).
+export {
+  NOISE_SALT,
+  latticeValueQ,
+  smoothstepQ,
+  valueNoiseQ,
+  layeredNoiseQ,
+  type NoiseOctave,
+} from "./math/noise";
+
+// World model (Milestone 2, tasks C02–C09).
+export { Biome, BIOME_COUNT, BIOME_NAMES, classifyBiome } from "./world/biomes";
+export { EnvironmentStore } from "./world/EnvironmentStore";
+export { generateEnvironment, generationSubSeed } from "./world/generateWorld";
+export {
+  validateWorld,
+  landFractionQ,
+  distinctBiomeCount,
+  labelLandComponents,
+  selectFounderRegion,
+  type WorldValidity,
+  type FounderRegion,
+} from "./world/validateWorld";
+export { createWorld, WorldGenerationError, type GeneratedWorld } from "./world/createWorld";
+export {
+  computePlantCapacity,
+  recomputeAllPlantCapacities,
+  growPlants,
+  recomputePlantGradient,
+  totalPlantBiomass,
+  totalPlantCapacity,
+  temperatureSuitabilityQ,
+  moistureSuitabilityQ,
+} from "./world/plants";
+export { updateEnvironment } from "./world/environmentUpdate";
+export {
+  captureEnvironment,
+  restoreEnvironment,
+  EnvironmentSnapshotError,
+  type EnvironmentSnapshot,
+} from "./world/environmentSnapshot";
 
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG

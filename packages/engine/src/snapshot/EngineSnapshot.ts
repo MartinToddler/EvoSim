@@ -1,5 +1,6 @@
 import type { SimulationConfig } from "../config/SimulationConfig";
 import type { Xoshiro128State } from "../random/Xoshiro128";
+import type { EnvironmentSnapshot } from "../world/environmentSnapshot";
 
 /**
  * Core engine snapshot v1 (Milestone 1 subset of docs/10 §18).
@@ -23,6 +24,11 @@ export interface EngineCoreSnapshot {
   tick: number;
   rngState: Xoshiro128State;
   config: SimulationConfig;
+  /**
+   * Authoritative environment arrays. Not recomputable from the seed once the
+   * world has grown, been grazed or been edited, so it must be stored.
+   */
+  environment: EnvironmentSnapshot;
 }
 
 /**

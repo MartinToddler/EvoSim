@@ -7,6 +7,11 @@ import { attachEngineInternals } from "./internal";
 import { Xoshiro128, type Xoshiro128State } from "./random/Xoshiro128";
 import { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
 import { ENGINE_VERSION, SNAPSHOT_SCHEMA_VERSION } from "./version";
+import type { EnvironmentStore } from "./world/EnvironmentStore";
+import { createWorld } from "./world/createWorld";
+import { captureEnvironment, restoreEnvironment } from "./world/environmentSnapshot";
+import { updateEnvironment } from "./world/environmentUpdate";
+import type { FounderRegion } from "./world/validateWorld";
 
 export interface SimulationEngineOptions {
   seed: number;
@@ -20,14 +25,15 @@ export interface SimulationEngineOptions {
 
 /**
  * Highest tick the engine will reach. Ticks are JS safe integers rather than
- * uint32 values: at 20 ticks/s and docs/08 `ticksPerSimYear = 2000`, uint32
- * would wrap after ~2.1 million simulated years, which is not an absurd horizon
- * for this project, while the safe-integer range covers ~4.5e12 simulated years.
+ * uint32 values: at 20 ticks/s and 2000 ticks per simulated year, uint32 would
+ * wrap after ~2.1 million simulated years, which is not an absurd horizon for
+ * this project, while the safe-integer range covers ~4.5e12 simulated years.
  */
 export const MAX_TICK = Number.MAX_SAFE_INTEGER;
 
 /**
- * Deterministic fixed-step simulation engine — Milestone 1 shell (task B05).
+ * Deterministic fixed-step simulation engine (task B05, extended in Milestone 2
+ * with the environment).
  *
  * The engine is pure: no browser APIs, no wall clock, no Math.random, no
  * render-frame deltas. `step()` advances exactly one authoritative tick; there
@@ -41,14 +47,12 @@ export const MAX_TICK = Number.MAX_SAFE_INTEGER;
  *   generator through the package-internal channel in `internal.ts`;
  * - the config is validated, deep-copied and deep-frozen at construction, so
  *   `configHash` can never drift from the configuration actually in use;
- * - the only way to restore tick/PRNG state is the validated
+ * - the instance itself is frozen, so identity fields cannot be reassigned;
+ * - the only way to restore state is the validated
  *   {@link SimulationEngine.fromSnapshot} factory.
  *
  * Tick convention (docs/10 §3): commands scheduled for the current `tick`
- * value are applied first, phases run, then `tick` increments. Milestone 1
- * has no phases yet — the versioned phase order from docs/03 §7 is inserted
- * here milestone by milestone. The convention itself is already locked by the
- * golden hash fixture.
+ * value are applied first, phases run, then `tick` increments.
  */
 export class SimulationEngine {
   readonly seed: number;
@@ -56,6 +60,12 @@ export class SimulationEngine {
   readonly config: ReadonlySimulationConfig;
   /** Canonical digest of {@link config}, computed once over the frozen copy. */
   readonly configHash: string;
+  /** Authoritative environment grid (docs/03 §14). */
+  readonly environment: EnvironmentStore;
+  /** Deterministically chosen region where founders will spawn (docs/03 §26). */
+  readonly founderRegion: FounderRegion;
+  /** Which generation attempt produced this world; 0 means the seed worked directly. */
+  readonly generationAttempt: number;
 
   readonly #rng: Xoshiro128;
   #tick = 0;
@@ -78,6 +88,15 @@ export class SimulationEngine {
     this.configHash = hashConfig(this.config);
 
     this.#rng = Xoshiro128.fromSeed(this.seed);
+
+    // World generation is a pure function of (seed, config) and deliberately
+    // does not touch the PRNG, so the generator's state after construction is
+    // exactly its seeded state whatever the world turned out to look like.
+    const world = createWorld(this.config, this.seed);
+    this.environment = world.environment;
+    this.founderRegion = world.founderRegion;
+    this.generationAttempt = world.attempt;
+
     attachEngineInternals(this, { rng: this.#rng });
 
     // Freeze the instance itself, not just the config. `readonly` is erased at
@@ -90,8 +109,7 @@ export class SimulationEngine {
   }
 
   /**
-   * Restore an engine from a core snapshot — the single validated restore path
-   * (Milestone 1 acceptance: serialize/resume must continue with exact hashes).
+   * Restore an engine from a core snapshot — the single validated restore path.
    *
    * Compatibility policy for MVP (docs/06 §28): schema version AND engine
    * version must match exactly. Replaying an old save under changed engine
@@ -119,7 +137,33 @@ export class SimulationEngine {
     const engine = new SimulationEngine({ seed: snapshot.seed, config: snapshot.config });
     engine.#tick = snapshot.tick;
     engine.#rng.restoreState(snapshot.rngState);
+
+    // The saved environment wins over the freshly generated one: the world may
+    // have grown, been grazed or been edited since generation, and only the
+    // snapshot knows that history.
+    const restored = restoreEnvironment(snapshot.environment, engine.config);
+    engine.#adoptEnvironment(restored);
+
     return engine;
+  }
+
+  /** Copy restored arrays into this engine's store (the store reference is frozen). */
+  #adoptEnvironment(source: EnvironmentStore): void {
+    const target = this.environment;
+    target.elevationQ.set(source.elevationQ);
+    target.baseMoistureQ.set(source.baseMoistureQ);
+    target.moistureOffsetQ.set(source.moistureOffsetQ);
+    target.fertilityQ.set(source.fertilityQ);
+    target.baseTemperatureCentiC.set(source.baseTemperatureCentiC);
+    target.temperatureOffsetCentiC.set(source.temperatureOffsetCentiC);
+    target.biome.set(source.biome);
+    target.plantBiomass.set(source.plantBiomass);
+    target.plantCapacity.set(source.plantCapacity);
+    target.plantGrowthRemainderQ.set(source.plantGrowthRemainderQ);
+    target.globalTemperatureOffsetCentiC = source.globalTemperatureOffsetCentiC;
+    target.passable.set(source.passable);
+    target.plantGradientXQ.set(source.plantGradientXQ);
+    target.plantGradientYQ.set(source.plantGradientYQ);
   }
 
   /** Current authoritative tick (number of completed steps). */
@@ -143,9 +187,17 @@ export class SimulationEngine {
           "because tick identity would no longer be exact",
       );
     }
-    // Phase order docs/03 §7 — inserted from Milestone 2 onward:
-    // 0 applyCommands … 18 optionalRenderSnapshot. Phases that need randomness
-    // take the generator from engineInternals(this).rng.
+
+    // Authoritative phase order, docs/03 §7. Phases arrive milestone by
+    // milestone; the numbering is fixed so insertions cannot silently reorder
+    // existing ones.
+    //   0 applyCommands                     — Milestone 9
+    if (this.#tick % this.config.time.environmentInterval === 0) {
+      updateEnvironment(this.environment, this.config); // 1 scheduledEnvironmentUpdate
+    }
+    //   2..17 organisms, ecology, species   — Milestones 3-8
+    //   18 optionalRenderSnapshot           — Milestone 6
+
     this.#tick += 1;
   }
 
@@ -172,7 +224,7 @@ export class SimulationEngine {
     return computeStateHash(this);
   }
 
-  /** Serialize everything needed to continue this engine exactly (core v1). */
+  /** Serialize everything needed to continue this engine exactly. */
   serialize(): EngineCoreSnapshot {
     return {
       schemaVersion: SNAPSHOT_SCHEMA_VERSION,
@@ -181,6 +233,7 @@ export class SimulationEngine {
       tick: this.#tick,
       rngState: this.getRngState(),
       config: cloneConfig(this.config),
+      environment: captureEnvironment(this.environment, this.founderRegion),
     };
   }
 }

@@ -36,6 +36,55 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       forestMinMoistureQ: 2540, // 0.62
       forestMinFertilityQ: 2253, // 0.55
     },
+
+    generation: {
+      // docs/03 §15: 0.55 / 0.30 / 0.15 over wavelengths 64 / 32 / 16 cells.
+      elevationOctaves: [
+        { wavelengthCells: 64, weightQ: 2253 }, // 0.55
+        { wavelengthCells: 32, weightQ: 1229 }, // 0.30
+        { wavelengthCells: 16, weightQ: 614 }, // 0.15
+      ],
+      // Calibrated over 12 seeds: a 16-cell border fade still guarantees an
+      // ocean rim while keeping 10/12 seeds inside the 35–70% land window on
+      // the first attempt (a wider fade drowned most worlds and forced retries).
+      edgeFalloffCells: 16,
+      moistureWavelengthCells: 64,
+      temperatureWavelengthCells: 128,
+      fertilityWavelengthCells: 32,
+      // Reach of the coastal moisture gradient, in cells. The docs/03 §16
+      // formula alone averages ~0.42 moisture, below the 0.62 forest threshold,
+      // so a short reach left forest nearly absent; 24 passes give wet coasts
+      // and dry interiors, and forest in 9 of 12 calibration seeds.
+      waterInfluencePasses: 24,
+    },
+
+    validity: {
+      minFounderRegionCells: 256,
+      minTotalPlantCapacity: 50_000_000,
+      minBiomeClasses: 3,
+    },
+
+    moisture: {
+      noiseWeightQ: 2662, // 0.65
+      inverseElevationWeightQ: 820, // 0.20
+      waterInfluenceWeightQ: 614, // 0.15
+    },
+
+    climate: {
+      equatorTemperatureCentiC: 3000, // +30 °C at the equator, sea level
+      poleTemperatureDropCentiC: 4000, // -10 °C at the pole edges, sea level
+      elevationCoolingCentiC: 1000, // a further -10 °C on the highest ground
+      temperatureNoiseAmplitudeCentiC: 400, // ±4 °C of regional variation
+    },
+
+    fertility: {
+      moistureWeightQ: 1638, // 0.40
+      temperatureWeightQ: 1229, // 0.30
+      lowlandWeightQ: 614, // 0.15
+      noiseWeightQ: 615, // 0.15
+      optimumTemperatureCentiC: 2000, // 20 °C
+      toleranceCentiC: 2000, // fertile band roughly 0 °C … 40 °C
+    },
   },
 
   // Authoritative tick scheduling only. Wall-clock pacing, render cadence,
@@ -56,6 +105,13 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     plantMinRegenThreshold: 16,
     plantEnergyPerBiomass: 30,
     meatEnergyPerUnit: 45,
+    initialBiomassFractionQ: 2048, // 0.50
+    capacitySuitability: {
+      optimumTemperatureCentiC: 1800, // 18 °C
+      temperatureToleranceCentiC: 2200, // plants grow roughly -4 °C … 40 °C
+      minMoistureQ: 205, // 0.05
+      fullMoistureQ: 2458, // 0.60
+    },
   },
 
   organism: {

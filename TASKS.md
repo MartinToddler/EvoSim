@@ -22,17 +22,15 @@ Check only after code + tests + acceptance criteria pass.
 - [x] B08 deterministic hash fixture.
 
 ## C World/ecology
-- [ ] C01 typed SimulationConfig. <!-- The type exists and is fully validated (ADR 0002 §6),
-      but this box belongs to the Milestone 2 block and stays open until the environment work
-      that consumes the config lands. -->
-- [ ] C02 deterministic value noise.
-- [ ] C03 elevation/sea/validity.
-- [ ] C04 moisture/temp/fertility.
-- [ ] C05 biomes.
-- [ ] C06 plant capacities.
-- [ ] C07 growth/gradient cache.
-- [ ] C08 founder spawn region.
-- [ ] C09 environment golden tests.
+- [x] C01 typed SimulationConfig.
+- [x] C02 deterministic value noise.
+- [x] C03 elevation/sea/validity.
+- [x] C04 moisture/temp/fertility.
+- [x] C05 biomes.
+- [x] C06 plant capacities.
+- [x] C07 growth/gradient cache.
+- [x] C08 founder spawn region.
+- [x] C09 environment golden tests.
 
 ## D Organisms
 - [ ] D01 SoA organism store/free slots.

@@ -6,6 +6,56 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [0.2.0] — 2026-08-12 — Milestone 2: environment
+
+Versions: `ENGINE_VERSION` 0.1.1 → **0.2.0**, `CONFIG_SCHEMA_VERSION` 2 → **3**,
+`SNAPSHOT_SCHEMA_VERSION` 2 → **3**, `PROTOCOL_VERSION` unchanged (1). All golden hashes
+regenerated; 0.1.x snapshots are intentionally unloadable. Decisions in
+`docs/adr/0003-milestone-2-environment.md`.
+
+### Added
+
+- **Deterministic value noise** (C02): integer lattice noise with smoothstep interpolation,
+  per-field salts, power-of-two wavelengths. No floats, no PRNG draws — world generation is a
+  pure function of (seed, config) and leaves the PRNG untouched.
+- **Procedural world generation** (C03–C06): elevation from three octaves with an ocean-forming
+  edge fade; moisture from noise, inverse elevation and a coastal water-influence gradient;
+  temperature from latitude, elevation and low-frequency noise (≈ -13 °C … +33 °C); fertility
+  from moisture, temperature, lowland preference and noise; biome classification in the
+  documented rule order; per-cell plant capacity from biome base × fertility × moisture and
+  temperature suitability.
+- **World validity with deterministic retry** (C03): land fraction, connected habitat size,
+  total capacity and biome diversity are checked; an invalid world is regenerated from a derived
+  sub-seed rather than repaired. All ten calibration seeds pass.
+- **Plants as a biomass field with logistic growth and a seed bank** (C06/C07), plus the cached
+  plant gradient organism sensing will read.
+- **Founder region selection** (C08): the most productive neighbourhood inside the largest
+  connected landmass, chosen deterministically.
+- **Environment phase in `step()`**: phase 1 of the docs/03 §7 tick order now runs on the
+  configured interval; environment arrays are hashed and serialized.
+- **Environment tests** (C09): noise, biome rule order, capacity and growth arithmetic,
+  generation invariants, validity and retry, founder region, and a 100 000-tick soak that pins
+  the resulting state hash.
+- Headless runner prints a world summary (land share, biome distribution, capacity, biomass,
+  founder region).
+
+### Fixed
+
+- **Sparse plant cells froze permanently.** With integer biomass and a truncated logistic step, a
+  cell below ≈84 biomass (≈683 in a slow biome) grew by exactly zero, while the seed bank stopped
+  at 16 — so any cell grazed into that gap could never recover, silently and only in some biomes.
+  Growth now carries its fractional part between steps in a new authoritative array. Rounding up
+  to a minimum of one unit was rejected: it would have made slow biomes recover up to seven times
+  faster than configured.
+
+### Changed
+
+- `vitest.config.ts` sets a 60 s default test timeout: the acceptance tests generate whole worlds
+  and run thousands of ticks, and the 5 s default failed them for being slow rather than wrong.
+- Moisture dilation, flood fill and the gradient pass no longer allocate a neighbour array per
+  cell (~1.5 M allocations per world); generation dropped from 122 ms to 90 ms with identical
+  output.
+
 ## [0.1.1] — 2026-08-12 — Milestone 1 hardening (review fixes)
 
 Versions: `ENGINE_VERSION` 0.1.0 → **0.1.1**, `CONFIG_SCHEMA_VERSION` 1 → **2**,

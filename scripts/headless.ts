@@ -12,12 +12,16 @@
  * influences the simulation (engine purity rules).
  */
 import {
+  BIOME_COUNT,
+  BIOME_NAMES,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
   CONFIG_SCHEMA_VERSION,
   SimulationEngine,
   hashConfig,
+  totalPlantBiomass,
+  totalPlantCapacity,
 } from "@eon/engine";
 
 interface CliOptions {
@@ -121,6 +125,44 @@ function parseArgs(argv: string[]): CliOptions {
   return options;
 }
 
+/**
+ * World summary after generation (docs/10 §26: a headless command should be
+ * able to show that the simulation is real without any rendering).
+ */
+function printWorldSummary(engine: SimulationEngine): void {
+  const { environment, founderRegion } = engine;
+  const counts = new Array<number>(BIOME_COUNT).fill(0);
+  for (let i = 0; i < environment.cellCount; i += 1) {
+    const biome = environment.biome[i] as number;
+    counts[biome] = (counts[biome] ?? 0) + 1;
+  }
+
+  const capacity = totalPlantCapacity(environment);
+  const biomass = totalPlantBiomass(environment);
+  const landCells = environment.cellCount - (counts[0] as number);
+
+  console.log(
+    `world      ${environment.size}x${environment.size} cells, generation attempt ${engine.generationAttempt}`,
+  );
+  console.log(
+    `land       ${((landCells / environment.cellCount) * 100).toFixed(1)}%  biomes ` +
+      counts
+        .map(
+          (count, biome) =>
+            `${BIOME_NAMES[biome]}=${((count / environment.cellCount) * 100).toFixed(1)}%`,
+        )
+        .join(" "),
+  );
+  console.log(
+    `plants     capacity ${(capacity / 1e6).toFixed(1)}M, biomass ${(biomass / 1e6).toFixed(1)}M ` +
+      `(${capacity > 0 ? ((biomass / capacity) * 100).toFixed(1) : "0.0"}% of capacity)`,
+  );
+  console.log(
+    `founders   cell ${founderRegion.centerCellIndex} at (${founderRegion.centerGridX}, ` +
+      `${founderRegion.centerGridY}) in a ${founderRegion.componentCells}-cell landmass`,
+  );
+}
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const checkpoints = [...new Set(options.checkpoints)].sort((a, b) => a - b);
@@ -138,6 +180,7 @@ function main(): void {
   console.log(`ticks      ${totalTicks}`);
 
   const engine = new SimulationEngine({ seed: options.seed, config: DEFAULT_CONFIG });
+  printWorldSummary(engine);
 
   const startedAt = performance.now();
   let nextCheckpointIndex = 0;

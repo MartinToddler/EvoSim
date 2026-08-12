@@ -52,6 +52,68 @@ export interface WorldConfig {
     forestMinMoistureQ: number;
     forestMinFertilityQ: number;
   };
+
+  /** Procedural generation constants (docs/03 §15). */
+  generation: {
+    /**
+     * Elevation octaves, coarsest first. Weights are Q-scaled and sum to Q, so
+     * the layered result needs no rescale. docs/03 §15 suggests
+     * 0.55/0.30/0.15 over wavelengths 64/32/16 cells.
+     */
+    elevationOctaves: readonly { wavelengthCells: number; weightQ: number }[];
+    /** Border margin in cells over which elevation fades to ocean. */
+    edgeFalloffCells: number;
+    /** Wavelength of the independent moisture noise field, in cells. */
+    moistureWavelengthCells: number;
+    /** Wavelength of the low-frequency temperature noise field, in cells. */
+    temperatureWavelengthCells: number;
+    /** Wavelength of the fertility noise field, in cells. */
+    fertilityWavelengthCells: number;
+    /** Dilation passes approximating distance-to-water for moisture (docs/03 §16). */
+    waterInfluencePasses: number;
+  };
+
+  /** World-generation validity thresholds (docs/03 §15). */
+  validity: {
+    /** Minimum cells in the connected land region chosen for the founders. */
+    minFounderRegionCells: number;
+    /** Minimum total plant capacity summed over the world. */
+    minTotalPlantCapacity: number;
+    /** Minimum number of distinct biome classes present. */
+    minBiomeClasses: number;
+  };
+
+  /** Moisture composition weights (docs/03 §16). Q-scaled, summing to Q. */
+  moisture: {
+    noiseWeightQ: number;
+    inverseElevationWeightQ: number;
+    waterInfluenceWeightQ: number;
+  };
+
+  /** Temperature field shape (docs/03 §17). Not an Earth climate model. */
+  climate: {
+    /** Sea-level temperature at the equator row. */
+    equatorTemperatureCentiC: number;
+    /** Total cooling from the equator to either pole edge. */
+    poleTemperatureDropCentiC: number;
+    /** Additional cooling at maximum elevation above sea level. */
+    elevationCoolingCentiC: number;
+    /** Amplitude of the signed low-frequency temperature noise. */
+    temperatureNoiseAmplitudeCentiC: number;
+  };
+
+  /** Fertility composition (docs/03 §18). Weights are Q-scaled and sum to Q. */
+  fertility: {
+    moistureWeightQ: number;
+    temperatureWeightQ: number;
+    /** Weight of "low ground is more fertile". */
+    lowlandWeightQ: number;
+    noiseWeightQ: number;
+    /** Temperature at which the fertility contribution peaks. */
+    optimumTemperatureCentiC: number;
+    /** Half-width of the fertility temperature window; suitability is 0 outside. */
+    toleranceCentiC: number;
+  };
 }
 
 /**
@@ -87,6 +149,27 @@ export interface PlantConfig {
   plantEnergyPerBiomass: number;
   /** Energy per consumed carcass meat unit before digestion efficiency. */
   meatEnergyPerUnit: number;
+
+  /**
+   * Biomass present at world creation, as a fraction of each cell's capacity.
+   * Below Q so a new world is still visibly growing when the founders arrive.
+   */
+  initialBiomassFractionQ: number;
+
+  /**
+   * Capacity suitability (docs/03 §20: capacity = biome base × fertility ×
+   * broad moisture/temperature suitability).
+   */
+  capacitySuitability: {
+    /** Temperature at which plant capacity suitability peaks. */
+    optimumTemperatureCentiC: number;
+    /** Half-width of the capacity temperature window; suitability is 0 outside. */
+    temperatureToleranceCentiC: number;
+    /** At or below this moisture, capacity suitability is 0. */
+    minMoistureQ: number;
+    /** At or above this moisture, moisture no longer limits capacity. */
+    fullMoistureQ: number;
+  };
 }
 
 /** Body, energy, metabolism and health constants (docs/08 §§8–13, 15). */

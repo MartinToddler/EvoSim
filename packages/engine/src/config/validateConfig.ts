@@ -186,6 +186,102 @@ function validateWorld(config: DeepReadonly<SimulationConfig>): void {
     thresholds.desertMaxMoistureQ < thresholds.forestMinMoistureQ,
     "world.biomeThresholds: desert maximum moisture must be below the forest minimum moisture",
   );
+
+  validateGeneration(world);
+}
+
+function isPowerOfTwo(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0 && (value & (value - 1)) === 0;
+}
+
+function validateGeneration(world: DeepReadonly<SimulationConfig>["world"]): void {
+  const generation = world.generation;
+
+  check(
+    generation.elevationOctaves.length > 0,
+    "world.generation.elevationOctaves must contain at least one octave",
+  );
+  let weightSum = 0;
+  for (let i = 0; i < generation.elevationOctaves.length; i += 1) {
+    const octave = generation.elevationOctaves[i] as { wavelengthCells: number; weightQ: number };
+    // Power-of-two wavelengths keep the lattice aligned to the grid, so the
+    // fractional position inside a lattice cell is an exact Q value.
+    check(
+      isPowerOfTwo(octave.wavelengthCells),
+      `world.generation.elevationOctaves[${i}].wavelengthCells must be a power of two, got ${octave.wavelengthCells}`,
+    );
+    checkQFraction(octave.weightQ, `world.generation.elevationOctaves[${i}].weightQ`);
+    weightSum += octave.weightQ;
+  }
+  check(
+    weightSum === Q,
+    `world.generation.elevationOctaves weights must sum to exactly ${Q}, got ${weightSum}`,
+  );
+
+  checkPositiveInt(generation.edgeFalloffCells, "world.generation.edgeFalloffCells");
+  check(
+    generation.edgeFalloffCells * 2 < world.envGridSize,
+    "world.generation.edgeFalloffCells must leave land in the middle of the grid",
+  );
+  for (const [name, value] of [
+    ["moistureWavelengthCells", generation.moistureWavelengthCells],
+    ["temperatureWavelengthCells", generation.temperatureWavelengthCells],
+    ["fertilityWavelengthCells", generation.fertilityWavelengthCells],
+  ] as const) {
+    check(isPowerOfTwo(value), `world.generation.${name} must be a power of two, got ${value}`);
+  }
+  checkPositiveInt(generation.waterInfluencePasses, "world.generation.waterInfluencePasses");
+  check(
+    generation.waterInfluencePasses < Q,
+    "world.generation.waterInfluencePasses must stay below Q so each pass decays by at least one unit",
+  );
+
+  const validity = world.validity;
+  checkPositiveInt(validity.minFounderRegionCells, "world.validity.minFounderRegionCells");
+  check(
+    validity.minFounderRegionCells <= world.envGridSize * world.envGridSize,
+    "world.validity.minFounderRegionCells cannot exceed the number of cells",
+  );
+  checkPositiveInt(validity.minTotalPlantCapacity, "world.validity.minTotalPlantCapacity");
+  checkPositiveInt(validity.minBiomeClasses, "world.validity.minBiomeClasses");
+  check(
+    validity.minBiomeClasses <= BIOME_COUNT,
+    `world.validity.minBiomeClasses cannot exceed ${BIOME_COUNT}`,
+  );
+
+  const moisture = world.moisture;
+  checkQFraction(moisture.noiseWeightQ, "world.moisture.noiseWeightQ");
+  checkQFraction(moisture.inverseElevationWeightQ, "world.moisture.inverseElevationWeightQ");
+  checkQFraction(moisture.waterInfluenceWeightQ, "world.moisture.waterInfluenceWeightQ");
+  check(
+    moisture.noiseWeightQ + moisture.inverseElevationWeightQ + moisture.waterInfluenceWeightQ === Q,
+    `world.moisture weights must sum to exactly ${Q}`,
+  );
+
+  const climate = world.climate;
+  checkCentiCelsius(climate.equatorTemperatureCentiC, "world.climate.equatorTemperatureCentiC");
+  checkNonNegativeInt(climate.poleTemperatureDropCentiC, "world.climate.poleTemperatureDropCentiC");
+  checkNonNegativeInt(climate.elevationCoolingCentiC, "world.climate.elevationCoolingCentiC");
+  checkNonNegativeInt(
+    climate.temperatureNoiseAmplitudeCentiC,
+    "world.climate.temperatureNoiseAmplitudeCentiC",
+  );
+
+  const fertility = world.fertility;
+  checkQFraction(fertility.moistureWeightQ, "world.fertility.moistureWeightQ");
+  checkQFraction(fertility.temperatureWeightQ, "world.fertility.temperatureWeightQ");
+  checkQFraction(fertility.lowlandWeightQ, "world.fertility.lowlandWeightQ");
+  checkQFraction(fertility.noiseWeightQ, "world.fertility.noiseWeightQ");
+  check(
+    fertility.moistureWeightQ +
+      fertility.temperatureWeightQ +
+      fertility.lowlandWeightQ +
+      fertility.noiseWeightQ ===
+      Q,
+    `world.fertility weights must sum to exactly ${Q}`,
+  );
+  checkCentiCelsius(fertility.optimumTemperatureCentiC, "world.fertility.optimumTemperatureCentiC");
+  checkPositiveInt(fertility.toleranceCentiC, "world.fertility.toleranceCentiC");
 }
 
 function validateTime(config: DeepReadonly<SimulationConfig>): void {
@@ -214,6 +310,30 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
   checkNonNegativeInt(plants.plantMinRegenThreshold, "plants.plantMinRegenThreshold");
   checkPositiveInt(plants.plantEnergyPerBiomass, "plants.plantEnergyPerBiomass");
   checkPositiveInt(plants.meatEnergyPerUnit, "plants.meatEnergyPerUnit");
+  checkQFraction(plants.initialBiomassFractionQ, "plants.initialBiomassFractionQ");
+
+  const suitability = plants.capacitySuitability;
+  checkCentiCelsius(
+    suitability.optimumTemperatureCentiC,
+    "plants.capacitySuitability.optimumTemperatureCentiC",
+  );
+  checkPositiveInt(
+    suitability.temperatureToleranceCentiC,
+    "plants.capacitySuitability.temperatureToleranceCentiC",
+  );
+  checkQFraction(suitability.minMoistureQ, "plants.capacitySuitability.minMoistureQ");
+  checkQFraction(suitability.fullMoistureQ, "plants.capacitySuitability.fullMoistureQ");
+  check(
+    suitability.minMoistureQ < suitability.fullMoistureQ,
+    "plants.capacitySuitability: minMoistureQ must be below fullMoistureQ",
+  );
+  // Every biome base capacity must fit the Uint16 biomass arrays.
+  for (let i = 0; i < BIOME_COUNT; i += 1) {
+    check(
+      (plants.baseCapacityByBiome[i] as number) <= 65535,
+      `plants.baseCapacityByBiome[${i}] must fit in the Uint16 biomass array (<= 65535)`,
+    );
+  }
 }
 
 function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
