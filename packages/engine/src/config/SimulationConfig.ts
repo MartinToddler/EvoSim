@@ -16,6 +16,13 @@
  * CONFIG_SCHEMA_VERSION (see version.ts). The `senses` section and the gene
  * mapping ranges (docs/08 §7) are intentionally deferred to the milestone
  * that implements them (M3 organisms) and will arrive with a schema bump.
+ *
+ * That bump is not optional bookkeeping: `validateConfig` requires a config to
+ * have exactly the shape of DEFAULT_CONFIG, so a field added to this interface
+ * must also be added there or every configuration is rejected (ADR 0004 §4).
+ * The strictness is deliberate — `hashConfig` serializes whatever keys an
+ * object has, so an undeclared field would change world identity while no rule
+ * reads it.
  */
 
 export interface WorldConfig {

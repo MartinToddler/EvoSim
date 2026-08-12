@@ -25,8 +25,16 @@ export interface EngineCoreSnapshot {
   rngState: Xoshiro128State;
   config: SimulationConfig;
   /**
-   * Authoritative environment arrays. Not recomputable from the seed once the
-   * world has grown, been grazed or been edited, so it must be stored.
+   * Which generation attempt produced this world (0 = the seed worked
+   * directly). Provenance, not simulation state: no authoritative rule reads
+   * it and it is not hashed, but restoring no longer regenerates the world, so
+   * without it the value would be lost across a save/load cycle.
+   */
+  generationAttempt: number;
+  /**
+   * Authoritative environment arrays plus the founder region. Not recomputable
+   * from the seed once the world has grown, been grazed or been edited, so it
+   * must be stored — and is now honoured on restore rather than regenerated.
    */
   environment: EnvironmentSnapshot;
 }

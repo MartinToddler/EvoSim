@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SimulationEngine } from "../SimulationEngine";
 import { cloneConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { Q } from "../math/fixed";
@@ -260,5 +261,34 @@ describe("founder region (docs/03 §26, task C08)", () => {
       }
     }
     expect(productiveNeighbours).toBeGreaterThan(60); // out of 81
+  });
+});
+
+/**
+ * Seed → world identity at the level that actually matters: the canonical
+ * state hash. Array-level comparisons above prove the fields are equal; these
+ * prove the hash the whole project uses as world identity agrees.
+ */
+describe("environment identity across seeds", () => {
+  it("gives the same seed the same world hash", () => {
+    const a = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
+    const b = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
+    expect(b.computeStateHash()).toBe(a.computeStateHash());
+    expect(b.founderRegion).toEqual(a.founderRegion);
+  });
+
+  it("gives every calibration seed a distinct world hash", () => {
+    const hashes = CALIBRATION_SEEDS.map((seed) =>
+      new SimulationEngine({ seed, config: DEFAULT_CONFIG }).computeStateHash(),
+    );
+    expect(new Set(hashes).size).toBe(CALIBRATION_SEEDS.length);
+  });
+
+  it("changes the world when the generation configuration changes", () => {
+    const variant = cloneConfig(DEFAULT_CONFIG);
+    variant.world.generation.edgeFalloffCells = 24;
+    const base = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
+    const other = new SimulationEngine({ seed: FIXTURE_SEED, config: variant });
+    expect(other.computeStateHash()).not.toBe(base.computeStateHash());
   });
 });

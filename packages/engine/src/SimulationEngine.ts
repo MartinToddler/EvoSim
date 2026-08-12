@@ -7,9 +7,13 @@ import { attachEngineInternals } from "./internal";
 import { Xoshiro128, type Xoshiro128State } from "./random/Xoshiro128";
 import { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
 import { ENGINE_VERSION, SNAPSHOT_SCHEMA_VERSION } from "./version";
-import type { EnvironmentStore } from "./world/EnvironmentStore";
+import type { EnvironmentStore, ReadonlyEnvironmentView } from "./world/EnvironmentStore";
 import { createWorld } from "./world/createWorld";
-import { captureEnvironment, restoreEnvironment } from "./world/environmentSnapshot";
+import {
+  type EnvironmentSnapshot,
+  captureEnvironment,
+  restoreEnvironment,
+} from "./world/environmentSnapshot";
 import { updateEnvironment } from "./world/environmentUpdate";
 import type { FounderRegion } from "./world/validateWorld";
 
@@ -21,6 +25,25 @@ export interface SimulationEngineOptions {
    * never affect this engine.
    */
   config: ReadonlySimulationConfig;
+}
+
+/**
+ * Module-private restore channel.
+ *
+ * `fromSnapshot` must build an engine whose world comes from the snapshot
+ * rather than from generation, without reopening the "set tick and PRNG to
+ * anything" door that ADR 0002 §2 closed. The token is a module-level symbol
+ * that is never exported, so this second constructor argument cannot be forged
+ * from outside this file even by JavaScript callers who ignore the types.
+ */
+const RESTORE_TOKEN = Symbol("eon.engine.restore");
+
+interface EngineRestoreState {
+  readonly token: symbol;
+  readonly tick: number;
+  readonly rngState: Xoshiro128State;
+  readonly environment: EnvironmentSnapshot;
+  readonly generationAttempt: number;
 }
 
 /**
@@ -45,6 +68,8 @@ export const MAX_TICK = Number.MAX_SAFE_INTEGER;
  * - the PRNG is not exposed; `getRngState()` returns a detached copy for
  *   hashing/serialization, and engine-internal phase code reaches the live
  *   generator through the package-internal channel in `internal.ts`;
+ * - the environment is published as a `ReadonlyEnvironmentView`; the writable
+ *   store is reachable only through that same internal channel (ADR 0004 §1);
  * - the config is validated, deep-copied and deep-frozen at construction, so
  *   `configHash` can never drift from the configuration actually in use;
  * - the instance itself is frozen, so identity fields cannot be reassigned;
@@ -60,17 +85,26 @@ export class SimulationEngine {
   readonly config: ReadonlySimulationConfig;
   /** Canonical digest of {@link config}, computed once over the frozen copy. */
   readonly configHash: string;
-  /** Authoritative environment grid (docs/03 §14). */
-  readonly environment: EnvironmentStore;
-  /** Deterministically chosen region where founders will spawn (docs/03 §26). */
-  readonly founderRegion: FounderRegion;
+  /**
+   * Deterministically chosen region where founders will spawn (docs/03 §26).
+   * Frozen, and part of the canonical state hash: Milestone 3 spawns into it,
+   * so two worlds that disagree about it are different worlds.
+   */
+  readonly founderRegion: Readonly<FounderRegion>;
   /** Which generation attempt produced this world; 0 means the seed worked directly. */
   readonly generationAttempt: number;
 
   readonly #rng: Xoshiro128;
+  readonly #environment: EnvironmentStore;
   #tick = 0;
 
-  constructor(options: SimulationEngineOptions) {
+  constructor(options: SimulationEngineOptions, restore?: EngineRestoreState) {
+    if (restore !== undefined && restore.token !== RESTORE_TOKEN) {
+      throw new SnapshotCompatibilityError(
+        "the engine restore channel is package-internal; use SimulationEngine.fromSnapshot()",
+      );
+    }
+
     assert(
       Number.isInteger(options.seed),
       `seed must be an integer, got ${options.seed}. Non-integer seeds would silently collapse ` +
@@ -89,21 +123,34 @@ export class SimulationEngine {
 
     this.#rng = Xoshiro128.fromSeed(this.seed);
 
-    // World generation is a pure function of (seed, config) and deliberately
-    // does not touch the PRNG, so the generator's state after construction is
-    // exactly its seeded state whatever the world turned out to look like.
-    const world = createWorld(this.config, this.seed);
-    this.environment = world.environment;
-    this.founderRegion = world.founderRegion;
-    this.generationAttempt = world.attempt;
+    if (restore === undefined) {
+      // World generation is a pure function of (seed, config) and deliberately
+      // does not touch the PRNG, so the generator's state after construction is
+      // exactly its seeded state whatever the world turned out to look like.
+      const world = createWorld(this.config, this.seed);
+      this.#environment = world.environment;
+      this.founderRegion = deepFreezeJson({ ...world.founderRegion });
+      this.generationAttempt = world.attempt;
+    } else {
+      // Restoring deliberately does NOT regenerate the world first. The
+      // snapshot carries every authoritative array and the founder region, so
+      // generation would be ~90 ms of work thrown away — and worse, it would
+      // silently substitute the pristine map's founder region for the saved
+      // one once terrain editing lands (docs/03 §25).
+      this.#environment = restoreEnvironment(restore.environment, this.config);
+      this.founderRegion = deepFreezeJson({ ...restore.environment.founderRegion });
+      this.generationAttempt = restore.generationAttempt;
+      this.#tick = restore.tick;
+      this.#rng.restoreState(restore.rngState);
+    }
 
-    attachEngineInternals(this, { rng: this.#rng });
+    attachEngineInternals(this, { rng: this.#rng, environment: this.#environment });
 
     // Freeze the instance itself, not just the config. `readonly` is erased at
     // runtime, so without this a caller could assign `engine.configHash` and
     // change the world's state hash without changing a single simulation value.
-    // Private fields (#tick, #rng) live in internal slots that Object.freeze
-    // does not touch, so the engine can still advance its own state.
+    // Private fields (#tick, #rng, #environment) live in internal slots that
+    // Object.freeze does not touch, so the engine can still advance its state.
     // Must stay the last statement in the constructor.
     Object.freeze(this);
   }
@@ -133,37 +180,33 @@ export class SimulationEngine {
         `snapshot tick must be a non-negative safe integer, got ${snapshot.tick}`,
       );
     }
+    if (!Number.isSafeInteger(snapshot.generationAttempt) || snapshot.generationAttempt < 0) {
+      throw new SnapshotCompatibilityError(
+        `snapshot generationAttempt must be a non-negative safe integer, got ${snapshot.generationAttempt}`,
+      );
+    }
 
-    const engine = new SimulationEngine({ seed: snapshot.seed, config: snapshot.config });
-    engine.#tick = snapshot.tick;
-    engine.#rng.restoreState(snapshot.rngState);
-
-    // The saved environment wins over the freshly generated one: the world may
-    // have grown, been grazed or been edited since generation, and only the
-    // snapshot knows that history.
-    const restored = restoreEnvironment(snapshot.environment, engine.config);
-    engine.#adoptEnvironment(restored);
-
-    return engine;
+    return new SimulationEngine(
+      { seed: snapshot.seed, config: snapshot.config },
+      {
+        token: RESTORE_TOKEN,
+        tick: snapshot.tick,
+        rngState: snapshot.rngState,
+        environment: snapshot.environment,
+        generationAttempt: snapshot.generationAttempt,
+      },
+    );
   }
 
-  /** Copy restored arrays into this engine's store (the store reference is frozen). */
-  #adoptEnvironment(source: EnvironmentStore): void {
-    const target = this.environment;
-    target.elevationQ.set(source.elevationQ);
-    target.baseMoistureQ.set(source.baseMoistureQ);
-    target.moistureOffsetQ.set(source.moistureOffsetQ);
-    target.fertilityQ.set(source.fertilityQ);
-    target.baseTemperatureCentiC.set(source.baseTemperatureCentiC);
-    target.temperatureOffsetCentiC.set(source.temperatureOffsetCentiC);
-    target.biome.set(source.biome);
-    target.plantBiomass.set(source.plantBiomass);
-    target.plantCapacity.set(source.plantCapacity);
-    target.plantGrowthRemainderQ.set(source.plantGrowthRemainderQ);
-    target.globalTemperatureOffsetCentiC = source.globalTemperatureOffsetCentiC;
-    target.passable.set(source.passable);
-    target.plantGradientXQ.set(source.plantGradientXQ);
-    target.plantGradientYQ.set(source.plantGradientYQ);
+  /**
+   * Authoritative environment grid (docs/03 §14), published read-only.
+   *
+   * A frozen projection over the live arrays — no copy, no mutating members,
+   * and no way to reach the store by casting. Engine phase code takes the
+   * writable store from `internal.ts` instead.
+   */
+  get environment(): ReadonlyEnvironmentView {
+    return this.#environment.readonlyView;
   }
 
   /** Current authoritative tick (number of completed steps). */
@@ -193,7 +236,7 @@ export class SimulationEngine {
     // existing ones.
     //   0 applyCommands                     — Milestone 9
     if (this.#tick % this.config.time.environmentInterval === 0) {
-      updateEnvironment(this.environment, this.config); // 1 scheduledEnvironmentUpdate
+      updateEnvironment(this.#environment, this.config); // 1 scheduledEnvironmentUpdate
     }
     //   2..17 organisms, ecology, species   — Milestones 3-8
     //   18 optionalRenderSnapshot           — Milestone 6
@@ -233,7 +276,8 @@ export class SimulationEngine {
       tick: this.#tick,
       rngState: this.getRngState(),
       config: cloneConfig(this.config),
-      environment: captureEnvironment(this.environment, this.founderRegion),
+      generationAttempt: this.generationAttempt,
+      environment: captureEnvironment(this.#environment, this.founderRegion),
     };
   }
 }

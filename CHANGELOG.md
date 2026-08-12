@@ -6,6 +6,66 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [0.2.1] — 2026-08-12 — Milestone 0–2 foundation gate (review fixes)
+
+Versions: `ENGINE_VERSION` 0.2.0 → **0.2.1**, `SNAPSHOT_SCHEMA_VERSION` 3 → **4**,
+`CONFIG_SCHEMA_VERSION` unchanged (3), `PROTOCOL_VERSION` unchanged (1).
+
+**All golden state hashes changed** (the stream gained the founder region) and 0.2.0 snapshots
+are intentionally unloadable. The world content is byte-identical — same land share, same biome
+distribution, same founder cell — so only the hash stream moved, not the simulation. Findings
+and reasoning in `docs/adr/0004-foundation-gate-review.md`.
+
+### Fixed
+
+- **The authoritative environment was writable from outside the engine.**
+  `SimulationEngine.environment` published the live `EnvironmentStore`, so
+  `engine.environment.plantBiomass[0] = 12345` changed a world's state hash outside any tick —
+  the same defect class ADR 0002 §1 closed for the PRNG. The store now lives behind the
+  package-internal channel and the engine publishes a frozen `ReadonlyEnvironmentView` over the
+  same arrays: no copy, no proxy, and no `hashInto`/`recomputePassability`/
+  `setGlobalTemperatureOffsetCentiC` reachable by casting. Element writes through a cast remain
+  possible and are documented rather than pretended away (TypedArrays cannot be frozen).
+- **Snapshot restore discarded the stored founder region and regenerated the whole world.**
+  A snapshot's founder region was silently replaced by the freshly generated one — harmless
+  today, wrong from Milestone 9's terrain edits onward — and ≈90 ms of generation was thrown
+  away on every load. `fromSnapshot()` now adopts the payload through a module-private restore
+  channel (guarded by an unexported `Symbol`, so the single validated door stays single);
+  restore takes ≈6 ms. `generationAttempt` joins the snapshot so it survives a save/load cycle.
+- **The founder region was authoritative state outside the state hash.** Milestone 3 spawns 256
+  organisms there, so two states agreeing on every array but disagreeing on the region were
+  different worlds sharing a hash. It is now hashed; this is the engine-version bump.
+- **Unknown config fields silently entered the world hash.** `hashConfig()` serializes whatever
+  keys an object has, so a host value pasted into `SimulationConfig`, or a typo such as
+  `time.enviromentInterval`, was ignored by every rule _and_ changed world identity.
+  `validateConfig()` now requires the exact schema shape, using `DEFAULT_CONFIG` as the template
+  so the runtime check cannot drift from the interface. Array lengths stay free.
+- **Snapshot loads validated lengths but not values.** A payload with every biome set to 200 was
+  accepted and then went barren on the next environment update, with no error. Loads now check
+  the docs/03 §27 invariants: Q ranges, biome indices, carried growth below one unit, biomass
+  never above its cell's capacity, and a founder region consistent with its own grid.
+- **World geometry had no upper bound.** An oversized `envGridSize` reached the TypedArray
+  constructor and surfaced as a bare `RangeError` naming no config field. Bounded now, together
+  with `sizeLU`, so fixed-point positions cannot leave the `Int32Array` range Milestone 3 will
+  store them in.
+- **`deepCloneJson` mishandled a `__proto__` key**, invoking `Object.prototype`'s setter instead
+  of copying data. It is defined as an own property, so the schema check rejects it as unknown.
+
+### Changed
+
+- Read-only environment helpers (`landFractionQ`, `labelLandComponents`, `totalPlantBiomass`, …)
+  accept `ReadonlyEnvironmentView`, so they work on either side of the engine boundary.
+- `NOISE_SALT.elevationOctave0/1/2` → `NOISE_SALT.elevation`: the per-octave constants were
+  never used (`layeredNoiseQ` derives octave salts itself) and implied a mapping that does not
+  exist. No behaviour change.
+
+### Added
+
+- Tests for environment encapsulation, snapshot value validation, founder-region hashing and
+  restore, the forged-restore-token path, config schema-shape rejection, world-geometry bounds,
+  phase scheduling above 2³² ticks (by restore, not by stepping four billion times), per-seed
+  world identity, and `__proto__` clone safety. 234 → 280 tests.
+
 ## [0.2.0] — 2026-08-12 — Milestone 2: environment
 
 Versions: `ENGINE_VERSION` 0.1.1 → **0.2.0**, `CONFIG_SCHEMA_VERSION` 2 → **3**,

@@ -14,15 +14,30 @@ import { Q, clampQ, lerpQ, qmul } from "./fixed";
  * correlate and none of them consumes the authoritative PRNG.
  */
 
-/** Distinct salts for the independent fields generated from one world seed. */
+/**
+ * Distinct salts for the independent fields generated from one world seed.
+ *
+ * There is one entry per field, not one per octave: {@link layeredNoiseQ}
+ * derives a per-octave salt from the base salt it is given, so `elevation` is
+ * the base of the whole elevation stack. Listing per-octave constants here as
+ * well would suggest a mapping that does not exist — the derived values are
+ * `elevation + i * OCTAVE_SALT_STRIDE`, not `elevationOctave1`.
+ */
 export const NOISE_SALT = {
-  elevationOctave0: 0x00000101,
-  elevationOctave1: 0x00000102,
-  elevationOctave2: 0x00000103,
+  elevation: 0x00000101,
   moisture: 0x00000201,
   temperature: 0x00000301,
   fertility: 0x00000401,
 } as const;
+
+/**
+ * Salt spacing between octaves of one layered field.
+ *
+ * Wide enough that no octave of one field can collide with the base salt of
+ * another (the field salts are 0x100 apart in the low byte and this stride is
+ * ~0x9e37), and fixed forever: changing it changes every generated world.
+ */
+const OCTAVE_SALT_STRIDE = 0x9e37;
 
 function fmix32(h: number): number {
   let x = h >>> 0;
@@ -119,7 +134,7 @@ export function layeredNoiseQ(
     const octave = octaves[i] as NoiseOctave;
     // Each octave gets its own lattice so octaves are independent, not merely
     // rescaled copies of one field.
-    const salt = (baseSalt + i * 0x9e37) >>> 0;
+    const salt = (baseSalt + i * OCTAVE_SALT_STRIDE) >>> 0;
     sum += qmul(valueNoiseQ(seed, salt, gx, gy, octave.wavelengthCells), octave.weightQ);
   }
   return clampQ(sum);

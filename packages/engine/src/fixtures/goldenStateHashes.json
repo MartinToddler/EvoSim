@@ -1,16 +1,16 @@
 {
   "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry.",
-  "engineVersion": "0.2.0",
+  "engineVersion": "0.2.1",
   "configSchemaVersion": 3,
   "seedHex": "0xE0A12026",
   "configHash": "e47244ab51c06af3",
   "commands": [],
   "checkpoints": {
-    "0": "f4940fd92ead5981",
-    "1": "a2ad5749e2f85a99",
-    "10": "7bd2321af636ad0a",
-    "100": "1d29c30ce206cca0",
-    "1000": "a53e5b1f9bdc6b47",
-    "10000": "7f4c876ad1f874d2"
+    "0": "1b2689bd77259411",
+    "1": "372e061300993783",
+    "10": "b76f17cb1d3965e7",
+    "100": "522c707420d3d848",
+    "1000": "6e6289b5f5fbbed9",
+    "10000": "a4ff4dc039869b28"
   }
 }

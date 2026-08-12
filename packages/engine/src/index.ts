@@ -60,7 +60,11 @@ export {
 
 // World model (Milestone 2, tasks C02–C09).
 export { Biome, BIOME_COUNT, BIOME_NAMES, classifyBiome } from "./world/biomes";
-export { EnvironmentStore } from "./world/EnvironmentStore";
+export {
+  EnvironmentStore,
+  type ReadonlyEnvironmentView,
+  type ReadonlyNumericArray,
+} from "./world/EnvironmentStore";
 export { generateEnvironment, generationSubSeed } from "./world/generateWorld";
 export {
   validateWorld,

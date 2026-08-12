@@ -196,3 +196,40 @@ describe("hashed authoritative config surface", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * The exact field list that ADR 0002 §4 moved out of `SimulationConfig` into
+ * `HostRuntimeConfig` (@eon/protocol).
+ *
+ * Spelled out here rather than imported, because the engine must not depend on
+ * the protocol package — and because the point of the test is to notice a
+ * field coming *back*, which an import could not express. If one of these ever
+ * becomes authoritative (seasons would make `ticksPerSimYear` so), that is a
+ * deliberate CONFIG_SCHEMA_VERSION + ENGINE_VERSION decision, and this list is
+ * where it gets recorded.
+ */
+const HOST_OWNED_FIELDS: readonly string[] = [
+  "targetTicksPerSecond1x",
+  "normalRenderSnapshotsPerSecond",
+  "maxModeRenderSnapshotsPerSecond",
+  "maxWorkerSliceMs",
+  "autosaveCheckInterval",
+  "ticksPerSimYear",
+  "maxDetailedRenderedOrganisms",
+];
+
+describe("authoritative / host configuration split (ADR 0002 §4)", () => {
+  it("keeps every host-owned field out of the hashed surface", () => {
+    const leaves = HASHED_CONFIG_LEAF_PATHS.map((path) => path.split(".").pop());
+    const returned = HOST_OWNED_FIELDS.filter((field) => leaves.includes(field));
+    expect(returned).toEqual([]);
+  });
+
+  it("hashes nothing that names a wall-clock unit", () => {
+    // Ticks are authoritative; seconds, hertz and milliseconds are not.
+    const offenders = HASHED_CONFIG_LEAF_PATHS.filter((path) =>
+      /PerSecond|Ms$|Hz|WallClock/.test(path),
+    );
+    expect(offenders).toEqual([]);
+  });
+});

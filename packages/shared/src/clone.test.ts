@@ -27,3 +27,18 @@ describe("deepCloneJson", () => {
     expect(frozen.x.y).toBe(1);
   });
 });
+
+describe("deepCloneJson prototype safety", () => {
+  it("copies a __proto__ key as data instead of reshaping the clone", () => {
+    // JSON.parse produces a real own "__proto__" key, and snapshots are JSON
+    // that may come from disk. Plain assignment would invoke the setter on
+    // Object.prototype and silently change the clone's prototype instead.
+    const hostile = JSON.parse('{"a":1,"__proto__":{"polluted":true}}') as Record<string, unknown>;
+    const clone = deepCloneJson(hostile);
+
+    expect(Object.keys(clone).sort()).toEqual(["__proto__", "a"]);
+    expect(Object.getPrototypeOf(clone)).toBe(Object.prototype);
+    expect((clone as { polluted?: boolean }).polluted).toBeUndefined();
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+});

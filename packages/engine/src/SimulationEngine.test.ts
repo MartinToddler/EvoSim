@@ -8,6 +8,7 @@ import { engineInternals } from "./internal";
 import { SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
 import { engineFromSnapshot } from "./snapshot/deserialize";
 import { ENGINE_VERSION, SNAPSHOT_SCHEMA_VERSION } from "./version";
+import { totalPlantBiomass } from "./world/plants";
 
 const SEED = 0xe0a12026;
 
@@ -103,6 +104,112 @@ describe("authoritative state encapsulation", () => {
     const before = engine.getRngState();
     engineInternals(engine).rng.nextU32();
     expect(engine.getRngState()).not.toEqual(before);
+  });
+});
+
+/**
+ * The environment is authoritative state and is hashed, so it must be no more
+ * reachable for writing than the PRNG is (ADR 0004 §1). Milestone 2 originally
+ * published the live `EnvironmentStore`, which let any caller change a world's
+ * hash without running a tick.
+ */
+describe("authoritative environment encapsulation", () => {
+  it("publishes a view whose writes do not type-check", () => {
+    // Never executed: each line below is a compile-time assertion, and tsc
+    // fails the build if any of them stops being an error.
+    const writesMustNotCompile = (engine: SimulationEngine): unknown[] => [
+      // @ts-expect-error authoritative cells must not be writable through the public API
+      (engine.environment.plantBiomass[0] = 1),
+      // @ts-expect-error the global temperature offset is engine-owned
+      (engine.environment.globalTemperatureOffsetCentiC = 500),
+      // @ts-expect-error mutating helpers are absent from the published view
+      engine.environment.recomputePassability,
+      // @ts-expect-error and so is the hashing hook
+      engine.environment.hashInto,
+    ];
+    expect(typeof writesMustNotCompile).toBe("function");
+    expect(newEngine().environment.cellCount).toBe(256 * 256);
+  });
+
+  it("offers no runtime door onto the store object either", () => {
+    const engine = newEngine();
+    const view = engine.environment as unknown as Record<string, unknown>;
+
+    expect(Object.isFrozen(engine.environment)).toBe(true);
+    // The published object is a projection, not the store: casting away the
+    // type finds nothing to call.
+    for (const member of ["setGlobalTemperatureOffsetCentiC", "recomputePassability", "hashInto"]) {
+      expect({ member, type: typeof view[member] }).toEqual({ member, type: "undefined" });
+    }
+    // Swapping an array for a shorter or aliased buffer must not be possible.
+    expect(() => {
+      view["plantBiomass"] = new Uint16Array(4);
+    }).toThrow();
+    expect(() => {
+      view["globalTemperatureOffsetCentiC"] = 500;
+    }).toThrow();
+  });
+
+  it("reads through to the live grid without copying it", () => {
+    const engine = newEngine();
+    const store = engineInternals(engine).environment;
+    expect(engine.environment.plantBiomass).toBe(store.plantBiomass);
+    expect(engine.environment).toBe(engine.environment);
+  });
+
+  it("keeps the writable store reachable for engine phase code", () => {
+    const engine = newEngine();
+    const store = engineInternals(engine).environment;
+    const before = engine.computeStateHash();
+    store.setGlobalTemperatureOffsetCentiC(250);
+    expect(engine.environment.globalTemperatureOffsetCentiC).toBe(250);
+    expect(engine.computeStateHash()).not.toBe(before);
+  });
+
+  it("hashes the founder region as authoritative state", () => {
+    // Milestone 3 spawns the founder population here, so two states that agree
+    // on every array but disagree on the region are different worlds.
+    const engine = newEngine();
+    const snapshot = engine.serialize();
+    snapshot.environment.founderRegion = {
+      centerCellIndex: 3 * 256 + 9,
+      centerGridX: 9,
+      centerGridY: 3,
+      componentCells: 500,
+    };
+    const moved = engineFromSnapshot(snapshot);
+    expect(moved.founderRegion.centerCellIndex).toBe(3 * 256 + 9);
+    expect(moved.computeStateHash()).not.toBe(engine.computeStateHash());
+  });
+
+  it("freezes the founder region it publishes", () => {
+    const engine = newEngine();
+    expect(Object.isFrozen(engine.founderRegion)).toBe(true);
+    expect(() => {
+      (engine.founderRegion as { componentCells: number }).componentCells = 1;
+    }).toThrow();
+  });
+});
+
+describe("restore channel", () => {
+  it("cannot be driven with a forged token", () => {
+    // fromSnapshot is the single validated restore door (ADR 0002 §2); the
+    // second constructor argument exists only for it.
+    const forged = {
+      token: Symbol("not the restore token"),
+      tick: 99,
+      rngState: newEngine().getRngState(),
+      environment: newEngine().serialize().environment,
+      generationAttempt: 0,
+    };
+    expect(
+      () => new SimulationEngine({ seed: SEED, config: DEFAULT_CONFIG }, forged as never),
+    ).toThrowError(SnapshotCompatibilityError);
+  });
+
+  it("rejects a snapshot with a nonsensical generation attempt", () => {
+    const snapshot = { ...newEngine().serialize(), generationAttempt: -1 };
+    expect(() => engineFromSnapshot(snapshot)).toThrowError(SnapshotCompatibilityError);
   });
 });
 
@@ -212,6 +319,34 @@ describe("tick range safety", () => {
     expect(() => engineAtTick(2 ** 53)).toThrowError(SnapshotCompatibilityError);
     expect(() => engineAtTick(-1)).toThrowError(SnapshotCompatibilityError);
     expect(() => engineAtTick(1.5)).toThrowError(SnapshotCompatibilityError);
+  });
+
+  it("schedules phases from the whole tick, not its low 32 bits", () => {
+    // 2^32 ≡ 16 (mod 20), so the environment phase must NOT run there; a
+    // scheduler that truncated the tick with `>>> 0` would see 0 and run it.
+    // Verified by restoring to the tick rather than by stepping four billion
+    // times.
+    const interval = DEFAULT_CONFIG.time.environmentInterval;
+    expect(2 ** 32 % interval).toBe(16);
+
+    const quiet = engineAtTick(2 ** 32);
+    const scheduled = engineAtTick(2 ** 32 + 4); // ≡ 0 (mod 20)
+    const before = totalPlantBiomass(quiet.environment);
+
+    quiet.step();
+    scheduled.step();
+
+    expect(totalPlantBiomass(quiet.environment)).toBe(before);
+    expect(totalPlantBiomass(scheduled.environment)).toBeGreaterThan(before);
+  });
+
+  it("keeps hashing distinct across high-tick epochs", () => {
+    const hashes = new Set(
+      [0, 1, 2 ** 32, 2 ** 32 + 1, 2 ** 40, 2 ** 45 + 7].map((tick) =>
+        engineAtTick(tick).computeStateHash(),
+      ),
+    );
+    expect(hashes.size).toBe(6);
   });
 });
 

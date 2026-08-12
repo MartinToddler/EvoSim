@@ -1,7 +1,7 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { Q, clamp, clampQ, qmul } from "../math/fixed";
-import type { EnvironmentStore } from "./EnvironmentStore";
+import type { EnvironmentStore, ReadonlyEnvironmentView } from "./EnvironmentStore";
 import { Biome } from "./biomes";
 
 /**
@@ -217,7 +217,7 @@ export function recomputePlantGradient(environment: EnvironmentStore): void {
 }
 
 /** Total plant biomass across the world (diagnostics and validity checks). */
-export function totalPlantBiomass(environment: EnvironmentStore): number {
+export function totalPlantBiomass(environment: ReadonlyEnvironmentView): number {
   let total = 0;
   for (let i = 0; i < environment.cellCount; i += 1) {
     total += environment.plantBiomass[i] as number;
@@ -226,7 +226,7 @@ export function totalPlantBiomass(environment: EnvironmentStore): number {
 }
 
 /** Total carrying capacity across the world (world validity, docs/03 §15). */
-export function totalPlantCapacity(environment: EnvironmentStore): number {
+export function totalPlantCapacity(environment: ReadonlyEnvironmentView): number {
   let total = 0;
   for (let i = 0; i < environment.cellCount; i += 1) {
     total += environment.plantCapacity[i] as number;
@@ -235,7 +235,7 @@ export function totalPlantCapacity(environment: EnvironmentStore): number {
 }
 
 /** True when the cell is land that can support plants at all. */
-export function isProductiveLand(environment: EnvironmentStore, index: number): boolean {
+export function isProductiveLand(environment: ReadonlyEnvironmentView, index: number): boolean {
   return (
     environment.biome[index] !== Biome.Water && (environment.plantCapacity[index] as number) > 0
   );

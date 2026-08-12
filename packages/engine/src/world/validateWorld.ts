@@ -1,7 +1,7 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { Q } from "../math/fixed";
-import type { EnvironmentStore } from "./EnvironmentStore";
+import type { ReadonlyEnvironmentView } from "./EnvironmentStore";
 import { BIOME_COUNT, Biome } from "./biomes";
 import { totalPlantCapacity } from "./plants";
 
@@ -37,7 +37,7 @@ export interface WorldValidity {
 }
 
 /** Fraction of cells that are not water, in Q. */
-export function landFractionQ(environment: EnvironmentStore): number {
+export function landFractionQ(environment: ReadonlyEnvironmentView): number {
   let land = 0;
   for (let i = 0; i < environment.cellCount; i += 1) {
     if (environment.biome[i] !== Biome.Water) {
@@ -48,7 +48,7 @@ export function landFractionQ(environment: EnvironmentStore): number {
 }
 
 /** Number of distinct biome classes present in the world. */
-export function distinctBiomeCount(environment: EnvironmentStore): number {
+export function distinctBiomeCount(environment: ReadonlyEnvironmentView): number {
   const seen = new Uint8Array(BIOME_COUNT);
   for (let i = 0; i < environment.cellCount; i += 1) {
     seen[environment.biome[i] as number] = 1;
@@ -68,7 +68,7 @@ export function distinctBiomeCount(environment: EnvironmentStore): number {
  * "largest component, ties by lowest label" — are fully deterministic.
  * Returns labels (0 = not productive land) and the size of each label.
  */
-export function labelLandComponents(environment: EnvironmentStore): {
+export function labelLandComponents(environment: ReadonlyEnvironmentView): {
   labels: Int32Array;
   sizes: number[];
 } {
@@ -139,7 +139,7 @@ export function labelLandComponents(environment: EnvironmentStore): {
  * Without it the founder centre would land on whichever single cell happens to
  * have the highest capacity, which can be a one-cell islet.
  */
-function blurCapacity(environment: EnvironmentStore, radiusCells: number): Int32Array {
+function blurCapacity(environment: ReadonlyEnvironmentView, radiusCells: number): Int32Array {
   const { size, cellCount, plantCapacity } = environment;
   const horizontal = new Int32Array(cellCount);
   const blurred = new Int32Array(cellCount);
@@ -175,7 +175,7 @@ function blurCapacity(environment: EnvironmentStore, radiusCells: number): Int32
  * so the same world always produces the same founder region.
  */
 export function selectFounderRegion(
-  environment: EnvironmentStore,
+  environment: ReadonlyEnvironmentView,
   config: DeepReadonly<SimulationConfig>,
   labels: Int32Array,
   largestLabel: number,
@@ -208,7 +208,7 @@ export function selectFounderRegion(
 
 /** Run every world validity rule (docs/03 §15). */
 export function validateWorld(
-  environment: EnvironmentStore,
+  environment: ReadonlyEnvironmentView,
   config: DeepReadonly<SimulationConfig>,
 ): WorldValidity {
   const land = landFractionQ(environment);

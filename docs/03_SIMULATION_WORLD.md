@@ -231,6 +231,13 @@ No rigid-body engine.
 
 ## 14. Environment arrays
 
+> **Amended by ADR 0003 §3 (engine 0.2.0)** — a `plantGrowthRemainderQ: Uint16Array` carries the
+> fractional part of logistic growth between steps; without it, integer truncation froze sparse
+> cells permanently. It is authoritative: hashed and serialized.
+>
+> **Amended by ADR 0004 §1 (engine 0.2.1)** — these arrays are engine-owned. The engine publishes
+> them as a frozen `ReadonlyEnvironmentView`; the writable store is package-internal.
+
 Per 256² cell:
 
 ```ts

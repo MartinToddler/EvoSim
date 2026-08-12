@@ -56,7 +56,7 @@ describe("latticeValueQ", () => {
   });
 
   it("matches golden values (locks the lattice hash)", () => {
-    expect(latticeValueQ(0xe0a12026, NOISE_SALT.elevationOctave0, 0, 0)).toBe(744);
+    expect(latticeValueQ(0xe0a12026, NOISE_SALT.elevation, 0, 0)).toBe(744);
     expect(latticeValueQ(0xe0a12026, NOISE_SALT.moisture, 3, 7)).toBe(1475);
   });
 });
@@ -114,7 +114,7 @@ describe("layeredNoiseQ", () => {
   it("stays inside [0, Q] across the grid", () => {
     for (let gy = 0; gy < 256; gy += 8) {
       for (let gx = 0; gx < 256; gx += 8) {
-        const value = layeredNoiseQ(0xe0a12026, NOISE_SALT.elevationOctave0, gx, gy, octaves);
+        const value = layeredNoiseQ(0xe0a12026, NOISE_SALT.elevation, gx, gy, octaves);
         expect(value).toBeGreaterThanOrEqual(0);
         expect(value).toBeLessThanOrEqual(Q);
       }
@@ -124,14 +124,14 @@ describe("layeredNoiseQ", () => {
   it("actually varies across the grid", () => {
     const values = new Set<number>();
     for (let gx = 0; gx < 256; gx += 4) {
-      values.add(layeredNoiseQ(3, NOISE_SALT.elevationOctave0, gx, 128, octaves));
+      values.add(layeredNoiseQ(3, NOISE_SALT.elevation, gx, 128, octaves));
     }
     expect(values.size).toBeGreaterThan(32);
   });
 
   it("gives different seeds different fields", () => {
-    const a = layeredNoiseQ(1, NOISE_SALT.elevationOctave0, 40, 40, octaves);
-    const b = layeredNoiseQ(2, NOISE_SALT.elevationOctave0, 40, 40, octaves);
+    const a = layeredNoiseQ(1, NOISE_SALT.elevation, 40, 40, octaves);
+    const b = layeredNoiseQ(2, NOISE_SALT.elevation, 40, 40, octaves);
     expect(a).not.toBe(b);
   });
 });

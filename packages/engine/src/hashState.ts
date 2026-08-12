@@ -1,4 +1,5 @@
 import { StateHash } from "./math/hash";
+import { engineInternals } from "./internal";
 import type { SimulationEngine } from "./SimulationEngine";
 
 /**
@@ -10,13 +11,20 @@ import type { SimulationEngine } from "./SimulationEngine";
  * changes hashes and therefore requires an ENGINE_VERSION bump, regenerated
  * goldens and a changelog entry (CLAUDE.md).
  *
- * Canonical sequence (engine 0.2.0):
+ * Canonical sequence (engine 0.2.1):
  *   1. magic word 0x454f4e48 ("EONH")
  *   2. tick as TWO words: low 32 bits, then high bits
  *   3. seed
  *   4. PRNG state words s0..s3
  *   5. authoritative config digest (two hex halves as words)
  *   6. environment arrays (see EnvironmentStore.hashInto)
+ *   7. founder region: centre cell index, grid x, grid y, component size
+ *
+ * The founder region is authoritative rather than incidental: Milestone 3
+ * spawns the founder population into it, so two states that agree on every
+ * array but disagree on the region are different worlds and must not share a
+ * hash. `generationAttempt` is deliberately excluded — it records how the world
+ * was found, not what it is.
  *
  * The tick is hashed as a safe integer rather than a single word because a
  * uint32 tick would make states exactly 2^32 ticks apart hash identically
@@ -49,7 +57,15 @@ export function computeStateHash(engine: SimulationEngine): string {
   hasher.word(parseInt(configHash.slice(0, 8), 16));
   hasher.word(parseInt(configHash.slice(8, 16), 16));
 
-  engine.environment.hashInto(hasher);
+  // The writable store lives behind the package-internal channel; the public
+  // `engine.environment` view deliberately has no hashInto.
+  engineInternals(engine).environment.hashInto(hasher);
+
+  const founder = engine.founderRegion;
+  hasher.word(founder.centerCellIndex);
+  hasher.word(founder.centerGridX);
+  hasher.word(founder.centerGridY);
+  hasher.word(founder.componentCells);
 
   return hasher.digest();
 }

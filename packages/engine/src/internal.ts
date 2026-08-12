@@ -1,6 +1,7 @@
 import { EonAssertionError } from "@eon/shared";
 import type { Xoshiro128 } from "./random/Xoshiro128";
 import type { SimulationEngine } from "./SimulationEngine";
+import type { EnvironmentStore } from "./world/EnvironmentStore";
 
 /**
  * Package-internal access to authoritative engine internals.
@@ -26,6 +27,12 @@ import type { SimulationEngine } from "./SimulationEngine";
 export interface EngineInternals {
   /** The authoritative PRNG. Advancing it outside a tick phase corrupts determinism. */
   readonly rng: Xoshiro128;
+  /**
+   * The live environment grid. The engine publishes this same object as a
+   * `ReadonlyEnvironmentView`; the writable type is only reachable here, so
+   * authoritative cells cannot be edited from outside a tick phase.
+   */
+  readonly environment: EnvironmentStore;
 }
 
 const INTERNALS = new WeakMap<SimulationEngine, EngineInternals>();

@@ -2,6 +2,10 @@
 
 Check only after code + tests + acceptance criteria pass.
 
+Status: blocks A, B and C are complete and have passed an independent review gate
+(`docs/adr/0004-foundation-gate-review.md`, engine 0.2.1). Block D (organisms) is the next
+milestone and has not started.
+
 ## A Foundation
 - [x] A01 pnpm workspace.
 - [x] A02 Vite React TypeScript shell.
@@ -31,6 +35,9 @@ Check only after code + tests + acceptance criteria pass.
 - [x] C07 growth/gradient cache.
 - [x] C08 founder spawn region.
 - [x] C09 environment golden tests.
+- [x] C10 foundation review gate (ADR 0004): environment encapsulation, snapshot restore
+      fidelity + load validation, founder region in the state hash, strict config schema,
+      world-geometry bounds.
 
 ## D Organisms
 - [ ] D01 SoA organism store/free slots.

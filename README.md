@@ -97,17 +97,21 @@ pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,1000
 pnpm --filter @eon/web dev   # run the web shell locally
 ```
 
-Current status: Milestones 0–2 complete — workspace, determinism skeleton (hardened after
-review) and the procedural environment. Milestone 3 (organisms) has not started.
+Current status: Milestones 0–2 complete and reviewed — workspace, determinism skeleton and the
+procedural environment, each hardened after an independent review pass (ADR 0002, ADR 0004).
+Milestone 3 (organisms) has not started.
 
 The world is real and inspectable headlessly:
 
 ```text
 world      256x256 cells, generation attempt 0
-land       61.2%  biomes Water=38.8% Grassland=48.0% Desert=5.6% Tundra=6.9% Mountain=0.7%
+land       61.2%  biomes Water=38.8% Grassland=48.0% Forest=0.0% Desert=5.6% Tundra=6.9% Mountain=0.7%
 plants     capacity 168.8M, biomass 84.4M (50.0% of capacity)
 founders   cell 40426 at (234, 157) in a 35507-cell landmass
 ```
+
+(This particular seed happens to produce no forest; 9 of the 12 calibration seeds do — see
+ADR 0003 §2.)
 
 Two configurations, deliberately separated (ADR 0002 §4):
 
@@ -117,9 +121,13 @@ Two configurations, deliberately separated (ADR 0002 §4):
   budget, the simulated-year display divisor. The pure engine never receives it, so changing a
   render rate cannot change a world hash.
 
+Authoritative state is reachable only for reading: `engine.environment` is a frozen
+`ReadonlyEnvironmentView` over the live arrays, and the writable store, like the PRNG, exists
+only behind the package-internal channel that no consumer of `@eon/engine` can import.
+
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.2.0, protocol 1, snapshot schema 3, config
+entry (see `CLAUDE.md`). Current versions: engine 0.2.1, protocol 1, snapshot schema 4, config
 schema 3. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
@@ -127,3 +135,5 @@ schema 3. Design decisions are recorded in `docs/adr/`:
   authoritative/host config split and 64-bit-safe ticks.
 - `0003-milestone-2-environment.md` — value noise, world generation and its calibration, plant
   growth, the founder region.
+- `0004-foundation-gate-review.md` — the Milestone 0–2 review: environment encapsulation,
+  snapshot restore fidelity, founder-region hashing, strict config schema, load validation.

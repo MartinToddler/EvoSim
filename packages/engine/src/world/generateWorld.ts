@@ -64,7 +64,7 @@ function generateElevation(
 
   for (let gy = 0; gy < size; gy += 1) {
     for (let gx = 0; gx < size; gx += 1) {
-      const raw = layeredNoiseQ(seed, NOISE_SALT.elevationOctave0, gx, gy, octaves);
+      const raw = layeredNoiseQ(seed, NOISE_SALT.elevation, gx, gy, octaves);
 
       // Distance to the nearest border, faded with smoothstep so the coast is
       // a gradient rather than a hard ring.

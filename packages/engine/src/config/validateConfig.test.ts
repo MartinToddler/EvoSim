@@ -227,3 +227,112 @@ describe("validateConfig structural invariants", () => {
     expect(() => validateConfig(config)).toThrowError(/minDaughterPopulation/);
   });
 });
+
+/**
+ * Schema shape enforcement.
+ *
+ * `hashConfig` serializes whatever keys the object has, so an unknown field
+ * would be ignored by every rule and still change the world hash — and a
+ * missing one would hand `undefined` to a hot loop. Both must fail loudly at
+ * construction rather than quietly define a different world.
+ */
+describe("validateConfig schema shape", () => {
+  it("rejects an unknown field", () => {
+    const config = mutatedConfig((c) => {
+      (c.time as unknown as Record<string, number>)["extraCadence"] = 7;
+    });
+    expect(() => validateConfig(config)).toThrowError(/time\.extraCadence is not a field/);
+  });
+
+  it("rejects a misspelled field, which would otherwise be silently ignored", () => {
+    const config = mutatedConfig((c) => {
+      const time = c.time as unknown as Record<string, number>;
+      time["enviromentInterval"] = time["environmentInterval"] as number;
+      delete time["environmentInterval"];
+    });
+    expect(() => validateConfig(config)).toThrowError(ConfigValidationError);
+  });
+
+  it("rejects a host runtime value pasted into the authoritative config", () => {
+    // ADR 0002 §4: hosting values must never reach the config digest, or a
+    // render cadence would change world identity.
+    const config = mutatedConfig((c) => {
+      (c as unknown as Record<string, number>)["targetTicksPerSecond1x"] = 20;
+    });
+    expect(() => validateConfig(config)).toThrowError(/targetTicksPerSecond1x is not a field/);
+  });
+
+  it("rejects a missing field", () => {
+    const config = mutatedConfig((c) => {
+      delete (c.world as unknown as Record<string, unknown>)["seaLevelQ"];
+    });
+    expect(() => validateConfig(config)).toThrowError(/world\.seaLevelQ is missing/);
+  });
+
+  it("rejects a field of the wrong type", () => {
+    const config = mutatedConfig((c) => {
+      (c.limits as unknown as Record<string, unknown>)["maxOrganisms"] = "8192";
+    });
+    expect(() => validateConfig(config)).toThrowError(/limits\.maxOrganisms must be a number/);
+  });
+
+  it("rejects an object where a number belongs", () => {
+    const config = mutatedConfig((c) => {
+      (c.world as unknown as Record<string, unknown>)["sizeLU"] = { value: 4096 };
+    });
+    expect(() => validateConfig(config)).toThrowError(/world\.sizeLU must be a number, got object/);
+  });
+
+  it("rejects an unknown field inside an array element", () => {
+    const config = mutatedConfig((c) => {
+      const octaves = c.world.generation.elevationOctaves as unknown as Record<string, number>[];
+      (octaves[0] as Record<string, number>)["persistence"] = 2048;
+    });
+    expect(() => validateConfig(config)).toThrowError(/elevationOctaves\[0\]\.persistence/);
+  });
+
+  it("still allows tables whose length is a tuning choice", () => {
+    // Array LENGTH is free (the octave stack is a calibration decision); only
+    // the element shape is fixed.
+    const config = mutatedConfig((c) => {
+      c.world.generation.elevationOctaves = [
+        { wavelengthCells: 64, weightQ: 2048 },
+        { wavelengthCells: 16, weightQ: 2048 },
+      ];
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});
+
+describe("validateConfig world geometry bounds", () => {
+  it("rejects a grid too large to allocate, with a config error rather than a RangeError", () => {
+    const config = mutatedConfig((c) => {
+      c.world.envGridSize = 8192;
+      c.world.envCellSizeLU = 512;
+      c.world.sizeLU = 8192 * 512;
+      c.world.spatialCellSizeLU = 512;
+    });
+    expect(() => validateConfig(config)).toThrowError(/world\.envGridSize must not exceed/);
+  });
+
+  it("rejects a world whose fixed-point positions would leave the Int32 range", () => {
+    const config = mutatedConfig((c) => {
+      // 2^24 LU * 256 sub-units per LU overflows Int32 position storage.
+      c.world.sizeLU = 2 ** 24;
+      c.world.envGridSize = 4096;
+      c.world.envCellSizeLU = 4096;
+      c.world.spatialCellSizeLU = 4096;
+    });
+    expect(() => validateConfig(config)).toThrowError(/fixed-point positions/);
+  });
+
+  it("accepts the largest grid that still fits", () => {
+    const config = mutatedConfig((c) => {
+      c.world.envGridSize = 4096;
+      c.world.envCellSizeLU = 1024;
+      c.world.sizeLU = 4096 * 1024;
+      c.world.spatialCellSizeLU = 1024;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});

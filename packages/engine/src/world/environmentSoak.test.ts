@@ -26,7 +26,7 @@ describe("100k tick environment soak", () => {
    * State hash after 100 000 ticks for seed 0xE0A12026 + DEFAULT_CONFIG.
    * Regenerate together with the golden fixture whenever ENGINE_VERSION changes.
    */
-  const GOLDEN_SOAK_HASH = "f88b60bb3f502983";
+  const GOLDEN_SOAK_HASH = "5ebd5d4459f79030";
 
   it("stays valid and deterministic across 100k ticks", { timeout: 300_000 }, () => {
     const engine = new SimulationEngine({ seed: 0xe0a12026, config: DEFAULT_CONFIG });

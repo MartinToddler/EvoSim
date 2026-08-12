@@ -1,7 +1,8 @@
 import type { DeepReadonly } from "@eon/shared";
-import { Q, qmul } from "../math/fixed";
+import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
+import { DEFAULT_CONFIG } from "./defaultConfig";
 import type { SimulationConfig } from "./SimulationConfig";
 
 /** Error thrown when a SimulationConfig violates structural invariants. */
@@ -19,6 +20,28 @@ export class ConfigValidationError extends Error {
  * Kelvin value).
  */
 const TEMPERATURE_CENTI_C_LIMIT = 20_000;
+
+/**
+ * Largest environment grid the engine will build, per axis.
+ *
+ * 4096² is 16.7 million cells, roughly 250 MB across the ten authoritative
+ * arrays — already far beyond anything the MVP needs (the default is 256²).
+ * The bound exists because "positive safe integer" alone lets a typo reach the
+ * TypedArray constructor and surface as a bare `RangeError: Invalid typed
+ * array length` with no indication of which config field caused it.
+ */
+const MAX_ENV_GRID_SIZE = 4096;
+
+/**
+ * Largest world edge in LU whose fixed-point positions still fit Int32.
+ *
+ * Organism positions are `Int32Array` sub-units at POS_SCALE per LU
+ * (docs/03 §§3, 6), so a world wider than this would wrap coordinates rather
+ * than merely being large. Checked now, before Milestone 3 stores a single
+ * position, because a config that violates it produces silent corruption
+ * rather than an error.
+ */
+const MAX_WORLD_SIZE_LU = Math.floor(0x7fffffff / POS_SCALE);
 
 function check(condition: boolean, message: string): void {
   if (!condition) {
@@ -99,6 +122,91 @@ function checkNonNegativeIntArray(
   }
 }
 
+function describeType(value: unknown): string {
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  if (value === null) {
+    return "null";
+  }
+  return typeof value;
+}
+
+/**
+ * Require `actual` to have exactly the shape of `template`.
+ *
+ * Arrays match element-wise against their first template element, so tables
+ * whose length is a tuning choice (elevation octaves) stay free; every other
+ * node must have exactly the same key set and the same primitive types.
+ */
+function checkShape(actual: unknown, template: unknown, path: string): void {
+  if (Array.isArray(template)) {
+    check(Array.isArray(actual), `${path} must be an array, got ${describeType(actual)}`);
+    if (template.length === 0) {
+      return;
+    }
+    const element: unknown = template[0];
+    for (let i = 0; i < (actual as unknown[]).length; i += 1) {
+      checkShape((actual as unknown[])[i], element, `${path}[${i}]`);
+    }
+    return;
+  }
+
+  if (template !== null && typeof template === "object") {
+    check(
+      actual !== null && typeof actual === "object" && !Array.isArray(actual),
+      `${path} must be an object, got ${describeType(actual)}`,
+    );
+    const templateKeys = Object.keys(template);
+    const actualKeys = Object.keys(actual as object);
+    for (const key of actualKeys) {
+      check(
+        Object.prototype.hasOwnProperty.call(template, key),
+        `${path === "" ? key : `${path}.${key}`} is not a field of config schema ` +
+          `${CONFIG_SCHEMA_VERSION}. Unknown fields are rejected because they would silently ` +
+          "enter the authoritative config hash and change world identity",
+      );
+    }
+    for (const key of templateKeys) {
+      check(
+        Object.prototype.hasOwnProperty.call(actual, key),
+        `${path === "" ? key : `${path}.${key}`} is missing from the configuration`,
+      );
+    }
+    for (const key of templateKeys) {
+      checkShape(
+        (actual as Record<string, unknown>)[key],
+        (template as Record<string, unknown>)[key],
+        path === "" ? key : `${path}.${key}`,
+      );
+    }
+    return;
+  }
+
+  check(
+    typeof actual === typeof template,
+    `${path} must be a ${typeof template}, got ${describeType(actual)}`,
+  );
+}
+
+/**
+ * Reject any configuration whose shape differs from the schema.
+ *
+ * `hashConfig` serializes whatever keys the object actually has, so a stray
+ * field — a leftover from an older schema, a typo such as
+ * `time.enviromentInterval`, or a host value like `targetTicksPerSecond1x`
+ * pasted into the wrong config — would be ignored by every rule below and
+ * still change the world hash. A missing field is worse: the reader gets
+ * `undefined` in a hot loop. Both must fail at construction.
+ *
+ * DEFAULT_CONFIG is the schema template because TypeScript already forces it
+ * to carry exactly the fields of `SimulationConfig`, so this runtime check can
+ * never drift from the interface it is guarding.
+ */
+function checkSchemaShape(config: DeepReadonly<SimulationConfig>): void {
+  checkShape(config, DEFAULT_CONFIG, "");
+}
+
 /**
  * Validate structural invariants of a SimulationConfig.
  *
@@ -120,6 +228,7 @@ export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
     `config schemaVersion ${config.schemaVersion} does not match supported version ${CONFIG_SCHEMA_VERSION}`,
   );
 
+  checkSchemaShape(config);
   validateWorld(config);
   validateTime(config);
   validatePlants(config);
@@ -140,6 +249,15 @@ function validateWorld(config: DeepReadonly<SimulationConfig>): void {
   checkPositiveInt(world.envGridSize, "world.envGridSize");
   checkPositiveInt(world.envCellSizeLU, "world.envCellSizeLU");
   checkPositiveInt(world.spatialCellSizeLU, "world.spatialCellSizeLU");
+  check(
+    world.sizeLU <= MAX_WORLD_SIZE_LU,
+    `world.sizeLU must not exceed ${MAX_WORLD_SIZE_LU}, or fixed-point positions ` +
+      `(${POS_SCALE} sub-units per LU) would leave the Int32 range`,
+  );
+  check(
+    world.envGridSize <= MAX_ENV_GRID_SIZE,
+    `world.envGridSize must not exceed ${MAX_ENV_GRID_SIZE} (${MAX_ENV_GRID_SIZE}² cells), got ${world.envGridSize}`,
+  );
   check(
     world.envGridSize * world.envCellSizeLU === world.sizeLU,
     "world: envGridSize * envCellSizeLU must equal sizeLU",
