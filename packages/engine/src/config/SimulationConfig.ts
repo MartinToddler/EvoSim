@@ -54,11 +54,16 @@ export interface WorldConfig {
   };
 }
 
+/**
+ * Authoritative tick scheduling (docs/03 §8).
+ *
+ * Every field here changes which phases run on which tick and therefore
+ * changes authoritative state. Wall-clock pacing, render cadence, autosave
+ * cadence and the simulated-year display divisor are deliberately NOT here —
+ * they live in HostRuntimeConfig (@eon/protocol) so that changing them cannot
+ * change a world's state hash.
+ */
 export interface TimeConfig {
-  /** Wall-clock pacing target at 1× (hosting concern only, never authoritative). */
-  targetTicksPerSecond1x: number;
-  /** Simulated-year length used for display/statistics. */
-  ticksPerSimYear: number;
   /** Environment update phase interval in ticks. */
   environmentInterval: number;
   /** Carcass decay phase interval in ticks. */
@@ -67,14 +72,6 @@ export interface TimeConfig {
   statisticsInterval: number;
   /** Species analysis interval in ticks. */
   speciesAnalysisInterval: number;
-  /** Autosave check interval in ticks. */
-  autosaveCheckInterval: number;
-  /** Render snapshot rate at normal speeds (worker hosting concern). */
-  normalRenderSnapshotsPerSecond: number;
-  /** Render snapshot rate in MAX mode (worker hosting concern). */
-  maxModeRenderSnapshotsPerSecond: number;
-  /** MAX-mode worker batch slice budget in ms (worker hosting concern). */
-  maxWorkerSliceMs: number;
 }
 
 export interface PlantConfig {
@@ -253,10 +250,16 @@ export interface ReproductionConfig {
   spawnAngleCandidates: number;
 }
 
-/** Species detection constants (docs/05 §§6–7, docs/08 §22). */
+/**
+ * Species detection constants (docs/05 §§6–7, docs/08 §22).
+ *
+ * The analysis cadence is NOT repeated here: docs/08 lists it both as
+ * `species.analysisIntervalTicks` and `time.speciesAnalysisInterval`, and two
+ * fields that must always agree are a determinism hazard. `time` is the single
+ * source of truth for every phase cadence.
+ */
 export interface SpeciesConfig {
   minDaughterPopulation: number;
-  analysisIntervalTicks: number;
   kMeansIterations: number;
   stabilityIntervals: number;
   splitDistanceThresholdQ: number;
@@ -274,12 +277,20 @@ export interface HistoryConfig {
   eventCooldownStatsSamples: number;
 }
 
-/** Hard safety limits (docs/03 §2, docs/08 §4). */
+/**
+ * Hard safety limits (docs/03 §2, docs/08 §4).
+ *
+ * These are authoritative: reaching a cap deterministically changes outcomes
+ * (rejected reproduction, skipped carcass creation — docs/03 §2, docs/10 §14),
+ * and the buffer sizes govern engine-owned state that snapshots must reproduce.
+ * The renderer's detail budget is host-side and lives in HostRuntimeConfig.
+ */
 export interface LimitConfig {
   maxOrganisms: number;
   maxCarcasses: number;
-  maxDetailedRenderedOrganisms: number;
+  /** Ring-buffer size for recently dead organisms kept for inspection (docs/05 §20). */
   recentDeadHistorySize: number;
+  /** In-memory timeline event budget before chunking (engine-owned buffer). */
   maxTimelineEventsInMemoryBeforeChunk: number;
 }
 

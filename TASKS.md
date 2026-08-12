@@ -22,7 +22,9 @@ Check only after code + tests + acceptance criteria pass.
 - [x] B08 deterministic hash fixture.
 
 ## C World/ecology
-- [ ] C01 typed SimulationConfig.
+- [ ] C01 typed SimulationConfig. <!-- The type exists and is fully validated (ADR 0002 §6),
+      but this box belongs to the Milestone 2 block and stays open until the environment work
+      that consumes the config lands. -->
 - [ ] C02 deterministic value noise.
 - [ ] C03 elevation/sea/validity.
 - [ ] C04 moisture/temp/fertility.

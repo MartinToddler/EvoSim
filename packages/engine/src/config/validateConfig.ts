@@ -1,6 +1,7 @@
-import { BIOME_COUNT } from "../world/biomes";
-import { Q } from "../math/fixed";
+import type { DeepReadonly } from "@eon/shared";
+import { Q, qmul } from "../math/fixed";
 import { CONFIG_SCHEMA_VERSION } from "../version";
+import { Biome, BIOME_COUNT } from "../world/biomes";
 import type { SimulationConfig } from "./SimulationConfig";
 
 /** Error thrown when a SimulationConfig violates structural invariants. */
@@ -11,46 +12,130 @@ export class ConfigValidationError extends Error {
   }
 }
 
+/**
+ * Plausibility bound for temperature fields expressed in hundredths of °C.
+ * Wide enough for any calibration the project could want (-200 °C … +200 °C),
+ * narrow enough to catch a unit mix-up (e.g. writing 18 for 18 °C, or a raw
+ * Kelvin value).
+ */
+const TEMPERATURE_CENTI_C_LIMIT = 20_000;
+
 function check(condition: boolean, message: string): void {
   if (!condition) {
     throw new ConfigValidationError(message);
   }
 }
 
+function checkInt(value: number, name: string): void {
+  check(Number.isSafeInteger(value), `${name} must be a safe integer, got ${value}`);
+}
+
 function checkPositiveInt(value: number, name: string): void {
-  check(Number.isInteger(value) && value > 0, `${name} must be a positive integer, got ${value}`);
+  check(
+    Number.isSafeInteger(value) && value > 0,
+    `${name} must be a positive integer, got ${value}`,
+  );
 }
 
 function checkNonNegativeInt(value: number, name: string): void {
   check(
-    Number.isInteger(value) && value >= 0,
+    Number.isSafeInteger(value) && value >= 0,
     `${name} must be a non-negative integer, got ${value}`,
   );
 }
 
+/** Normalized fraction in [0, Q] — the standard Q encoding of 0.0 … 1.0. */
 function checkQFraction(value: number, name: string): void {
   check(
-    Number.isInteger(value) && value >= 0 && value <= Q,
+    Number.isSafeInteger(value) && value >= 0 && value <= Q,
     `${name} must be an integer Q fraction in [0, ${Q}], got ${value}`,
   );
 }
 
+/** Q-scaled multiplier that must be at least 1.0 (i.e. >= Q). */
+function checkQMultiplierAtLeastOne(value: number, name: string): void {
+  check(
+    Number.isSafeInteger(value) && value >= Q,
+    `${name} must be a Q multiplier >= ${Q} (1.0), got ${value}`,
+  );
+}
+
 /**
- * Validate structural invariants of a SimulationConfig (task C01 shell).
- * Throws {@link ConfigValidationError} on the first violation.
- *
- * This checks representation invariants, not ecological balance — calibration
- * is a separate concern (docs/07 part C).
+ * Q-scaled coefficient that may exceed Q (rates, damage bases, cost
+ * coefficients). Only the sign and integrality are structural.
  */
-export function validateConfig(config: SimulationConfig): void {
+function checkPositiveQCoefficient(value: number, name: string): void {
+  check(
+    Number.isSafeInteger(value) && value > 0,
+    `${name} must be a positive Q-scaled coefficient, got ${value}`,
+  );
+}
+
+function checkNonNegativeQCoefficient(value: number, name: string): void {
+  check(
+    Number.isSafeInteger(value) && value >= 0,
+    `${name} must be a non-negative Q-scaled coefficient, got ${value}`,
+  );
+}
+
+/** Temperature in hundredths of °C. Negative values are legitimate. */
+function checkCentiCelsius(value: number, name: string): void {
+  check(
+    Number.isSafeInteger(value) &&
+      value >= -TEMPERATURE_CENTI_C_LIMIT &&
+      value <= TEMPERATURE_CENTI_C_LIMIT,
+    `${name} must be an integer centi-Celsius value within ±${TEMPERATURE_CENTI_C_LIMIT}, got ${value}`,
+  );
+}
+
+function checkNonNegativeIntArray(
+  values: readonly number[],
+  expectedLength: number,
+  name: string,
+): void {
+  check(values.length === expectedLength, `${name} must have ${expectedLength} entries`);
+  for (let i = 0; i < values.length; i += 1) {
+    checkNonNegativeInt(values[i] as number, `${name}[${i}]`);
+  }
+}
+
+/**
+ * Validate structural invariants of a SimulationConfig.
+ *
+ * Every leaf field is checked for type and representable range, so world,
+ * organism and evolution code written in later milestones can consume these
+ * values without re-validating. What this deliberately does NOT check is
+ * ecological balance: whether a value produces a viable ecosystem is a
+ * calibration question answered by sweeps (docs/07 part C), not by a schema
+ * check. Bounds here are therefore permissive where tuning must stay free, and
+ * strict only where a value is structurally impossible (negative energy costs,
+ * fractions above 1.0, multipliers below 1.0, mismatched array lengths).
+ *
+ * Accepts deeply readonly configs so frozen configurations can be re-validated.
+ * Throws {@link ConfigValidationError} on the first violation.
+ */
+export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
   check(
     config.schemaVersion === CONFIG_SCHEMA_VERSION,
     `config schemaVersion ${config.schemaVersion} does not match supported version ${CONFIG_SCHEMA_VERSION}`,
   );
 
-  const { world, time, plants, organism, limits } = config;
+  validateWorld(config);
+  validateTime(config);
+  validatePlants(config);
+  validateOrganism(config);
+  validateBrain(config);
+  validateMutation(config);
+  validateCombat(config);
+  validateReproduction(config);
+  validateSpecies(config);
+  validateHistory(config);
+  validateLimits(config);
+}
 
-  // World geometry.
+function validateWorld(config: DeepReadonly<SimulationConfig>): void {
+  const { world } = config;
+
   checkPositiveInt(world.sizeLU, "world.sizeLU");
   checkPositiveInt(world.envGridSize, "world.envGridSize");
   checkPositiveInt(world.envCellSizeLU, "world.envCellSizeLU");
@@ -76,69 +161,183 @@ export function validateConfig(config: SimulationConfig): void {
   checkPositiveInt(world.generationMaxRetries, "world.generationMaxRetries");
   checkPositiveInt(world.initialOrganisms, "world.initialOrganisms");
   checkPositiveInt(world.founderSpawnRadiusLU, "world.founderSpawnRadiusLU");
+  check(
+    world.founderSpawnRadiusLU * 2 <= world.sizeLU,
+    "world: founder spawn diameter must fit inside the world",
+  );
 
-  // Time intervals (authoritative scheduling).
-  checkPositiveInt(time.ticksPerSimYear, "time.ticksPerSimYear");
+  const thresholds = world.biomeThresholds;
+  checkCentiCelsius(
+    thresholds.tundraTemperatureCentiC,
+    "world.biomeThresholds.tundraTemperatureCentiC",
+  );
+  checkCentiCelsius(
+    thresholds.desertMinTemperatureCentiC,
+    "world.biomeThresholds.desertMinTemperatureCentiC",
+  );
+  checkQFraction(thresholds.desertMaxMoistureQ, "world.biomeThresholds.desertMaxMoistureQ");
+  checkQFraction(thresholds.forestMinMoistureQ, "world.biomeThresholds.forestMinMoistureQ");
+  checkQFraction(thresholds.forestMinFertilityQ, "world.biomeThresholds.forestMinFertilityQ");
+  check(
+    thresholds.tundraTemperatureCentiC < thresholds.desertMinTemperatureCentiC,
+    "world.biomeThresholds: tundra temperature must be below the desert minimum temperature",
+  );
+  check(
+    thresholds.desertMaxMoistureQ < thresholds.forestMinMoistureQ,
+    "world.biomeThresholds: desert maximum moisture must be below the forest minimum moisture",
+  );
+}
+
+function validateTime(config: DeepReadonly<SimulationConfig>): void {
+  const { time } = config;
   checkPositiveInt(time.environmentInterval, "time.environmentInterval");
   checkPositiveInt(time.carcassDecayInterval, "time.carcassDecayInterval");
   checkPositiveInt(time.statisticsInterval, "time.statisticsInterval");
   checkPositiveInt(time.speciesAnalysisInterval, "time.speciesAnalysisInterval");
-  checkPositiveInt(time.autosaveCheckInterval, "time.autosaveCheckInterval");
-  checkPositiveInt(time.targetTicksPerSecond1x, "time.targetTicksPerSecond1x");
-  checkPositiveInt(time.normalRenderSnapshotsPerSecond, "time.normalRenderSnapshotsPerSecond");
-  checkPositiveInt(time.maxModeRenderSnapshotsPerSecond, "time.maxModeRenderSnapshotsPerSecond");
-  checkPositiveInt(time.maxWorkerSliceMs, "time.maxWorkerSliceMs");
+}
 
-  // Plants.
-  check(
-    plants.baseCapacityByBiome.length === BIOME_COUNT,
-    `plants.baseCapacityByBiome must have ${BIOME_COUNT} entries`,
-  );
-  check(
-    plants.growthRateQByBiome.length === BIOME_COUNT,
-    `plants.growthRateQByBiome must have ${BIOME_COUNT} entries`,
-  );
+function validatePlants(config: DeepReadonly<SimulationConfig>): void {
+  const { plants } = config;
+  checkNonNegativeIntArray(plants.baseCapacityByBiome, BIOME_COUNT, "plants.baseCapacityByBiome");
+  checkNonNegativeIntArray(plants.growthRateQByBiome, BIOME_COUNT, "plants.growthRateQByBiome");
   for (let i = 0; i < BIOME_COUNT; i += 1) {
-    checkNonNegativeInt(
-      plants.baseCapacityByBiome[i] as number,
-      `plants.baseCapacityByBiome[${i}]`,
-    );
-    checkNonNegativeInt(plants.growthRateQByBiome[i] as number, `plants.growthRateQByBiome[${i}]`);
+    checkQFraction(plants.growthRateQByBiome[i] as number, `plants.growthRateQByBiome[${i}]`);
   }
+  // Water grows nothing: aquatic ecology is explicitly out of MVP scope
+  // (CLAUDE.md scope exclusions), and non-zero water capacity would place food
+  // where terrestrial organisms drown.
+  check(
+    plants.baseCapacityByBiome[Biome.Water] === 0 && plants.growthRateQByBiome[Biome.Water] === 0,
+    "plants: water biome capacity and growth rate must be 0 while aquatic life is out of scope",
+  );
   checkNonNegativeInt(plants.plantSeedBankRegenUnits, "plants.plantSeedBankRegenUnits");
   checkNonNegativeInt(plants.plantMinRegenThreshold, "plants.plantMinRegenThreshold");
   checkPositiveInt(plants.plantEnergyPerBiomass, "plants.plantEnergyPerBiomass");
   checkPositiveInt(plants.meatEnergyPerUnit, "plants.meatEnergyPerUnit");
+}
 
-  // Organism fractions used as Q values.
-  checkQFraction(organism.birthSizeFractionQ, "organism.birthSizeFractionQ");
-  checkQFraction(organism.reproductionMinDevelopmentQ, "organism.reproductionMinDevelopmentQ");
-  checkQFraction(organism.initialEnergyFractionQ, "organism.initialEnergyFractionQ");
+function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
+  const { organism } = config;
+
   checkPositiveInt(organism.massScalePerRadiusSquared, "organism.massScalePerRadiusSquared");
   checkPositiveInt(organism.baseMaxEnergy, "organism.baseMaxEnergy");
   checkPositiveInt(organism.maxEnergyPerMass, "organism.maxEnergyPerMass");
-  checkPositiveInt(organism.basal.minimumBasalPerTick, "organism.basal.minimumBasalPerTick");
+  checkQFraction(organism.birthSizeFractionQ, "organism.birthSizeFractionQ");
+  checkQFraction(organism.reproductionMinDevelopmentQ, "organism.reproductionMinDevelopmentQ");
+  checkQFraction(organism.initialEnergyFractionQ, "organism.initialEnergyFractionQ");
+  // Zero is a legitimate ablation ("growth is free"), so non-negative, not positive.
+  checkNonNegativeInt(organism.energyPerGrowthMass, "organism.energyPerGrowthMass");
   check(
-    organism.movement.waterMovementCostMultiplierQ >= Q,
-    "organism.movement.waterMovementCostMultiplierQ must be >= Q (a multiplier of at least 1.0)",
-  );
-  checkQFraction(
-    organism.movement.waterSpeedMultiplierQ,
-    "organism.movement.waterSpeedMultiplierQ",
-  );
-  checkQFraction(
-    organism.movement.armorMaxSpeedPenaltyQ,
-    "organism.movement.armorMaxSpeedPenaltyQ",
-  );
-  checkQFraction(organism.movement.sizeMaxTurnPenaltyQ, "organism.movement.sizeMaxTurnPenaltyQ");
-  checkQFraction(organism.feeding.eatOutputThresholdQ, "organism.feeding.eatOutputThresholdQ");
-  check(
-    organism.feeding.digestionEfficiencyFloorQ + organism.feeding.digestionEfficiencySpanQ <= Q,
-    "organism.feeding: digestion efficiency floor + span must not exceed Q",
+    organism.birthSizeFractionQ < organism.reproductionMinDevelopmentQ,
+    "organism: birth size fraction must be below the development required to reproduce",
   );
 
-  // Brain topology is fixed for v0.1 (docs/04 §10).
+  const { basal } = organism;
+  checkNonNegativeQCoefficient(basal.baseMassPaceCoeffQ, "organism.basal.baseMassPaceCoeffQ");
+  checkNonNegativeQCoefficient(basal.muscleCapacityCoeffQ, "organism.basal.muscleCapacityCoeffQ");
+  checkNonNegativeInt(basal.visionBaseCost, "organism.basal.visionBaseCost");
+  checkNonNegativeQCoefficient(basal.attackMaintCoeffQ, "organism.basal.attackMaintCoeffQ");
+  checkNonNegativeQCoefficient(basal.armorMaintCoeffQ, "organism.basal.armorMaintCoeffQ");
+  checkNonNegativeQCoefficient(basal.toleranceMaintCoeffQ, "organism.basal.toleranceMaintCoeffQ");
+  checkNonNegativeQCoefficient(basal.longevityMaintCoeffQ, "organism.basal.longevityMaintCoeffQ");
+  // docs/08 §9: a living organism always pays at least 1 energy/tick.
+  checkPositiveInt(basal.minimumBasalPerTick, "organism.basal.minimumBasalPerTick");
+  check(
+    basal.minimumBasalPerTick <= organism.baseMaxEnergy,
+    "organism.basal.minimumBasalPerTick must not exceed baseMaxEnergy or nothing could survive a tick",
+  );
+
+  const { movement } = organism;
+  checkNonNegativeQCoefficient(movement.movementCostCoeffQ, "organism.movement.movementCostCoeffQ");
+  checkNonNegativeQCoefficient(
+    movement.accelerationCostCoeffQ,
+    "organism.movement.accelerationCostCoeffQ",
+  );
+  checkQFraction(movement.waterSpeedMultiplierQ, "organism.movement.waterSpeedMultiplierQ");
+  checkQMultiplierAtLeastOne(
+    movement.waterMovementCostMultiplierQ,
+    "organism.movement.waterMovementCostMultiplierQ",
+  );
+  checkNonNegativeInt(movement.waterGraceTicks, "organism.movement.waterGraceTicks");
+  checkQFraction(movement.waterHealthDamageQPerTick, "organism.movement.waterHealthDamageQPerTick");
+  checkQFraction(movement.armorMaxSpeedPenaltyQ, "organism.movement.armorMaxSpeedPenaltyQ");
+  check(
+    movement.armorMaxSpeedPenaltyQ < Q,
+    "organism.movement.armorMaxSpeedPenaltyQ must stay below Q or full armor would forbid movement",
+  );
+  checkQFraction(movement.sizeMaxTurnPenaltyQ, "organism.movement.sizeMaxTurnPenaltyQ");
+  check(
+    movement.sizeMaxTurnPenaltyQ < Q,
+    "organism.movement.sizeMaxTurnPenaltyQ must stay below Q or the largest organism could not turn",
+  );
+
+  const { health } = organism;
+  checkQFraction(health.starvationDamageQPerTick, "organism.health.starvationDamageQPerTick");
+  checkQFraction(
+    health.severeThermalMaxDamageQPerTick,
+    "organism.health.severeThermalMaxDamageQPerTick",
+  );
+  checkQFraction(health.passiveHealingQPerTick, "organism.health.passiveHealingQPerTick");
+  checkQFraction(
+    health.passiveHealingMinEnergyFractionQ,
+    "organism.health.passiveHealingMinEnergyFractionQ",
+  );
+  checkNonNegativeInt(
+    health.passiveHealingEnergyBaseCost,
+    "organism.health.passiveHealingEnergyBaseCost",
+  );
+  checkNonNegativeQCoefficient(
+    health.passiveHealingEnergyMassCoeffQ,
+    "organism.health.passiveHealingEnergyMassCoeffQ",
+  );
+  checkQMultiplierAtLeastOne(
+    health.severeThermalBasalMultiplierMaxQ,
+    "organism.health.severeThermalBasalMultiplierMaxQ",
+  );
+
+  const { feeding } = organism;
+  checkPositiveInt(feeding.maxPlantBiteUnits, "organism.feeding.maxPlantBiteUnits");
+  checkPositiveInt(feeding.maxMeatBiteUnits, "organism.feeding.maxMeatBiteUnits");
+  checkQFraction(feeding.eatOutputThresholdQ, "organism.feeding.eatOutputThresholdQ");
+  checkNonNegativeInt(feeding.biteBaseUnits, "organism.feeding.biteBaseUnits");
+  checkNonNegativeQCoefficient(feeding.biteMassCoeffQ, "organism.feeding.biteMassCoeffQ");
+  checkQFraction(feeding.digestionEfficiencyFloorQ, "organism.feeding.digestionEfficiencyFloorQ");
+  checkQFraction(feeding.digestionEfficiencySpanQ, "organism.feeding.digestionEfficiencySpanQ");
+  check(
+    feeding.digestionEfficiencyFloorQ + feeding.digestionEfficiencySpanQ <= Q,
+    "organism.feeding: digestion efficiency floor + span must not exceed Q",
+  );
+  check(
+    feeding.biteBaseUnits <= feeding.maxPlantBiteUnits &&
+      feeding.biteBaseUnits <= feeding.maxMeatBiteUnits,
+    "organism.feeding: biteBaseUnits must not exceed the per-tick bite caps",
+  );
+
+  // Carcass constants are all ablatable: 0 meat per mass, or 0 decay ("carrion
+  // never rots"), are legitimate experimental configurations.
+  const { carcass } = organism;
+  checkNonNegativeInt(carcass.meatPerMass, "organism.carcass.meatPerMass");
+  checkQFraction(
+    carcass.remainingEnergyToMeatMaxFractionQ,
+    "organism.carcass.remainingEnergyToMeatMaxFractionQ",
+  );
+  checkQFraction(
+    carcass.baseCarcassDecayFractionQPerDecayStep,
+    "organism.carcass.baseCarcassDecayFractionQPerDecayStep",
+  );
+  checkQFraction(carcass.hotDecayBonusMaxQ, "organism.carcass.hotDecayBonusMaxQ");
+  check(
+    qmul(carcass.baseCarcassDecayFractionQPerDecayStep, Q + carcass.hotDecayBonusMaxQ) <= Q,
+    "organism.carcass: base decay scaled by the maximum hot bonus must not exceed 100% per decay step",
+  );
+}
+
+function validateBrain(config: DeepReadonly<SimulationConfig>): void {
   const { brain } = config;
+  checkPositiveInt(brain.inputCount, "brain.inputCount");
+  checkPositiveInt(brain.hiddenCount, "brain.hiddenCount");
+  checkPositiveInt(brain.outputCount, "brain.outputCount");
+  checkPositiveInt(brain.weightCount, "brain.weightCount");
   check(
     brain.weightCount ===
       brain.inputCount * brain.hiddenCount +
@@ -146,12 +345,40 @@ export function validateConfig(config: SimulationConfig): void {
         brain.inputCount * brain.outputCount,
     "brain.weightCount must equal inputs*hidden + hidden*outputs + inputs*outputs",
   );
-  check(brain.weightMin < brain.weightMax, "brain.weightMin must be below brain.weightMax");
-  checkPositiveInt(brain.valueScale, "brain.valueScale");
+  // Sensor values are Q-scaled everywhere in the engine, so the network's value
+  // scale is structurally tied to Q rather than freely tunable (docs/04 §11).
+  check(
+    brain.valueScale === Q,
+    `brain.valueScale must equal Q (${Q}) because sensor values are Q-scaled, got ${brain.valueScale}`,
+  );
   checkPositiveInt(brain.weightScale, "brain.weightScale");
+  check(
+    (brain.weightScale & (brain.weightScale - 1)) === 0,
+    "brain.weightScale must be a power of two so weight division stays exact",
+  );
+  checkInt(brain.weightMin, "brain.weightMin");
+  checkInt(brain.weightMax, "brain.weightMax");
+  check(brain.weightMin < brain.weightMax, "brain.weightMin must be below brain.weightMax");
+  // docs/08 §17 specifies a symmetric clamp of ±8192.
+  check(
+    brain.weightMin === -brain.weightMax,
+    "brain: the weight clamp must be symmetric (weightMin === -weightMax)",
+  );
 
-  // Mutation probabilities are Q fractions.
-  const { ecological, brain: brainMut } = config.mutation;
+  // The quantized inference accumulator sums weightCount products of a Q-scaled
+  // value and a weight (docs/04 §11: "choose bounds safely below exact integer
+  // limit"). Keep the worst case an order of magnitude below 2^53.
+  const worstCaseAccumulator = brain.weightCount * Q * Math.max(-brain.weightMin, brain.weightMax);
+  check(
+    worstCaseAccumulator <= Number.MAX_SAFE_INTEGER / 8,
+    `brain: worst-case inference accumulator ${worstCaseAccumulator} is too close to the exact ` +
+      "integer limit; reduce weightCount or the weight clamp",
+  );
+}
+
+function validateMutation(config: DeepReadonly<SimulationConfig>): void {
+  const { ecological, brain } = config.mutation;
+
   checkQFraction(
     ecological.perGeneMutationProbabilityQ,
     "mutation.ecological.perGeneMutationProbabilityQ",
@@ -161,35 +388,119 @@ export function validateConfig(config: SimulationConfig): void {
     "mutation.ecological.largeMutationProbabilityQ",
   );
   checkQFraction(ecological.resetProbabilityQ, "mutation.ecological.resetProbabilityQ");
+  checkNonNegativeQCoefficient(ecological.smallSigmaQ, "mutation.ecological.smallSigmaQ");
+  checkNonNegativeQCoefficient(ecological.largeSigmaQ, "mutation.ecological.largeSigmaQ");
+  check(
+    ecological.largeSigmaQ >= ecological.smallSigmaQ,
+    "mutation.ecological: largeSigmaQ must not be smaller than smallSigmaQ",
+  );
+
   checkQFraction(
-    brainMut.perWeightMutationProbabilityQ,
+    brain.perWeightMutationProbabilityQ,
     "mutation.brain.perWeightMutationProbabilityQ",
   );
   checkQFraction(
-    brainMut.largeWeightMutationProbabilityQ,
+    brain.largeWeightMutationProbabilityQ,
     "mutation.brain.largeWeightMutationProbabilityQ",
   );
+  checkNonNegativeQCoefficient(brain.weightSmallSigmaQ, "mutation.brain.weightSmallSigmaQ");
+}
 
-  // Combat/reproduction thresholds.
-  checkQFraction(config.combat.attackOutputThresholdQ, "combat.attackOutputThresholdQ");
-  checkQFraction(config.combat.maxArmorDamageReductionQ, "combat.maxArmorDamageReductionQ");
-  checkQFraction(
-    config.reproduction.reproduceOutputThresholdQ,
-    "reproduction.reproduceOutputThresholdQ",
-  );
-  checkQFraction(
-    config.reproduction.minParentReserveFractionQ,
-    "reproduction.minParentReserveFractionQ",
-  );
+function validateCombat(config: DeepReadonly<SimulationConfig>): void {
+  const { combat } = config;
+  checkQFraction(combat.attackOutputThresholdQ, "combat.attackOutputThresholdQ");
+  // Zero base damage is a valid "combat disabled" ablation.
+  checkNonNegativeQCoefficient(combat.baseAttackDamageQ, "combat.baseAttackDamageQ");
+  checkNonNegativeInt(combat.attackCooldownTicks, "combat.attackCooldownTicks");
+  checkNonNegativeInt(combat.baseAttackEnergyCost, "combat.baseAttackEnergyCost");
+  checkNonNegativeQCoefficient(combat.attackEnergyMassCoeffQ, "combat.attackEnergyMassCoeffQ");
+  // An impact bonus above +100% is unusual but not structurally invalid.
+  checkNonNegativeQCoefficient(combat.maxImpactDamageBonusQ, "combat.maxImpactDamageBonusQ");
+  checkQFraction(combat.maxArmorDamageReductionQ, "combat.maxArmorDamageReductionQ");
   check(
-    config.reproduction.childSpawnDistanceMinLU <= config.reproduction.childSpawnDistanceMaxLU,
+    combat.maxArmorDamageReductionQ < Q,
+    "combat.maxArmorDamageReductionQ must stay below Q or full armor would grant total immunity",
+  );
+}
+
+function validateReproduction(config: DeepReadonly<SimulationConfig>): void {
+  const { reproduction } = config;
+  checkQFraction(reproduction.reproduceOutputThresholdQ, "reproduction.reproduceOutputThresholdQ");
+  checkQFraction(reproduction.minParentReserveFractionQ, "reproduction.minParentReserveFractionQ");
+  check(
+    reproduction.minParentReserveFractionQ < Q,
+    "reproduction.minParentReserveFractionQ must stay below Q or reproduction is impossible",
+  );
+  checkNonNegativeInt(
+    reproduction.reproductionCooldownTicks,
+    "reproduction.reproductionCooldownTicks",
+  );
+  checkNonNegativeInt(reproduction.childSpawnDistanceMinLU, "reproduction.childSpawnDistanceMinLU");
+  checkNonNegativeInt(reproduction.childSpawnDistanceMaxLU, "reproduction.childSpawnDistanceMaxLU");
+  check(
+    reproduction.childSpawnDistanceMinLU <= reproduction.childSpawnDistanceMaxLU,
     "reproduction: childSpawnDistanceMinLU must be <= childSpawnDistanceMaxLU",
   );
+  checkPositiveInt(reproduction.spawnAngleCandidates, "reproduction.spawnAngleCandidates");
+}
 
-  // Limits.
+function validateSpecies(config: DeepReadonly<SimulationConfig>): void {
+  const { species, limits } = config;
+  checkPositiveInt(species.minDaughterPopulation, "species.minDaughterPopulation");
+  checkPositiveInt(species.kMeansIterations, "species.kMeansIterations");
+  checkPositiveInt(species.stabilityIntervals, "species.stabilityIntervals");
+  checkQFraction(species.splitDistanceThresholdQ, "species.splitDistanceThresholdQ");
+  checkQFraction(
+    species.candidateCentroidContinuityThresholdQ,
+    "species.candidateCentroidContinuityThresholdQ",
+  );
+  // A candidate must be able to look "the same as last time" more easily than
+  // its two clusters look "far apart", or a split could never stabilize.
+  check(
+    species.candidateCentroidContinuityThresholdQ < species.splitDistanceThresholdQ,
+    "species: centroid continuity threshold must be below the split distance threshold",
+  );
+  // docs/05 §6: only species with at least 2 * minDaughterPopulation members are
+  // analyzed, so that eligibility must be reachable at all.
+  check(
+    2 * species.minDaughterPopulation <= limits.maxOrganisms,
+    "species: 2 * minDaughterPopulation must fit inside limits.maxOrganisms",
+  );
+}
+
+function validateHistory(config: DeepReadonly<SimulationConfig>): void {
+  const { history, limits } = config;
+  checkPositiveInt(
+    history.massExtinctionMinStartingSpecies,
+    "history.massExtinctionMinStartingSpecies",
+  );
+  check(
+    history.massExtinctionMinStartingSpecies >= 2,
+    "history.massExtinctionMinStartingSpecies must be at least 2 for a mass extinction to be meaningful",
+  );
+  checkQFraction(history.massExtinctionFractionQ, "history.massExtinctionFractionQ");
+  checkQFraction(history.carnivoreObservedMeatFractionQ, "history.carnivoreObservedMeatFractionQ");
+  checkPositiveInt(history.carnivoreMinPopulation, "history.carnivoreMinPopulation");
+  check(
+    history.carnivoreMinPopulation <= limits.maxOrganisms,
+    "history.carnivoreMinPopulation must be reachable within limits.maxOrganisms",
+  );
+  // Boom/crash thresholds are RELATIVE changes (docs/08 §23: 3072 == +0.75,
+  // 2048 == -0.50 stored as magnitude). A boom may legitimately exceed +1.0,
+  // while a crash beyond -1.0 would be meaningless.
+  checkPositiveQCoefficient(history.populationBoomFractionQ, "history.populationBoomFractionQ");
+  checkQFraction(history.populationCrashFractionQ, "history.populationCrashFractionQ");
+  check(
+    history.populationCrashFractionQ > 0,
+    "history.populationCrashFractionQ must be positive or every tick would look like a crash",
+  );
+  checkNonNegativeInt(history.eventCooldownStatsSamples, "history.eventCooldownStatsSamples");
+}
+
+function validateLimits(config: DeepReadonly<SimulationConfig>): void {
+  const { limits, world } = config;
   checkPositiveInt(limits.maxOrganisms, "limits.maxOrganisms");
   checkPositiveInt(limits.maxCarcasses, "limits.maxCarcasses");
-  checkPositiveInt(limits.maxDetailedRenderedOrganisms, "limits.maxDetailedRenderedOrganisms");
   checkPositiveInt(limits.recentDeadHistorySize, "limits.recentDeadHistorySize");
   checkPositiveInt(
     limits.maxTimelineEventsInMemoryBeforeChunk,

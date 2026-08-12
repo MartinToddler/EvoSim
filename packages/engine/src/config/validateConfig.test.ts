@@ -1,11 +1,11 @@
-import { deepCloneJson } from "@eon/shared";
 import { describe, expect, it } from "vitest";
+import { cloneConfig } from "./cloneConfig";
 import type { SimulationConfig } from "./SimulationConfig";
 import { DEFAULT_CONFIG } from "./defaultConfig";
 import { ConfigValidationError, validateConfig } from "./validateConfig";
 
 function mutatedConfig(mutate: (config: SimulationConfig) => void): SimulationConfig {
-  const clone = deepCloneJson(DEFAULT_CONFIG);
+  const clone = cloneConfig(DEFAULT_CONFIG);
   mutate(clone);
   return clone;
 }
@@ -60,7 +60,7 @@ describe("validateConfig", () => {
 
   it("rejects biome tables of the wrong length", () => {
     const config = mutatedConfig((c) => {
-      (c.plants as unknown as { baseCapacityByBiome: number[] }).baseCapacityByBiome = [0, 1, 2];
+      c.plants.baseCapacityByBiome = [0, 1, 2];
     });
     expect(() => validateConfig(config)).toThrowError(/baseCapacityByBiome/);
   });
@@ -77,5 +77,153 @@ describe("validateConfig", () => {
       c.organism.movement.waterMovementCostMultiplierQ = 2048;
     });
     expect(() => validateConfig(config)).toThrowError(/waterMovementCostMultiplierQ/);
+  });
+});
+
+describe("validateConfig must not over-constrain legitimate configurations", () => {
+  /**
+   * Each of these values means "this mechanism is switched off", which is a
+   * legitimate ablation experiment (docs/07 §14 sweep harness). A validator
+   * that demands a positive value here silently forbids whole experiments.
+   */
+  const ablationsThatMustBeAccepted: ReadonlyArray<[string, (c: SimulationConfig) => void]> = [
+    ["growth is free", (c) => void (c.organism.energyPerGrowthMass = 0)],
+    ["carcasses carry no meat", (c) => void (c.organism.carcass.meatPerMass = 0)],
+    [
+      "carcasses never decay",
+      (c) => void (c.organism.carcass.baseCarcassDecayFractionQPerDecayStep = 0),
+    ],
+    ["combat deals no damage", (c) => void (c.combat.baseAttackDamageQ = 0)],
+    ["no attack cooldown", (c) => void (c.combat.attackCooldownTicks = 0)],
+    ["no reproduction cooldown", (c) => void (c.reproduction.reproductionCooldownTicks = 0)],
+    ["children spawn on the parent", (c) => void (c.reproduction.childSpawnDistanceMinLU = 0)],
+    ["water is harmless", (c) => void (c.organism.movement.waterHealthDamageQPerTick = 0)],
+    ["water damage starts at once", (c) => void (c.organism.movement.waterGraceTicks = 0)],
+    ["no event debounce", (c) => void (c.history.eventCooldownStatsSamples = 0)],
+    ["no passive healing", (c) => void (c.organism.health.passiveHealingQPerTick = 0)],
+    ["no vision upkeep", (c) => void (c.organism.basal.visionBaseCost = 0)],
+    ["no mutation spread", (c) => void (c.mutation.ecological.smallSigmaQ = 0)],
+  ];
+
+  for (const [label, mutate] of ablationsThatMustBeAccepted) {
+    it(`accepts a config where ${label}`, () => {
+      expect(() => validateConfig(mutatedConfig(mutate))).not.toThrow();
+    });
+  }
+
+  it("accepts negative temperature thresholds", () => {
+    const config = mutatedConfig((c) => {
+      c.world.biomeThresholds.tundraTemperatureCentiC = -1500;
+      c.world.biomeThresholds.desertMinTemperatureCentiC = -200;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("accepts a decay bonus of exactly Q and multipliers above Q", () => {
+    const config = mutatedConfig((c) => {
+      c.organism.carcass.hotDecayBonusMaxQ = 4096;
+      c.organism.carcass.baseCarcassDecayFractionQPerDecayStep = 2048;
+      c.organism.health.severeThermalBasalMultiplierMaxQ = 40960;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("accepts a population boom threshold above +100%", () => {
+    const config = mutatedConfig((c) => {
+      c.history.populationBoomFractionQ = 8192;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});
+
+describe("validateConfig structural invariants", () => {
+  it("rejects a negative energy cost", () => {
+    const config = mutatedConfig((c) => {
+      c.organism.energyPerGrowthMass = -1;
+    });
+    expect(() => validateConfig(config)).toThrowError(/energyPerGrowthMass/);
+  });
+
+  it("rejects a temperature written in whole degrees instead of centi-Celsius", () => {
+    const config = mutatedConfig((c) => {
+      c.world.biomeThresholds.desertMinTemperatureCentiC = 30_000;
+    });
+    expect(() => validateConfig(config)).toThrowError(/centi-Celsius/);
+  });
+
+  it("rejects biome thresholds in the wrong order", () => {
+    const tundraAboveDesert = mutatedConfig((c) => {
+      c.world.biomeThresholds.tundraTemperatureCentiC = 2000;
+    });
+    expect(() => validateConfig(tundraAboveDesert)).toThrowError(/tundra temperature/);
+
+    const desertWetterThanForest = mutatedConfig((c) => {
+      c.world.biomeThresholds.desertMaxMoistureQ = 3000;
+    });
+    expect(() => validateConfig(desertWetterThanForest)).toThrowError(/desert maximum moisture/);
+  });
+
+  it("rejects total armor immunity and immobilizing armor", () => {
+    const immune = mutatedConfig((c) => {
+      c.combat.maxArmorDamageReductionQ = 4096;
+    });
+    expect(() => validateConfig(immune)).toThrowError(/total immunity/);
+
+    const immobile = mutatedConfig((c) => {
+      c.organism.movement.armorMaxSpeedPenaltyQ = 4096;
+    });
+    expect(() => validateConfig(immobile)).toThrowError(/armorMaxSpeedPenaltyQ/);
+  });
+
+  it("rejects a brain value scale detached from Q", () => {
+    const config = mutatedConfig((c) => {
+      c.brain.valueScale = 8192;
+    });
+    expect(() => validateConfig(config)).toThrowError(/valueScale/);
+  });
+
+  it("rejects an asymmetric weight clamp", () => {
+    const config = mutatedConfig((c) => {
+      c.brain.weightMin = -4096;
+    });
+    expect(() => validateConfig(config)).toThrowError(/symmetric/);
+  });
+
+  it("rejects a brain size whose accumulator could lose integer exactness", () => {
+    const config = mutatedConfig((c) => {
+      c.brain.hiddenCount = 12;
+      c.brain.weightMax = 2 ** 40;
+      c.brain.weightMin = -(2 ** 40);
+    });
+    expect(() => validateConfig(config)).toThrowError(/accumulator/);
+  });
+
+  it("rejects plant growth in water while aquatic life is out of scope", () => {
+    const config = mutatedConfig((c) => {
+      c.plants.baseCapacityByBiome = [100, 36000, 52000, 7000, 10000, 4000];
+    });
+    expect(() => validateConfig(config)).toThrowError(/water biome/);
+  });
+
+  it("rejects decay that could exceed 100% per step at maximum heat", () => {
+    const config = mutatedConfig((c) => {
+      c.organism.carcass.baseCarcassDecayFractionQPerDecayStep = 4096;
+      c.organism.carcass.hotDecayBonusMaxQ = 4096;
+    });
+    expect(() => validateConfig(config)).toThrowError(/100%/);
+  });
+
+  it("rejects a species continuity threshold at or above the split threshold", () => {
+    const config = mutatedConfig((c) => {
+      c.species.candidateCentroidContinuityThresholdQ = c.species.splitDistanceThresholdQ;
+    });
+    expect(() => validateConfig(config)).toThrowError(/continuity threshold/);
+  });
+
+  it("rejects an unreachable species analysis population", () => {
+    const config = mutatedConfig((c) => {
+      c.species.minDaughterPopulation = c.limits.maxOrganisms;
+    });
+    expect(() => validateConfig(config)).toThrowError(/minDaughterPopulation/);
   });
 });

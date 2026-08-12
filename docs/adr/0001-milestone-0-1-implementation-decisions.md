@@ -1,6 +1,10 @@
 # ADR 0001 — Milestone 0/1 implementation decisions
 
-Status: accepted · Date: 2026-08-11 · Scope: Milestones 0–1 (tasks A01–A07, B01–B08)
+Status: accepted, partly superseded · Date: 2026-08-11 · Scope: Milestones 0–1 (tasks A01–A07, B01–B08)
+
+> §6 (config schema scope) and §7 (snapshot compatibility) are superseded by
+> `0002-milestone-1-hardening.md`, which splits host settings out of `SimulationConfig` and makes
+> `SimulationEngine.fromSnapshot()` the single validated restore path. Everything else stands.
 
 The supplied architecture (CLAUDE.md, docs/01–10) was followed. This ADR records the
 implementation-level decisions taken where the specification leaves latitude, so later

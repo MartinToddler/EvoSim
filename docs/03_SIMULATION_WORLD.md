@@ -133,6 +133,11 @@ Reordering requires engine version bump.
 
 ## 8. Scheduling intervals
 
+> **Amended by ADR 0002 §4 (engine 0.1.1).** The first four intervals are authoritative and live in
+> `SimulationConfig.time`; `AUTOSAVE_CHECK_INTERVAL` moved to `HostRuntimeConfig`. The test applied:
+> a cadence is authoritative when it schedules one of the versioned tick phases in §7 above.
+> Autosave is not among those nineteen phases — it copies state out and changes nothing.
+
 Initial config:
 
 ```ts

@@ -86,6 +86,28 @@ export default tseslint.config(
     },
   },
   {
+    // The engine's package manifest exports only ".", but a relative deep import
+    // ("../../packages/engine/src/internal") still resolves under Vite and tsc.
+    // Close that hole: authoritative internals — above all the PRNG — must not
+    // be reachable from the app, worker, renderer, UI or persistence code.
+    files: ["apps/**/*.{ts,tsx}", "packages/!(engine)/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/engine/src/**", "@eon/engine/src/**", "@eon/engine/**"],
+              message:
+                "Import the engine's public API from '@eon/engine'. Reaching into its source " +
+                "(especially internal.ts) would expose authoritative state such as the PRNG.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Protocol DTOs must stay presentation-free as well.
     files: ["packages/protocol/**/*.ts"],
     rules: {

@@ -44,6 +44,7 @@ export type {
   LimitConfig,
 } from "./config/SimulationConfig";
 export { DEFAULT_CONFIG } from "./config/defaultConfig";
+export { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 export { validateConfig, ConfigValidationError } from "./config/validateConfig";
 export { hashConfig, canonicalJsonStringify, ConfigSerializationError } from "./config/hashConfig";
 
@@ -51,7 +52,9 @@ export { hashConfig, canonicalJsonStringify, ConfigSerializationError } from "./
 export { Biome, BIOME_COUNT } from "./world/biomes";
 
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
-export { SimulationEngine, type SimulationEngineOptions } from "./SimulationEngine";
+// NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG
+// must stay unreachable from outside this package (see internal.ts).
+export { SimulationEngine, type SimulationEngineOptions, MAX_TICK } from "./SimulationEngine";
 export { computeStateHash, STATE_HASH_MAGIC } from "./hashState";
-export type { EngineCoreSnapshot } from "./snapshot/EngineSnapshot";
-export { engineFromSnapshot, SnapshotCompatibilityError } from "./snapshot/deserialize";
+export { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
+export { engineFromSnapshot } from "./snapshot/deserialize";

@@ -1,0 +1,103 @@
+# Continuous integration for Project EON.
+#
+# Contract (CLAUDE.md "Toolchain policy", review point P2-c): every push and
+# every pull request runs Node 22 + pnpm with a frozen lockfile, then
+# `pnpm verify` (typecheck -> lint -> test -> build).
+#
+# No secrets, and no network access beyond the npm registry.
+name: verify
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Supersede in-flight runs for the same branch or PR, but never cancel main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: typecheck + lint + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # pnpm must be installed BEFORE actions/setup-node: `cache: pnpm` shells
+      # out to `pnpm store path` and fails if pnpm is not yet on PATH.
+      # No `version:` input on purpose — pnpm/action-setup reads the
+      # "packageManager" field from package.json, and passing both is an error.
+      - uses: pnpm/action-setup@v4
+
+      # .nvmrc is the single source of truth for the Node major. It must be
+      # selected before installing, because .npmrc sets engine-strict=true and
+      # the workspace requires Node >= 22.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      # --frozen-lockfile makes CI fail rather than silently resolve new
+      # versions when a package.json and pnpm-lock.yaml disagree; dependency
+      # versions are part of the determinism contract. esbuild's postinstall
+      # runs because it is allow-listed in the root pnpm.onlyBuiltDependencies,
+      # without which `vite build` has no native binary.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm verify
+
+      # `pnpm verify` never executes the headless runner, so the CLI that
+      # regenerates the golden fixture would rot unnoticed.
+      - name: Headless runner smoke test
+        run: pnpm exec tsx scripts/headless.ts --ticks 100 --checkpoints 0,100
+
+  determinism:
+    name: determinism (${{ matrix.os }}, Node ${{ matrix.node }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            node: "22"
+          - os: windows-latest
+            node: "22"
+          - os: ubuntu-latest
+            node: "24"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # The golden hashes are already pinned by the test suite on the primary
+      # runner. What that cannot show is cross-platform or cross-Node drift —
+      # exactly how a determinism bug (float formatting, LUT construction,
+      # typed-array assumptions) would reach an artificial-life simulation.
+      # Same engine, same expected hashes, different machine.
+      - name: Engine golden hashes
+        run: pnpm exec vitest run packages/engine
+
+      - name: Headless runner reproduces the fixture hashes
+        run: pnpm exec tsx scripts/headless.ts --ticks 1000 --checkpoints 0,1,10,100,1000

@@ -1,4 +1,6 @@
+import { deepFreezeJson } from "@eon/shared";
 import { CONFIG_SCHEMA_VERSION } from "../version";
+import type { ReadonlySimulationConfig } from "./cloneConfig";
 import type { SimulationConfig } from "./SimulationConfig";
 
 /**
@@ -9,7 +11,7 @@ import type { SimulationConfig } from "./SimulationConfig";
  * named config commits and sweep experiments, never through hidden
  * conditional bonuses (docs/08 §24).
  */
-export const DEFAULT_CONFIG: SimulationConfig = deepFreeze({
+const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
   schemaVersion: CONFIG_SCHEMA_VERSION,
 
   world: {
@@ -36,17 +38,14 @@ export const DEFAULT_CONFIG: SimulationConfig = deepFreeze({
     },
   },
 
+  // Authoritative tick scheduling only. Wall-clock pacing, render cadence,
+  // autosave cadence and the sim-year display divisor live in
+  // DEFAULT_HOST_RUNTIME_CONFIG (@eon/protocol).
   time: {
-    targetTicksPerSecond1x: 20,
-    ticksPerSimYear: 2000,
     environmentInterval: 20,
     carcassDecayInterval: 20,
     statisticsInterval: 100,
     speciesAnalysisInterval: 400,
-    autosaveCheckInterval: 2000,
-    normalRenderSnapshotsPerSecond: 15,
-    maxModeRenderSnapshotsPerSecond: 5,
-    maxWorkerSliceMs: 10,
   },
 
   plants: {
@@ -168,7 +167,7 @@ export const DEFAULT_CONFIG: SimulationConfig = deepFreeze({
 
   species: {
     minDaughterPopulation: 20,
-    analysisIntervalTicks: 400,
+    // Cadence lives in time.speciesAnalysisInterval (single source of truth).
     kMeansIterations: 6,
     stabilityIntervals: 5,
     splitDistanceThresholdQ: 901, // ~0.22 normalized RMS
@@ -188,19 +187,16 @@ export const DEFAULT_CONFIG: SimulationConfig = deepFreeze({
   limits: {
     maxOrganisms: 8192,
     maxCarcasses: 4096,
-    maxDetailedRenderedOrganisms: 250,
     recentDeadHistorySize: 2048,
     maxTimelineEventsInMemoryBeforeChunk: 4096,
   },
-});
+};
 
-/** Recursively freeze a config object (defence against accidental mutation). */
-function deepFreeze<T>(value: T): T {
-  if (value !== null && typeof value === "object") {
-    for (const key of Object.keys(value)) {
-      deepFreeze((value as Record<string, unknown>)[key]);
-    }
-    Object.freeze(value);
-  }
-  return value;
-}
+/**
+ * The shipped default configuration, deeply frozen.
+ *
+ * It is exposed as a deeply readonly value so that no consumer can mutate the
+ * shared default in place. Build a variant with `cloneConfig(DEFAULT_CONFIG)`
+ * and modify the copy.
+ */
+export const DEFAULT_CONFIG: ReadonlySimulationConfig = deepFreezeJson(DEFAULT_CONFIG_SOURCE);

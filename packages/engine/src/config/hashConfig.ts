@@ -1,3 +1,4 @@
+import type { DeepReadonly } from "@eon/shared";
 import { StateHash } from "../math/hash";
 import type { SimulationConfig } from "./SimulationConfig";
 
@@ -49,7 +50,14 @@ export function canonicalJsonStringify(value: unknown): string {
   }
 }
 
-/** 64-bit hex digest of the canonical config serialization. */
-export function hashConfig(config: SimulationConfig): string {
+/**
+ * 64-bit hex digest of the canonical config serialization.
+ *
+ * This covers the authoritative SimulationConfig only. Host/runtime values
+ * (render cadence, worker slice budget, autosave cadence) live in
+ * HostRuntimeConfig precisely so they cannot enter this digest and therefore
+ * cannot change a world's authoritative state hash.
+ */
+export function hashConfig(config: DeepReadonly<SimulationConfig>): string {
   return new StateHash().string(canonicalJsonStringify(config)).digest();
 }

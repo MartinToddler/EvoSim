@@ -97,8 +97,22 @@ pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,1000
 pnpm --filter @eon/web dev   # run the web shell locally
 ```
 
-Current status: Milestones 0–1 complete (workspace + determinism skeleton). The golden
-deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
-regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a
-`CHANGELOG.md` entry (see `CLAUDE.md`). Implementation-level decisions for these milestones
-are recorded in `docs/adr/0001-milestone-0-1-implementation-decisions.md`.
+Current status: Milestones 0–1 complete (workspace + determinism skeleton), hardened after
+review. Milestone 2 has not started.
+
+Two configurations, deliberately separated (ADR 0002 §4):
+
+- `SimulationConfig` (`@eon/engine`) — authoritative constants only. It is hashed into the
+  world state hash, so anything in it defines world identity.
+- `HostRuntimeConfig` (`@eon/protocol`) — wall-clock pacing, render and autosave cadence, LOD
+  budget, the simulated-year display divisor. The pure engine never receives it, so changing a
+  render rate cannot change a world hash.
+
+The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
+regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
+entry (see `CLAUDE.md`). Current versions: engine 0.1.1, protocol 1, snapshot schema 2, config
+schema 2. Design decisions are recorded in `docs/adr/`:
+
+- `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
+- `0002-milestone-1-hardening.md` — state encapsulation, config immutability, the
+  authoritative/host config split and 64-bit-safe ticks.

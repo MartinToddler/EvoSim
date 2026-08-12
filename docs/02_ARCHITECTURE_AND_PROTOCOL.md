@@ -342,7 +342,18 @@ interface SimulationConfig {
 
 Pure serializable data only.
 
+> **Amended by ADR 0002 §4 (engine 0.1.1).** The section list above is unchanged, but
+> `SimulationConfig` now contains *authoritative* constants only — everything the world hash should
+> depend on, and nothing else. Values that shape hosting rather than simulation (wall-clock pacing,
+> render cadence, autosave cadence, LOD budget, the simulated-year display divisor) live in
+> `HostRuntimeConfig` in `@eon/protocol`, which the pure engine never receives.
+
 ## 18. Versioning
+
+> **Current values (ADR 0002, see `CHANGELOG.md`):** `ENGINE_VERSION = "0.1.1"`,
+> `PROTOCOL_VERSION = 1`, `SNAPSHOT_SCHEMA_VERSION = 2`, `CONFIG_SCHEMA_VERSION = 2`, plus a fifth,
+> non-authoritative `HOST_RUNTIME_CONFIG_SCHEMA_VERSION = 1` in `@eon/protocol` — which exists so
+> hosting settings can evolve without touching any world hash. The block below is the v0.1 baseline.
 
 ```ts
 ENGINE_VERSION = "0.1.0"

@@ -35,6 +35,15 @@ const TRIG_SCALE = 32767;
 
 ## 3. TimeConfig
 
+> **Amended by `docs/adr/0002-milestone-1-hardening.md` §4 (engine 0.1.1).** `SimulationConfig.time`
+> keeps only the four authoritative phase cadences (`environmentInterval`, `carcassDecayInterval`,
+> `statisticsInterval`, `speciesAnalysisInterval`). The wall-clock values below —
+> `targetTicksPerSecond1x`, `normalRenderSnapshotsPerSecond`, `maxModeRenderSnapshotsPerSecond`,
+> `maxWorkerSliceMs` — plus `autosaveCheckInterval` and `ticksPerSimYear` now live in
+> `HostRuntimeConfig` (`@eon/protocol`). This implements the sentence directly below this block:
+> because the authoritative config is hashed into the world state hash, leaving hosting values in
+> it made a render-rate change alter world identity. The values themselves are unchanged.
+
 ```ts
 {
   targetTicksPerSecond1x: 20,
@@ -53,6 +62,11 @@ const TRIG_SCALE = 32767;
 Wall-clock values affect hosting/render frequency only. They never enter authoritative calculations.
 
 ## 4. Limits
+
+> **Amended by ADR 0002 §4 (engine 0.1.1).** `maxDetailedRenderedOrganisms` is a screen-space LOD
+> budget and moved to `HostRuntimeConfig`. `maxOrganisms`, `maxCarcasses`, `recentDeadHistorySize`
+> and `maxTimelineEventsInMemoryBeforeChunk` stay authoritative: caps change outcomes when reached,
+> and the buffer bounds govern engine-owned state.
 
 ```ts
 {
@@ -528,6 +542,11 @@ Store exact encoded founder genome/400 weights in test fixture or deterministic 
 Changing founder values changes evolutionary history and therefore requires engine/config version consideration.
 
 ## 22. Species defaults
+
+> **Amended by ADR 0002 §4 (engine 0.1.1).** `analysisIntervalTicks` was removed: it duplicated
+> `time.speciesAnalysisInterval` (same value, same meaning), and two independently settable fields
+> that must always agree are a determinism hazard. `SimulationConfig.time` is the single source of
+> truth for every phase cadence.
 
 ```ts
 {

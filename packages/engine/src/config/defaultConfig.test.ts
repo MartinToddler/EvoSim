@@ -26,15 +26,33 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.world.sizeLU).toBe(4096);
     expect(DEFAULT_CONFIG.world.envGridSize).toBe(256);
     expect(DEFAULT_CONFIG.world.initialOrganisms).toBe(256);
-    expect(DEFAULT_CONFIG.time.targetTicksPerSecond1x).toBe(20);
-    expect(DEFAULT_CONFIG.time.ticksPerSimYear).toBe(2000);
+    expect(DEFAULT_CONFIG.time.environmentInterval).toBe(20);
+    expect(DEFAULT_CONFIG.time.statisticsInterval).toBe(100);
+    expect(DEFAULT_CONFIG.time.speciesAnalysisInterval).toBe(400);
     expect(DEFAULT_CONFIG.limits.maxOrganisms).toBe(8192);
     expect(DEFAULT_CONFIG.limits.maxCarcasses).toBe(4096);
     expect(DEFAULT_CONFIG.brain.weightCount).toBe(400);
   });
 
+  it("contains no wall-clock or presentation values", () => {
+    // Host pacing/render/autosave/display values live in HostRuntimeConfig
+    // (@eon/protocol) so they can never enter the authoritative config hash.
+    const serialized = JSON.stringify(DEFAULT_CONFIG);
+    for (const hostField of [
+      "targetTicksPerSecond1x",
+      "ticksPerSimYear",
+      "autosaveCheckInterval",
+      "normalRenderSnapshotsPerSecond",
+      "maxModeRenderSnapshotsPerSecond",
+      "maxWorkerSliceMs",
+      "maxDetailedRenderedOrganisms",
+    ]) {
+      expect(serialized).not.toContain(hostField);
+    }
+  });
+
   it("matches the golden config hash (config drift is a versioned decision)", () => {
-    expect(hashConfig(DEFAULT_CONFIG)).toBe("d7dd740dc2d12ffd");
+    expect(hashConfig(DEFAULT_CONFIG)).toBe("7e22e73bbb296843");
   });
 });
 

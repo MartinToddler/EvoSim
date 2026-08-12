@@ -75,6 +75,24 @@ export class StateHash {
     return this;
   }
 
+  /**
+   * Feed a non-negative JS safe integer as TWO words: low 32 bits first, then
+   * the high bits. Use this for any quantity that can exceed 32 bits — most
+   * importantly the tick counter, whose uint32 truncation would silently alias
+   * states 2^32 ticks apart. Both words are exact for every value in
+   * [0, Number.MAX_SAFE_INTEGER], and the (low, high) pair is injective.
+   */
+  safeInteger(value: number): this {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new RangeError(
+        `StateHash.safeInteger requires a non-negative safe integer, got ${value}`,
+      );
+    }
+    this.word(value >>> 0);
+    this.word(Math.floor(value / 4294967296));
+    return this;
+  }
+
   /** Feed a typed/plain integer array with tag + length prefix. */
   array(tag: (typeof HASH_TAG)[keyof typeof HASH_TAG], values: ArrayLike<number>): this {
     this.word(tag);

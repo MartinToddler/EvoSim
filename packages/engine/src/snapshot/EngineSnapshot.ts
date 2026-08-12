@@ -13,6 +13,8 @@ import type { Xoshiro128State } from "../random/Xoshiro128";
  * This is the abstract in-memory serialization primitive (plain JSON-safe
  * data). The durable binary container with header magic and payload checksum
  * (docs/06 §21) belongs to the persistence milestone (K03).
+ *
+ * `tick` is a JS safe integer, not a uint32 (see hashState.ts).
  */
 export interface EngineCoreSnapshot {
   schemaVersion: number;
@@ -21,4 +23,18 @@ export interface EngineCoreSnapshot {
   tick: number;
   rngState: Xoshiro128State;
   config: SimulationConfig;
+}
+
+/**
+ * Error thrown when a snapshot cannot be safely restored.
+ *
+ * Lives here rather than in deserialize.ts so that the single validated
+ * restore path (SimulationEngine.fromSnapshot) can raise it without importing
+ * a module that imports the engine back.
+ */
+export class SnapshotCompatibilityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SnapshotCompatibilityError";
+  }
 }

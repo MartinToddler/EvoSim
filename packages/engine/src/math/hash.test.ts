@@ -50,3 +50,46 @@ describe("StateHash", () => {
     expect(hashWords([123456789])).toMatch(/^[0-9a-f]{16}$/);
   });
 });
+
+describe("StateHash.safeInteger (64-bit safe values)", () => {
+  it("distinguishes values that alias under uint32 truncation", () => {
+    const a = new StateHash().safeInteger(0).digest();
+    const b = new StateHash().safeInteger(2 ** 32).digest();
+    const c = new StateHash().safeInteger(2 ** 33).digest();
+    expect(a).not.toBe(b);
+    expect(b).not.toBe(c);
+    // The plain word() path is exactly the aliasing this method exists to avoid.
+    expect(hashWords([0])).toBe(hashWords([2 ** 32]));
+  });
+
+  it("is injective across a wide sample of the safe-integer range", () => {
+    const samples = [
+      0,
+      1,
+      2,
+      2 ** 31 - 1,
+      2 ** 31,
+      2 ** 32 - 1,
+      2 ** 32,
+      2 ** 32 + 1,
+      2 ** 40 + 12345,
+      2 ** 53 - 2,
+      Number.MAX_SAFE_INTEGER,
+    ];
+    const digests = samples.map((v) => new StateHash().safeInteger(v).digest());
+    expect(new Set(digests).size).toBe(samples.length);
+  });
+
+  it("emits exactly two words in low, high order", () => {
+    const viaSafeInteger = new StateHash().safeInteger(2 ** 32 + 7).digest();
+    const viaWords = hashWords([7, 1]); // low = 7, high = 1
+    expect(viaSafeInteger).toBe(viaWords);
+  });
+
+  it("rejects negative, fractional and unsafe values", () => {
+    expect(() => new StateHash().safeInteger(-1)).toThrowError(RangeError);
+    expect(() => new StateHash().safeInteger(1.5)).toThrowError(RangeError);
+    expect(() => new StateHash().safeInteger(2 ** 53)).toThrowError(RangeError);
+    expect(() => new StateHash().safeInteger(Number.NaN)).toThrowError(RangeError);
+  });
+});

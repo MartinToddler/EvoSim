@@ -3,7 +3,7 @@ import { SimulationEngine } from "./SimulationEngine";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import { hashConfig } from "./config/hashConfig";
 import goldenFixture from "./fixtures/goldenStateHashes.json";
-import { ENGINE_VERSION } from "./version";
+import { CONFIG_SCHEMA_VERSION, ENGINE_VERSION } from "./version";
 
 /**
  * Mandatory deterministic fixture (task B08; CLAUDE.md, docs/07 §3):
@@ -19,8 +19,9 @@ import { ENGINE_VERSION } from "./version";
  * NEVER alter these hashes.
  */
 describe("golden deterministic fixture", () => {
-  it("fixture belongs to the current engine version", () => {
+  it("fixture belongs to the current engine and config schema version", () => {
     expect(goldenFixture.engineVersion).toBe(ENGINE_VERSION);
+    expect(goldenFixture.configSchemaVersion).toBe(CONFIG_SCHEMA_VERSION);
   });
 
   it("fixture command log is empty in Milestone 1", () => {

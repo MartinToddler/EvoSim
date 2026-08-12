@@ -33,13 +33,45 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+const DECIMAL_PATTERN = /^-?\d+$/;
+const HEX_PATTERN = /^0[xX][0-9a-fA-F]+$/;
+
+/**
+ * Strictly parse a CLI integer.
+ *
+ * `Number.parseInt` is deliberately NOT trusted on its own: it accepts trailing
+ * garbage ("100abc" -> 100) and silently truncates ("1.5" -> 1). This CLI feeds
+ * golden fixtures, benchmarks and sweeps, so malformed input must fail loudly
+ * rather than quietly run a different experiment than the operator asked for.
+ */
 function parseIntStrict(raw: string, name: string): number {
-  const value =
-    raw.startsWith("0x") || raw.startsWith("0X")
-      ? Number.parseInt(raw, 16)
-      : Number.parseInt(raw, 10);
-  if (!Number.isFinite(value) || Number.isNaN(value)) {
-    fail(`invalid ${name}: ${raw}`);
+  const isHex = HEX_PATTERN.test(raw);
+  if (!isHex && !DECIMAL_PATTERN.test(raw)) {
+    fail(`invalid ${name}: ${JSON.stringify(raw)} is not an integer (use 123 or 0x7B)`);
+  }
+  const value = isHex ? Number.parseInt(raw.slice(2), 16) : Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(value)) {
+    fail(`invalid ${name}: ${raw} is outside the safe integer range`);
+  }
+  return value;
+}
+
+/**
+ * Practical ceiling for a single headless run.
+ *
+ * The engine allows ticks up to MAX_TICK (2^53-1), but a run of that length
+ * would never finish; a CLI that silently spins forever on a typo is worse than
+ * one that refuses. Ten billion ticks is far beyond any real fixture or soak
+ * run (docs/07 §6 asks for 1M) while still catching fat-finger input.
+ */
+const MAX_CLI_TICKS = 10_000_000_000;
+
+function checkTickBound(value: number, name: string): number {
+  if (value < 0) {
+    fail(`${name} must be >= 0, got ${value}`);
+  }
+  if (value > MAX_CLI_TICKS) {
+    fail(`${name} must not exceed ${MAX_CLI_TICKS} for a single run, got ${value}`);
   }
   return value;
 }
@@ -52,25 +84,27 @@ function parseArgs(argv: string[]): CliOptions {
       case "--seed": {
         const raw = argv[++i];
         if (raw === undefined) fail("--seed requires a value");
-        options.seed = parseIntStrict(raw, "seed") >>> 0;
+        const seed = parseIntStrict(raw, "seed");
+        // The engine coerces seeds with >>> 0; rejecting out-of-range values
+        // here keeps "the seed I typed" and "the seed that ran" identical.
+        if (seed < 0 || seed > 0xffffffff) {
+          fail(`--seed must be a uint32 in [0, 4294967295], got ${seed}`);
+        }
+        options.seed = seed;
         break;
       }
       case "--ticks": {
         const raw = argv[++i];
         if (raw === undefined) fail("--ticks requires a value");
-        const ticks = parseIntStrict(raw, "ticks");
-        if (ticks < 0) fail("--ticks must be >= 0");
-        options.ticks = ticks;
+        options.ticks = checkTickBound(parseIntStrict(raw, "ticks"), "--ticks");
         break;
       }
       case "--checkpoints": {
         const raw = argv[++i];
         if (raw === undefined) fail("--checkpoints requires a comma-separated list");
-        options.checkpoints = raw.split(",").map((part) => {
-          const tick = parseIntStrict(part.trim(), "checkpoint");
-          if (tick < 0) fail(`checkpoint must be >= 0: ${part}`);
-          return tick;
-        });
+        options.checkpoints = raw
+          .split(",")
+          .map((part) => checkTickBound(parseIntStrict(part.trim(), "checkpoint"), "checkpoint"));
         break;
       }
       case "--help":
