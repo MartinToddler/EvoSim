@@ -2,6 +2,7 @@ import type { SimulationEngine } from "@eon/engine";
 import {
   DEBUG_BIOME_NAMES,
   ENVIRONMENT_DEBUG_LAYERS,
+  type EnvironmentDebugFields,
   type EnvironmentDebugLayerId,
   Q_SCALE,
   debugBiomeName,
@@ -10,7 +11,7 @@ import {
   formatCentiC,
   formatQ,
 } from "@eon/renderer";
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { EnvironmentFieldCanvas } from "./EnvironmentFieldCanvas";
 import {
   type DebugWorldModel,
@@ -36,6 +37,12 @@ import "./devView.css";
  * every value on screen comes from {@link DebugWorldModel}, which is rebuilt
  * explicitly. Camera state lives inside the canvas component, and no biology,
  * classification or growth rule exists in this file.
+ *
+ * The hovered cell is the one value here that a pointer can change many times a
+ * second, and it is needed by exactly one small panel. Everything that does not
+ * depend on it — the map, the legend and the world read-out — is a memoized child
+ * keyed on the world, so a hover re-renders a dozen table rows rather than the
+ * whole tool.
  *
  * The first world is generated in the `useState` initializer rather than in an
  * effect. World generation is a pure function of (seed, config) — the project's
@@ -250,6 +257,7 @@ export function EnvironmentDebugView() {
             <EnvironmentFieldCanvas
               fields={world.model.fields}
               layer={layer}
+              worldKey={world.model.worldKey}
               markerGridX={world.model.founderRegion.centerGridX}
               markerGridY={world.model.founderRegion.centerGridY}
               markerRadiusCells={world.model.founderRadiusCells}
@@ -257,14 +265,7 @@ export function EnvironmentDebugView() {
               onHoverCellChange={handleHover}
             />
 
-            <div className="eon-debug__legend" aria-label="Legend">
-              {describeLayerLegend(world.model.fields, layer).map((entry) => (
-                <span key={entry.caption} className="eon-debug__legendEntry">
-                  <i className="eon-debug__swatch" style={{ background: entry.css }} aria-hidden />
-                  {entry.caption}
-                </span>
-              ))}
-            </div>
+            <LayerLegend fields={world.model.fields} layer={layer} />
 
             <p className="eon-debug__hint">
               Drag to pan, wheel to zoom, hover for cell values. The yellow ring marks the founder
@@ -273,140 +274,173 @@ export function EnvironmentDebugView() {
           </section>
 
           <aside className="eon-debug__facts">
-            <h2>World</h2>
-            <dl>
-              <Fact label="Seed">
-                {formatSeedHex(world.model.seed)}{" "}
-                <span className="eon-debug__dim">({world.model.seed})</span>
-              </Fact>
-              <Fact label="Environment hash">
-                <code>{world.model.environmentHash}</code>
-              </Fact>
-              <Fact label="World state hash">
-                <code>{world.model.stateHash}</code>
-              </Fact>
-              <Fact label="Config hash">
-                <code>{world.model.configHash}</code>
-              </Fact>
-              <Fact label="Engine">
-                {world.model.engineVersion}{" "}
-                <span className="eon-debug__dim">
-                  config schema {world.model.configSchemaVersion}
-                </span>
-              </Fact>
-              <Fact label="Tick">{formatCount(world.model.tick)}</Fact>
-              <Fact label="Generation attempt">
-                {world.model.generationAttempt}
-                {world.model.generationAttempt > 0 && (
-                  <span className="eon-debug__dim"> — earlier attempts were rejected</span>
-                )}
-              </Fact>
-              <Fact label="Grid">
-                {world.model.fields.size} × {world.model.fields.size} cells,{" "}
-                {formatCount(world.model.fields.size * world.model.fields.cellSizeLU)} LU across
-              </Fact>
-
-              <Fact label="Land fraction">
-                {formatPercentQ(world.model.summary.landFractionQ)}{" "}
-                <span className="eon-debug__dim">
-                  ({formatQ(world.model.summary.landFractionQ)} Q ·{" "}
-                  {formatCount(world.model.summary.landCells)} land /{" "}
-                  {formatCount(world.model.summary.waterCells)} water cells)
-                </span>
-              </Fact>
-              <Fact label="Mean temperature">
-                {formatCentiC(world.model.summary.meanTemperatureCentiC)}{" "}
-                <span className="eon-debug__dim">
-                  (range {formatCentiC(world.model.summary.minTemperatureCentiC)} …{" "}
-                  {formatCentiC(world.model.summary.maxTemperatureCentiC)})
-                </span>
-              </Fact>
-              <Fact label="Mean fertility">
-                {formatQ(world.model.summary.meanFertilityQ)}{" "}
-                <span className="eon-debug__dim">
-                  ({formatPercentQ(world.model.summary.meanFertilityQ)} of maximum)
-                </span>
-              </Fact>
-              <Fact label="Mean moisture">{formatQ(world.model.summary.meanMoistureQ)}</Fact>
-              <Fact label="Mean elevation">{formatQ(world.model.summary.meanElevationQ)}</Fact>
-
-              <Fact label="Plant capacity">
-                {formatCount(world.model.summary.totalPlantCapacity)} units{" "}
-                <span className="eon-debug__dim">
-                  (max {formatCount(world.model.summary.maxPlantCapacity)} per cell)
-                </span>
-              </Fact>
-              <Fact label="Current biomass">
-                {formatCount(world.model.summary.totalPlantBiomass)} units{" "}
-                <span className="eon-debug__dim">
-                  ({formatPercentQ(world.model.summary.biomassFractionOfCapacityQ)} of capacity)
-                </span>
-              </Fact>
-              <Fact label="Founder region">
-                cell {formatCount(world.model.founderRegion.centerCellIndex)} at (
-                {world.model.founderRegion.centerGridX}, {world.model.founderRegion.centerGridY}){" "}
-                <span className="eon-debug__dim">
-                  in a {formatCount(world.model.founderRegion.componentCells)}-cell landmass
-                </span>
-              </Fact>
-            </dl>
-
-            <h2>Biomes</h2>
-            <table className="eon-debug__table">
-              <thead>
-                <tr>
-                  <th scope="col">Biome</th>
-                  <th scope="col">Cells</th>
-                  <th scope="col">Share</th>
-                </tr>
-              </thead>
-              <tbody>
-                {world.model.summary.biomeCellCounts.map((cells, biome) => (
-                  <tr key={DEBUG_BIOME_NAMES[biome] ?? biome}>
-                    <th scope="row">{debugBiomeName(biome)}</th>
-                    <td>{formatCount(cells)}</td>
-                    <td>{((cells / world.model.summary.cellCount) * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <WorldFacts model={world.model} />
 
             <h2>Hovered cell</h2>
             {hoveredCell === null ? (
               <p className="eon-debug__dim">Point at the map.</p>
             ) : (
-              <dl>
-                <Fact label="Cell">
-                  {formatCount(hoveredCell)} at ({hoveredCell % world.model.fields.size},{" "}
-                  {Math.floor(hoveredCell / world.model.fields.size)})
-                </Fact>
-                <Fact label="Biome">
-                  {debugBiomeName(world.model.fields.biome[hoveredCell] as number)}
-                </Fact>
-                <Fact label="Elevation">
-                  {formatCellValue(world.model.fields, "elevation", hoveredCell)}
-                </Fact>
-                <Fact label="Temperature">
-                  {formatCellValue(world.model.fields, "temperature", hoveredCell)}
-                </Fact>
-                <Fact label="Moisture">
-                  {formatCellValue(world.model.fields, "moisture", hoveredCell)}
-                </Fact>
-                <Fact label="Fertility">
-                  {formatCellValue(world.model.fields, "fertility", hoveredCell)}
-                </Fact>
-                <Fact label="Plant capacity">
-                  {formatCellValue(world.model.fields, "plantCapacity", hoveredCell)}
-                </Fact>
-                <Fact label="Current biomass">
-                  {formatCellValue(world.model.fields, "plantBiomass", hoveredCell)}
-                </Fact>
-              </dl>
+              <HoveredCellFacts fields={world.model.fields} cellIndex={hoveredCell} />
             )}
           </aside>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Layer legend. Memoized because `describeLayerLegend` rebuilds its entries on
+ * every call and neither of its inputs depends on the pointer.
+ */
+const LayerLegend = memo(function LayerLegend({
+  fields,
+  layer,
+}: {
+  fields: EnvironmentDebugFields;
+  layer: EnvironmentDebugLayerId;
+}) {
+  return (
+    <div className="eon-debug__legend" aria-label="Legend">
+      {describeLayerLegend(fields, layer).map((entry) => (
+        <span key={entry.caption} className="eon-debug__legendEntry">
+          <i className="eon-debug__swatch" style={{ background: entry.css }} aria-hidden />
+          {entry.caption}
+        </span>
+      ))}
+    </div>
+  );
+});
+
+/**
+ * World read-out and biome distribution.
+ *
+ * Memoized on the immutable {@link DebugWorldModel}: these forty-odd DOM nodes
+ * describe the world, not the pointer, so they must not be rebuilt every time the
+ * hovered cell changes.
+ */
+const WorldFacts = memo(function WorldFacts({ model }: { model: DebugWorldModel }) {
+  return (
+    <>
+      <h2>World</h2>
+      <dl>
+        <Fact label="Seed">
+          {formatSeedHex(model.seed)} <span className="eon-debug__dim">({model.seed})</span>
+        </Fact>
+        <Fact label="Environment hash">
+          <code>{model.environmentHash}</code>
+        </Fact>
+        <Fact label="World state hash">
+          <code>{model.stateHash}</code>
+        </Fact>
+        <Fact label="Config hash">
+          <code>{model.configHash}</code>
+        </Fact>
+        <Fact label="Engine">
+          {model.engineVersion}{" "}
+          <span className="eon-debug__dim">config schema {model.configSchemaVersion}</span>
+        </Fact>
+        <Fact label="Tick">{formatCount(model.tick)}</Fact>
+        <Fact label="Generation attempt">
+          {model.generationAttempt}
+          {model.generationAttempt > 0 && (
+            <span className="eon-debug__dim"> — earlier attempts were rejected</span>
+          )}
+        </Fact>
+        <Fact label="Grid">
+          {model.fields.size} × {model.fields.size} cells,{" "}
+          {formatCount(model.fields.size * model.fields.cellSizeLU)} LU across
+        </Fact>
+
+        <Fact label="Land fraction">
+          {formatPercentQ(model.summary.landFractionQ)}{" "}
+          <span className="eon-debug__dim">
+            ({formatQ(model.summary.landFractionQ)} Q · {formatCount(model.summary.landCells)} land
+            / {formatCount(model.summary.waterCells)} water cells)
+          </span>
+        </Fact>
+        <Fact label="Mean temperature">
+          {formatCentiC(model.summary.meanTemperatureCentiC)}{" "}
+          <span className="eon-debug__dim">
+            (range {formatCentiC(model.summary.minTemperatureCentiC)} …{" "}
+            {formatCentiC(model.summary.maxTemperatureCentiC)})
+          </span>
+        </Fact>
+        <Fact label="Mean fertility">
+          {formatQ(model.summary.meanFertilityQ)}{" "}
+          <span className="eon-debug__dim">
+            ({formatPercentQ(model.summary.meanFertilityQ)} of maximum)
+          </span>
+        </Fact>
+        <Fact label="Mean moisture">{formatQ(model.summary.meanMoistureQ)}</Fact>
+        <Fact label="Mean elevation">{formatQ(model.summary.meanElevationQ)}</Fact>
+
+        <Fact label="Plant capacity">
+          {formatCount(model.summary.totalPlantCapacity)} units{" "}
+          <span className="eon-debug__dim">
+            (max {formatCount(model.summary.maxPlantCapacity)} per cell)
+          </span>
+        </Fact>
+        <Fact label="Current biomass">
+          {formatCount(model.summary.totalPlantBiomass)} units{" "}
+          <span className="eon-debug__dim">
+            ({formatPercentQ(model.summary.biomassFractionOfCapacityQ)} of capacity)
+          </span>
+        </Fact>
+        <Fact label="Founder region">
+          cell {formatCount(model.founderRegion.centerCellIndex)} at (
+          {model.founderRegion.centerGridX}, {model.founderRegion.centerGridY}){" "}
+          <span className="eon-debug__dim">
+            in a {formatCount(model.founderRegion.componentCells)}-cell landmass
+          </span>
+        </Fact>
+      </dl>
+
+      <h2>Biomes</h2>
+      <table className="eon-debug__table">
+        <thead>
+          <tr>
+            <th scope="col">Biome</th>
+            <th scope="col">Cells</th>
+            <th scope="col">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {model.summary.biomeCellCounts.map((cells, biome) => (
+            <tr key={DEBUG_BIOME_NAMES[biome] ?? biome}>
+              <th scope="row">{debugBiomeName(biome)}</th>
+              <td>{formatCount(cells)}</td>
+              <td>{((cells / model.summary.cellCount) * 100).toFixed(1)}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+});
+
+/** The one panel that legitimately follows the pointer. */
+function HoveredCellFacts({
+  fields,
+  cellIndex,
+}: {
+  fields: EnvironmentDebugFields;
+  cellIndex: number;
+}) {
+  return (
+    <dl>
+      <Fact label="Cell">
+        {formatCount(cellIndex)} at ({cellIndex % fields.size},{" "}
+        {Math.floor(cellIndex / fields.size)})
+      </Fact>
+      <Fact label="Biome">{debugBiomeName(fields.biome[cellIndex] as number)}</Fact>
+      <Fact label="Elevation">{formatCellValue(fields, "elevation", cellIndex)}</Fact>
+      <Fact label="Temperature">{formatCellValue(fields, "temperature", cellIndex)}</Fact>
+      <Fact label="Moisture">{formatCellValue(fields, "moisture", cellIndex)}</Fact>
+      <Fact label="Fertility">{formatCellValue(fields, "fertility", cellIndex)}</Fact>
+      <Fact label="Plant capacity">{formatCellValue(fields, "plantCapacity", cellIndex)}</Fact>
+      <Fact label="Current biomass">{formatCellValue(fields, "plantBiomass", cellIndex)}</Fact>
+    </dl>
   );
 }
 

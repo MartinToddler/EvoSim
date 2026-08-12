@@ -97,6 +97,42 @@ describe("advanceDebugWorld", () => {
   });
 });
 
+describe("worldKey", () => {
+  // The camera recenters on this value. If it moved with the tick, advancing time
+  // would throw away the region the user was inspecting; if it did not change
+  // between seeds, a new planet would inherit the last planet's pan and zoom.
+  it("survives advancing the world, because the map is the same map", () => {
+    const engine = requireEngine(FIXTURE_SEED);
+    const before = readDebugWorldModel(engine);
+    const after = advanceDebugWorld(engine, DEFAULT_CONFIG.time.environmentInterval * 5);
+    expect(after.ok).toBe(true);
+    if (after.ok) {
+      expect(after.value.worldKey).toBe(before.worldKey);
+      // ...even though the fields really were re-read.
+      expect(after.value.environmentHash).not.toBe(before.environmentHash);
+      expect(after.value.fields).not.toBe(before.fields);
+    }
+  });
+
+  it("differs between seeds", () => {
+    expect(readDebugWorldModel(requireEngine(FIXTURE_SEED + 1)).worldKey).not.toBe(
+      readDebugWorldModel(requireEngine(FIXTURE_SEED)).worldKey,
+    );
+  });
+
+  it("is identical for two engines built from the same seed", () => {
+    expect(readDebugWorldModel(requireEngine(FIXTURE_SEED)).worldKey).toBe(
+      readDebugWorldModel(requireEngine(FIXTURE_SEED)).worldKey,
+    );
+  });
+
+  it("records the generation attempt, so a retried world is not confused with a direct one", () => {
+    const retried = readDebugWorldModel(requireEngine(0x0000002a));
+    expect(retried.generationAttempt).toBeGreaterThan(0);
+    expect(retried.worldKey).toContain(`:${retried.generationAttempt}:`);
+  });
+});
+
 describe("readDebugWorldModel", () => {
   it("reads a fresh model from an engine that was advanced elsewhere", () => {
     const engine = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });

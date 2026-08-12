@@ -5,7 +5,19 @@ import {
   createDebugPixelBuffer,
   paintEnvironmentLayer,
 } from "@eon/renderer";
-import { useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
+import {
+  DEBUG_CANVAS_PIXELS,
+  type DebugCamera,
+  type DebugViewport,
+  GRIDLINE_MIN_ZOOM,
+  cellIndexAt,
+  centeredCamera,
+  debugViewport,
+  panCamera,
+  visibleCellRange,
+  zoomCameraAt,
+} from "./debugCamera";
 
 /**
  * Canvas 2D projection of one environment layer, with pan, zoom and a hover probe.
@@ -13,75 +25,49 @@ import { useCallback, useEffect, useRef } from "react";
  * This is a development tool, not the Milestone 6 renderer. It is deliberately
  * Canvas 2D and deliberately imperative:
  *
- * - the pixels come from `@eon/renderer`'s pure painter, so the only thing this
- *   file adds is blitting, camera arithmetic and pointer handling;
+ * - the pixels come from `@eon/renderer`'s pure painter and the camera maths from
+ *   `debugCamera.ts`, so the only thing this file adds is blitting, canvas
+ *   overlays and pointer plumbing;
  * - camera state lives in a ref and the canvas is redrawn imperatively, so
  *   dragging never re-renders React (CLAUDE.md React boundary: high-frequency
  *   view state does not belong in React state);
  * - the hovered cell is reported upward only when it actually changes, which is a
- *   selection event, not a stream.
+ *   selection event, not a stream;
+ * - the component is memoized, so a hover reported upward cannot bounce back down
+ *   as a re-render of the map.
  *
  * No simulation decision is made here, and no field value is computed here.
  */
 
-/** Backing-store resolution. CSS scales the element; nearest-neighbour keeps cells crisp. */
-const CANVAS_PIXELS = 768;
-/** Multiplicative zoom per wheel notch. */
-const ZOOM_STEP = 1.2;
-/** Zoom limits as multiples of the fit-to-canvas zoom. */
-const MIN_ZOOM_FACTOR = 0.5;
-const MAX_ZOOM_FACTOR = 12;
-/** Draw cell gridlines once a cell is at least this many device pixels across. */
-const GRIDLINE_MIN_ZOOM = 8;
-/** Fraction of the canvas that must keep showing the map while panning. */
-const MIN_VISIBLE_FRACTION = 0.25;
-
-interface Camera {
-  /** Device pixels per environment cell. */
-  zoom: number;
-  /** Canvas-space position of the grid's top-left corner. */
-  panX: number;
-  panY: number;
-}
+/** Bytes per pixel in the painter's RGBA output. */
+const RGBA_STRIDE = 4;
 
 export interface EnvironmentFieldCanvasProps {
   readonly fields: EnvironmentDebugFields;
   readonly layer: EnvironmentDebugLayerId;
+  /**
+   * Identity of the map being shown (`DebugWorldModel.worldKey`).
+   *
+   * The camera recenters when this changes — a different planet has no continuity
+   * with the last view. It must NOT be derived from the tick: advancing time
+   * re-reads the same world into new arrays, and resetting the camera for that
+   * would throw away the region the user was inspecting.
+   */
+  readonly worldKey: string;
   /** Founder region marker, in grid cells. */
   readonly markerGridX: number;
   readonly markerGridY: number;
   readonly markerRadiusCells: number;
-  /** Any change to this value recenters the camera; a new world does so anyway. */
+  /** Any change to this value recenters the camera on request. */
   readonly recenterToken: number;
   /** Called with the hovered cell index, or null when the pointer leaves the grid. */
   readonly onHoverCellChange: (cellIndex: number | null) => void;
 }
 
-function fitZoom(size: number): number {
-  return CANVAS_PIXELS / size;
-}
-
-function clampCamera(camera: Camera, size: number): void {
-  const fit = fitZoom(size);
-  camera.zoom = Math.min(Math.max(camera.zoom, fit * MIN_ZOOM_FACTOR), fit * MAX_ZOOM_FACTOR);
-
-  const mapPixels = camera.zoom * size;
-  const margin = CANVAS_PIXELS * MIN_VISIBLE_FRACTION;
-  const minPan = margin - mapPixels;
-  const maxPan = CANVAS_PIXELS - margin;
-  camera.panX = Math.min(Math.max(camera.panX, minPan), maxPan);
-  camera.panY = Math.min(Math.max(camera.panY, minPan), maxPan);
-}
-
-function centeredCamera(size: number): Camera {
-  const zoom = fitZoom(size);
-  const offset = (CANVAS_PIXELS - zoom * size) / 2;
-  return { zoom, panX: offset, panY: offset };
-}
-
-export function EnvironmentFieldCanvas({
+function EnvironmentFieldCanvasImpl({
   fields,
   layer,
+  worldKey,
   markerGridX,
   markerGridY,
   markerRadiusCells,
@@ -92,9 +78,13 @@ export function EnvironmentFieldCanvas({
   /** Offscreen canvas holding one texel per environment cell. */
   const sourceRef = useRef<HTMLCanvasElement | null>(null);
   const pixelsRef = useRef<DebugPixelBuffer | null>(null);
-  const cameraRef = useRef<Camera>(centeredCamera(fields.size));
+  const cameraRef = useRef<DebugCamera>(centeredCamera(debugViewport(fields.size)));
   const draggingRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
   const hoveredRef = useRef<number | null>(null);
+  /** Last (world, token) pair the camera was reset for; see the recenter effect. */
+  const recenteredForRef = useRef<string | null>(null);
+
+  const viewport: DebugViewport = debugViewport(fields.size);
 
   /** Blit the offscreen layer image, then the debug overlays, at the current camera. */
   const draw = useCallback(() => {
@@ -114,7 +104,7 @@ export function EnvironmentFieldCanvas({
 
     context.imageSmoothingEnabled = false;
     context.fillStyle = "#0b0d10";
-    context.fillRect(0, 0, CANVAS_PIXELS, CANVAS_PIXELS);
+    context.fillRect(0, 0, DEBUG_CANVAS_PIXELS, DEBUG_CANVAS_PIXELS);
     context.drawImage(source, 0, 0, size, size, camera.panX, camera.panY, mapPixels, mapPixels);
 
     // World bounds, so the edge of the map is visible when zoomed out.
@@ -123,7 +113,7 @@ export function EnvironmentFieldCanvas({
     context.strokeRect(camera.panX + 0.5, camera.panY + 0.5, mapPixels - 1, mapPixels - 1);
 
     if (camera.zoom >= GRIDLINE_MIN_ZOOM) {
-      drawCellGrid(context, camera, size);
+      drawCellGrid(context, camera, debugViewport(size));
     }
     drawFounderMarker(context, camera, markerGridX, markerGridY, markerRadiusCells);
   }, [fields, markerGridX, markerGridY, markerRadiusCells]);
@@ -137,7 +127,8 @@ export function EnvironmentFieldCanvas({
     source.width = fields.size;
     source.height = fields.size;
 
-    if (pixelsRef.current === null || pixelsRef.current.length !== fields.size * fields.size * 4) {
+    const expectedBytes = fields.size * fields.size * RGBA_STRIDE;
+    if (pixelsRef.current === null || pixelsRef.current.length !== expectedBytes) {
       pixelsRef.current = createDebugPixelBuffer(fields);
     }
     const pixels = pixelsRef.current;
@@ -151,13 +142,19 @@ export function EnvironmentFieldCanvas({
     draw();
   }, [fields, layer, draw]);
 
-  // A new world resets the camera; panning a fresh planet from the last view is
-  // disorienting and there is no continuity between two seeds. The token lets the
-  // UI ask for the same reset explicitly.
+  // A different world resets the camera; panning a fresh planet from the last
+  // view is disorienting and there is no continuity between two seeds. Advancing
+  // time is NOT a different world, so the guard compares the map's identity
+  // rather than re-running whenever the field arrays are replaced.
   useEffect(() => {
-    cameraRef.current = centeredCamera(fields.size);
+    const key = `${worldKey}|${recenterToken}`;
+    if (recenteredForRef.current === key) {
+      return;
+    }
+    recenteredForRef.current = key;
+    cameraRef.current = centeredCamera(debugViewport(fields.size));
     draw();
-  }, [fields, recenterToken, draw]);
+  }, [worldKey, recenterToken, fields, draw]);
 
   // Wheel zoom is registered manually because it must be non-passive to
   // preventDefault the page scroll.
@@ -168,17 +165,14 @@ export function EnvironmentFieldCanvas({
     }
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
-      const camera = cameraRef.current;
       const point = canvasPoint(canvas, event.clientX, event.clientY);
-      const cellX = (point.x - camera.panX) / camera.zoom;
-      const cellY = (point.y - camera.panY) / camera.zoom;
-
-      camera.zoom *= event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-      clampCamera(camera, fields.size);
-      // Keep the cell under the pointer under the pointer.
-      camera.panX = point.x - cellX * camera.zoom;
-      camera.panY = point.y - cellY * camera.zoom;
-      clampCamera(camera, fields.size);
+      cameraRef.current = zoomCameraAt(
+        cameraRef.current,
+        debugViewport(fields.size),
+        point.x,
+        point.y,
+        event.deltaY < 0,
+      );
       draw();
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
@@ -216,17 +210,19 @@ export function EnvironmentFieldCanvas({
     const dragging = draggingRef.current;
 
     if (dragging !== null && dragging.pointerId === event.pointerId) {
-      const camera = cameraRef.current;
-      camera.panX += point.x - dragging.lastX;
-      camera.panY += point.y - dragging.lastY;
+      cameraRef.current = panCamera(
+        cameraRef.current,
+        point.x - dragging.lastX,
+        point.y - dragging.lastY,
+        viewport,
+      );
       dragging.lastX = point.x;
       dragging.lastY = point.y;
-      clampCamera(camera, fields.size);
       draw();
       return;
     }
 
-    reportHover(cellIndexAt(cameraRef.current, fields.size, point.x, point.y));
+    reportHover(cellIndexAt(cameraRef.current, viewport, point.x, point.y));
   };
 
   const endDrag = (event: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -241,8 +237,8 @@ export function EnvironmentFieldCanvas({
     <canvas
       ref={canvasRef}
       className="eon-debug-canvas"
-      width={CANVAS_PIXELS}
-      height={CANVAS_PIXELS}
+      width={DEBUG_CANVAS_PIXELS}
+      height={DEBUG_CANVAS_PIXELS}
       role="img"
       aria-label={`Environment ${layer} layer, ${fields.size} by ${fields.size} cells. Numeric values are listed beside the map.`}
       onPointerDown={handlePointerDown}
@@ -256,6 +252,14 @@ export function EnvironmentFieldCanvas({
   );
 }
 
+/**
+ * Memoized: the hovered cell this component reports travels up to the view and
+ * comes back down as a re-render of the whole panel. Every prop here is either a
+ * primitive or an object that changes only when the world does, so the map's
+ * subtree can sit out a hover entirely.
+ */
+export const EnvironmentFieldCanvas = memo(EnvironmentFieldCanvasImpl);
+
 /** Pointer position in canvas backing-store pixels. */
 function canvasPoint(
   canvas: HTMLCanvasElement,
@@ -268,35 +272,27 @@ function canvasPoint(
   return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
 }
 
-/** Cell index under a canvas-space point, or null when outside the grid. */
-function cellIndexAt(camera: Camera, size: number, x: number, y: number): number | null {
-  const gridX = Math.floor((x - camera.panX) / camera.zoom);
-  const gridY = Math.floor((y - camera.panY) / camera.zoom);
-  if (gridX < 0 || gridY < 0 || gridX >= size || gridY >= size) {
-    return null;
-  }
-  return gridY * size + gridX;
-}
-
 /** Environment cell boundaries (docs/06 §18 debug overlay: environment grid). */
-function drawCellGrid(context: CanvasRenderingContext2D, camera: Camera, size: number): void {
-  const firstVisible = Math.max(0, Math.floor(-camera.panX / camera.zoom));
-  const lastVisible = Math.min(size, Math.ceil((CANVAS_PIXELS - camera.panX) / camera.zoom));
-  const firstRow = Math.max(0, Math.floor(-camera.panY / camera.zoom));
-  const lastRow = Math.min(size, Math.ceil((CANVAS_PIXELS - camera.panY) / camera.zoom));
+function drawCellGrid(
+  context: CanvasRenderingContext2D,
+  camera: DebugCamera,
+  viewport: DebugViewport,
+): void {
+  const range = visibleCellRange(camera, viewport);
+  const mapPixels = camera.zoom * viewport.gridSize;
 
   context.strokeStyle = "rgba(0, 0, 0, 0.25)";
   context.lineWidth = 1;
   context.beginPath();
-  for (let gx = firstVisible; gx <= lastVisible; gx += 1) {
+  for (let gx = range.firstColumn; gx <= range.lastColumn; gx += 1) {
     const x = Math.round(camera.panX + gx * camera.zoom) + 0.5;
     context.moveTo(x, camera.panY);
-    context.lineTo(x, camera.panY + camera.zoom * size);
+    context.lineTo(x, camera.panY + mapPixels);
   }
-  for (let gy = firstRow; gy <= lastRow; gy += 1) {
+  for (let gy = range.firstRow; gy <= range.lastRow; gy += 1) {
     const y = Math.round(camera.panY + gy * camera.zoom) + 0.5;
     context.moveTo(camera.panX, y);
-    context.lineTo(camera.panX + camera.zoom * size, y);
+    context.lineTo(camera.panX + mapPixels, y);
   }
   context.stroke();
 }
@@ -304,7 +300,7 @@ function drawCellGrid(context: CanvasRenderingContext2D, camera: Camera, size: n
 /** Founder spawn region (docs/03 §26) — the one annotation this view draws. */
 function drawFounderMarker(
   context: CanvasRenderingContext2D,
-  camera: Camera,
+  camera: DebugCamera,
   gridX: number,
   gridY: number,
   radiusCells: number,

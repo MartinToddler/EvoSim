@@ -184,3 +184,94 @@ invalid-seed path — and the pure transformations are covered by Node tests.
 No organisms. No worker, protocol message or scheduler. No Pixi. No LOD, camera package, selection
 or overlay architecture from Milestone 6. No persistence. No player interventions — the
 `*Offset*` arrays are read and displayed, but nothing writes them.
+
+## 12. Review amendments (M2.5 review gate)
+
+The milestone was reviewed against six questions: does the debug renderer mutate engine state, did
+colour/mapping logic leak into the engine, does React hold authoritative arrays in a way that causes
+needless re-renders, does switching a layer regenerate the world, do the seed and hashes describe the
+state actually on screen, and does any of this force a bad Milestone 6 architecture. Four came back
+clean; two produced fixes. No version constant and no golden hash moved — the review changed
+presentation code and one preset note only.
+
+### 12.1 Verified clean
+
+- **No engine mutation.** `captureEnvironmentDebugFields()` copies every array
+  (`new Uint16Array(...)`) and folds the offsets through the store's own accessors;
+  `hashEnvironment()` is a pure read. Tests assert both leave `tick` and the canonical state hash
+  untouched, and that an old capture does not change when the world is advanced.
+- **No colour logic in the engine.** `grep -niE "colou?r|rgb|pixel|palette|canvas|css"` over
+  `packages/engine/src` returns nothing. The engine's one M2.5 addition is `hashEnvironment()`.
+- **Layer switching does not regenerate anything.** Confirmed in a headless Chromium run: changing
+  the layer repaints the offscreen image from the same captured fields, leaves the world state hash
+  at `f4940fd92ead5981` and leaves the camera where it was.
+- **The read-outs describe the world on screen.** The browser shows state hash
+  `f4940fd92ead5981` and config hash `e47244ab51c06af3` for seed `0xE0A12026`, identical to
+  `pnpm headless`, and the hover probe on cell 16 512 reports Grassland / 0.739 / 2.95 °C / 0.133 /
+  0.239 / 410 / 205 — value for value what the engine holds for that cell.
+
+### 12.2 Fixed: advancing time threw the camera away
+
+`EnvironmentFieldCanvas` recentred whenever its `fields` prop changed identity. That is right for a
+new seed and wrong for `+1 000 ticks`, which re-reads the _same_ map into fresh arrays: zooming into
+a valley and watching it grow was impossible, because every advance snapped back to the whole world.
+
+`DebugWorldModel` now carries `worldKey` — seed, generation attempt and grid size, deliberately not
+the tick — and the camera resets on that or on the explicit recenter token. The behaviour is pinned
+from both sides: unit tests assert the key survives an advance and differs between seeds, and the
+browser check confirms the camera survives `+1 000 ticks`, still recentres on a new seed, and still
+obeys the Recenter button.
+
+### 12.3 Fixed: a hover re-rendered the whole tool
+
+The hovered cell is React state in `EnvironmentDebugView`, so every cell the pointer crossed
+re-rendered the map component, the legend (which rebuilds its entries on each call) and the
+forty-odd rows of world read-out — none of which depend on the pointer. It is not the failure
+docs/10 §23 warns about (no array is copied into state; the model is rebuilt only when the world
+changes), but it is the same waste one level down.
+
+The map, the legend and the world read-out are now memoized children keyed on the world, leaving the
+eight-row hovered-cell panel as the only thing a hover rebuilds. Measured over 200 hovered-cell
+changes, interleaving both builds in one Chromium session: script time 82.8 ms → 65.2 ms median
+(five runs each, worst case 110 → 89). Layout time is unchanged at ≈41 ms — that is the hover panel's
+own DOM updates plus one `getBoundingClientRect()` per pointer move, and it is the cost of the
+feature rather than of the implementation.
+
+### 12.4 Fixed: a preset note described a world it was not showing
+
+The golden-fixture preset claimed "all six biome classes". True only in the sense that three cells
+out of 65 536 are forest — invisible at any zoom. §7 sets the standard that a debug tool must not
+describe a world it is not showing, so the note now says forest survives on a handful of cells and
+the map reads as five classes, and `presetSeeds.test.ts` pins both halves of that claim. The
+no-desert preset's claim gained a test too. The `pnpm headless` sample in `README.md` was also
+missing the `Forest=0.0%` column the CLI actually prints.
+
+### 12.5 Camera arithmetic extracted and tested
+
+The fixes above needed the camera to be inspectable, and it was buried in a component that no Node
+test can reach. `apps/web/src/dev/debugCamera.ts` now holds it as pure functions over a plain
+record — fit zoom, centring, clamping, panning, zoom about a point, cell hit-testing, visible
+gridline range — with 17 tests. `EnvironmentFieldCanvas` is left with blitting, canvas overlays and
+pointer plumbing. This is also the part a Milestone 6 camera would supersede, so it is now separable
+rather than entangled with the tool.
+
+### 12.6 Fixed in the foundation: the headless summary described the wrong tick
+
+Not part of this milestone's diff, but §4 and `README.md` both make `pnpm headless` the ground truth
+the view is checked against, and its `plants` line was printed straight after generation — so
+`--ticks 10000` reported tick-0 biomass (50.0% of capacity) under a `ticks 10000` header. The run's
+own totals are now printed after it (`plants @10000 … 99.3% of capacity`), which is also the first
+time §6's 99.3% claim is checkable from the CLI. No hash and no engine code changed.
+
+### 12.7 Accepted, not fixed
+
+- `apps/web/package.json` still lists `@eon/protocol`, which nothing imports since the old shell
+  screen went away. It returns as a real dependency in Milestone 6 (task G01); removing and
+  re-adding it would be churn.
+- `@eon/renderer`'s package root re-exports the debug surface alongside its own. A `./debug` subpath
+  export would separate them more cleanly; it is worth doing when the package gains a real Pixi API
+  in Milestone 6, not before.
+- `EnvironmentDebugFields` still lives in `@eon/renderer` and is still unversioned (§2). When the
+  terrain overlay becomes a worker message it must move to `@eon/protocol`, or the dependency
+  direction of docs/02 §4 inverts. Recorded here so Milestone 6 does not inherit it by accident.
+- The page has no favicon, so a browser logs one 404 on load. Cosmetic.

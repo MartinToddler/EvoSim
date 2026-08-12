@@ -137,8 +137,6 @@ function printWorldSummary(engine: SimulationEngine): void {
     counts[biome] = (counts[biome] ?? 0) + 1;
   }
 
-  const capacity = totalPlantCapacity(environment);
-  const biomass = totalPlantBiomass(environment);
   const landCells = environment.cellCount - (counts[0] as number);
 
   console.log(
@@ -153,13 +151,27 @@ function printWorldSummary(engine: SimulationEngine): void {
         )
         .join(" "),
   );
-  console.log(
-    `plants     capacity ${(capacity / 1e6).toFixed(1)}M, biomass ${(biomass / 1e6).toFixed(1)}M ` +
-      `(${capacity > 0 ? ((biomass / capacity) * 100).toFixed(1) : "0.0"}% of capacity)`,
-  );
+  printPlantTotals(engine, "plants    ");
   console.log(
     `founders   cell ${founderRegion.centerCellIndex} at (${founderRegion.centerGridX}, ` +
       `${founderRegion.centerGridY}) in a ${founderRegion.componentCells}-cell landmass`,
+  );
+}
+
+/**
+ * Plant capacity and current biomass.
+ *
+ * Printed twice when a run advances the world: the summary above describes the
+ * world as generated, and biomass is the one line in it that a run changes. A
+ * diagnostic that showed tick-0 biomass under a "ticks 10000" header would be
+ * describing a state nobody asked about.
+ */
+function printPlantTotals(engine: SimulationEngine, label: string): void {
+  const capacity = totalPlantCapacity(engine.environment);
+  const biomass = totalPlantBiomass(engine.environment);
+  console.log(
+    `${label} capacity ${(capacity / 1e6).toFixed(1)}M, biomass ${(biomass / 1e6).toFixed(1)}M ` +
+      `(${capacity > 0 ? ((biomass / capacity) * 100).toFixed(1) : "0.0"}% of capacity)`,
   );
 }
 
@@ -204,6 +216,9 @@ function main(): void {
   }
   const elapsedMs = performance.now() - startedAt;
 
+  if (totalTicks > 0) {
+    printPlantTotals(engine, `plants @${totalTicks}`);
+  }
   console.log(`final tick ${engine.tick}`);
   console.log(`final hash ${engine.computeStateHash()}`);
   console.log(`wall time  ${elapsedMs.toFixed(1)} ms (diagnostic only, outside engine)`);

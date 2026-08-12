@@ -25,7 +25,10 @@ export const PRESET_SEEDS: readonly PresetSeed[] = [
   {
     label: "Golden fixture",
     seed: FIXTURE_SEED,
-    note: "The seed every golden state hash is pinned to. All six biome classes, a dry interior.",
+    note:
+      "The seed every golden state hash is pinned to. A dry interior with desert and tundra; " +
+      "forest is technically present but only on a handful of cells, so the map reads as five " +
+      "classes.",
   },
   {
     label: "Forest belt",

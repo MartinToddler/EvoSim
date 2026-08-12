@@ -47,6 +47,10 @@ debug overlay) or any part of the G/H blocks. See
       founder marker, world regeneration.
 - [x] C5-04 transformation tests: synthetic grids plus a generated world; engine-constant drift
       guard.
+- [x] C5-05 review gate: engine purity, React re-render boundary, layer switching, seed/hash
+      correspondence, Milestone 6 architecture risk. Fixed the camera reset on tick advance, the
+      hover re-render of the whole tool and an inaccurate preset note; extracted and tested the
+      camera arithmetic. Findings, evidence and accepted risks in ADR 0004 §12.
 
 ## D Organisms
 - [ ] D01 SoA organism store/free slots.

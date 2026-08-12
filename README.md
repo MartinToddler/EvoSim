@@ -111,18 +111,26 @@ environment hash, world state hash, land fraction, mean temperature and mean fer
 
 It is a debug tool, not the renderer: it makes no simulation decision, runs no worker and contains no
 Pixi. The pure environment → pixel projection lives in `packages/renderer/src/debug/` (no DOM, no
-engine import, covered by Node tests) and the tool itself in `apps/web/src/dev/`, so it can be
-deleted as one directory or reused as the docs/06 §18 debug overlay in Milestone 6. Design notes in
-`docs/adr/0004-milestone-2-5-debug-environment-view.md`.
+engine import, covered by Node tests), the camera arithmetic in `apps/web/src/dev/debugCamera.ts`
+(likewise pure and Node-tested) and the tool itself in `apps/web/src/dev/`, so it can be deleted as
+one directory or reused as the docs/06 §18 debug overlay in Milestone 6. Design notes in
+`docs/adr/0004-milestone-2-5-debug-environment-view.md`, review findings in its §12.
+
+Switching a layer or advancing the world repaints in place: it never regenerates the world and never
+resets your pan and zoom. Loading a different seed does reset them, because two seeds share no
+geography.
 
 The world is real and inspectable headlessly:
 
 ```text
 world      256x256 cells, generation attempt 0
-land       61.2%  biomes Water=38.8% Grassland=48.0% Desert=5.6% Tundra=6.9% Mountain=0.7%
+land       61.2%  biomes Water=38.8% Grassland=48.0% Forest=0.0% Desert=5.6% Tundra=6.9% Mountain=0.7%
 plants     capacity 168.8M, biomass 84.4M (50.0% of capacity)
 founders   cell 40426 at (234, 157) in a 35507-cell landmass
 ```
+
+(The fixture seed really does put forest on only three of its 65 536 cells; the debug view's preset
+note says so.)
 
 Two configurations, deliberately separated (ADR 0002 §4):
 

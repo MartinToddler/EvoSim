@@ -43,6 +43,35 @@ alone. Decisions in `docs/adr/0004-milestone-2-5-debug-environment-view.md`.
   real generated world, and cross-checks that the debug view's duplicated constants still match the
   engine and that observing a world does not perturb its determinism.
 
+### Fixed (M2.5 review gate)
+
+Review of the debug visualizer. Presentation-only: no version constant and no golden hash moved,
+and the engine was not touched. Findings and evidence in
+`docs/adr/0004-milestone-2-5-debug-environment-view.md` §12.
+
+- **Advancing the world no longer resets the camera.** The map recentred whenever its field arrays
+  were replaced, which is right for a new seed and wrong for `+1 000 ticks` — the same map re-read
+  after growth. `DebugWorldModel` now carries a `worldKey` (seed, generation attempt, grid size;
+  deliberately not the tick) and the camera keys off that. Zooming into a valley and watching it
+  grow works.
+- **Hovering the map no longer re-renders the whole tool.** The map, the legend and the world
+  read-out are memoized on the world, so a hovered cell rebuilds the eight-row cell panel instead of
+  the map component, the rebuilt legend and forty rows of read-out. Script time over 200 hovered-cell
+  changes: 82.8 ms → 65.2 ms median, measured with both builds interleaved in one Chromium session.
+- **Camera arithmetic extracted to `apps/web/src/dev/debugCamera.ts`** as pure functions over a
+  plain record — fit/centre/clamp/pan/zoom-about-a-point/hit-test/visible range — so the map's
+  behaviour is testable in Node instead of unreachable inside a component.
+- **The golden-fixture preset no longer claims "all six biome classes".** Forest covers three of
+  65 536 cells there, which is invisible on the map; the note now says so and a test pins it. The
+  no-desert preset's claim is now tested as well, and the `pnpm headless` sample in `README.md`
+  regained the `Forest=0.0%` column the CLI actually prints.
+- **`pnpm headless` no longer reports tick-0 biomass under a `ticks N` header.** Its world summary
+  is printed after generation, so the `plants` line described the world before the run; the run's
+  own plant totals are now printed after it (`plants @10000 … 99.3% of capacity`). This is the
+  output the debug view is cross-checked against, so it has to describe the tick it claims to.
+- 24 new tests — 18 for the extracted camera, 4 for world identity, 2 for the preset claims —
+  bringing the suite to 361.
+
 ## [0.2.0] — 2026-08-12 — Milestone 2: environment
 
 Versions: `ENGINE_VERSION` 0.1.1 → **0.2.0**, `CONFIG_SCHEMA_VERSION` 2 → **3**,

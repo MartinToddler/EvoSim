@@ -31,6 +31,16 @@ import { captureEnvironmentDebugFields } from "./captureEnvironmentDebugFields";
 /** Immutable read-out of one world state, safe to hold in React state. */
 export interface DebugWorldModel {
   readonly seed: number;
+  /**
+   * Identity of the MAP, deliberately independent of the tick.
+   *
+   * Re-reading a world that has been advanced produces a new model with new
+   * field arrays but the same key, because it is the same planet with more grass
+   * on it. Anything that should reset when you look at a *different* world — the
+   * camera, above all — keys off this rather than off the model's identity, so
+   * advancing time does not throw away the view you were looking at.
+   */
+  readonly worldKey: string;
   readonly tick: number;
   readonly engineVersion: string;
   readonly configSchemaVersion: number;
@@ -59,6 +69,10 @@ export function readDebugWorldModel(engine: SimulationEngine): DebugWorldModel {
   const fields = captureEnvironmentDebugFields(engine);
   return {
     seed: engine.seed,
+    // Seed and attempt decide which map was generated; the grid size decides how
+    // a camera has to frame it. Nothing else can change the map's identity while
+    // an engine instance lives, and the tick deliberately does not appear here.
+    worldKey: `${engine.seed}:${engine.generationAttempt}:${fields.size}`,
     tick: engine.tick,
     engineVersion: ENGINE_VERSION,
     configSchemaVersion: CONFIG_SCHEMA_VERSION,
