@@ -1,0 +1,324 @@
+import {
+  PROTOCOL_VERSION,
+  decodeWorkerToMainMessage,
+  type EntityDetailsPayload,
+  type HostRuntimeConfig,
+  type MainToWorkerMessage,
+  type RenderSnapshotPayload,
+  type SimulationSpeed,
+  type StateHashPayload,
+  type TelemetryDto,
+  type VegetationSnapshotPayload,
+  type WorkerErrorDto,
+  type WorkerToMainMessage,
+  type WorldReadyPayload,
+} from "@eon/protocol";
+
+/**
+ * Typed main-thread facade over the simulation Worker (docs/10 §21).
+ *
+ * Two shapes of traffic meet here and are deliberately handled differently:
+ *
+ * - **Requests** (QUERY_ENTITY, QUERY_STATE_HASH) get a `requestId` and return
+ *   a promise. The Worker echoes the ID; this class matches it against a
+ *   pending map and settles exactly one promise.
+ * - **Subscriptions** (WORLD_READY, RENDER_SNAPSHOT, VEGETATION_SNAPSHOT,
+ *   TELEMETRY, ERROR) are callbacks. They arrive unprompted and must never be
+ *   modelled as promises: a stream of 15 snapshots a second through a promise
+ *   API would allocate 15 promises a second and lose every frame but one.
+ *
+ * ## Stale responses are dropped, not mishandled
+ *
+ * The user can select a second organism before the first one's answer arrives.
+ * Both answers come back; only the one still in the pending map settles a
+ * promise, and the other is discarded silently. A response for an unknown
+ * `requestId` is not an error — it is the normal consequence of a UI that moved
+ * on, and treating it as one would produce spurious error toasts on fast
+ * clicking.
+ */
+
+/**
+ * The transport, abstracted so the client can be driven by a real `Worker`, by
+ * a `MessagePort`, or by a fake in a Node test.
+ */
+export interface ClientPort {
+  post(message: MainToWorkerMessage, transfer?: readonly ArrayBuffer[]): void;
+  setListener(listener: (data: unknown) => void): void;
+  close(): void;
+}
+
+export interface WorkerClientHandlers {
+  onWorldReady?: (payload: WorldReadyPayload) => void;
+  onRenderSnapshot?: (payload: RenderSnapshotPayload) => void;
+  onVegetationSnapshot?: (payload: VegetationSnapshotPayload) => void;
+  onTelemetry?: (payload: TelemetryDto) => void;
+  onError?: (payload: WorkerErrorDto) => void;
+  /** Reported when a message could not be decoded — a protocol-level fault. */
+  onProtocolViolation?: (reason: string) => void;
+}
+
+interface PendingRequest {
+  resolve: (value: never) => void;
+  reject: (error: Error) => void;
+  kind: "ENTITY_DETAILS" | "STATE_HASH";
+}
+
+export class WorkerClient {
+  readonly #port: ClientPort;
+  readonly #handlers: WorkerClientHandlers;
+  readonly #pending = new Map<number, PendingRequest>();
+  #nextRequestId = 1;
+  #closed = false;
+
+  constructor(port: ClientPort, handlers: WorkerClientHandlers = {}) {
+    this.#port = port;
+    this.#handlers = handlers;
+    port.setListener((data) => {
+      this.#receive(data);
+    });
+  }
+
+  get pendingRequestCount(): number {
+    return this.#pending.size;
+  }
+
+  get closed(): boolean {
+    return this.#closed;
+  }
+
+  // --- Commands --------------------------------------------------------------
+
+  initNewWorld(options: {
+    seed: number;
+    speed: SimulationSpeed;
+    config?: unknown;
+    hostRuntime?: Partial<HostRuntimeConfig>;
+  }): void {
+    this.#send({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "INIT_NEW_WORLD",
+      payload: {
+        seed: options.seed,
+        config: options.config ?? null,
+        hostRuntime: options.hostRuntime ?? null,
+        speed: options.speed,
+      },
+    });
+  }
+
+  setSpeed(speed: SimulationSpeed): void {
+    this.#send({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "SET_RUN_STATE",
+      payload: { speed },
+    });
+  }
+
+  setRenderStream(enabled: boolean): void {
+    this.#send({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "SET_RENDER_STREAM",
+      payload: { enabled },
+    });
+  }
+
+  /**
+   * Hand a spent render buffer back to the Worker's pool.
+   *
+   * Transferred, not copied: the main thread's view is detached by this call,
+   * which is exactly right — the renderer is finished with it, and a detached
+   * buffer cannot be read from stale code by mistake.
+   */
+  recycleRenderBuffer(buffer: ArrayBuffer): void {
+    if (this.#closed || buffer.byteLength === 0) {
+      return;
+    }
+    this.#send(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        type: "RECYCLE_RENDER_BUFFER",
+        payload: { buffer },
+      },
+      [buffer],
+    );
+  }
+
+  recycleVegetationBuffer(buffer: ArrayBuffer): void {
+    if (this.#closed || buffer.byteLength === 0) {
+      return;
+    }
+    this.#send(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        type: "RECYCLE_VEGETATION_BUFFER",
+        payload: { buffer },
+      },
+      [buffer],
+    );
+  }
+
+  // --- Requests --------------------------------------------------------------
+
+  queryEntity(entityId: number): Promise<EntityDetailsPayload> {
+    return this.#request<EntityDetailsPayload>("ENTITY_DETAILS", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "QUERY_ENTITY",
+      payload: { entityId },
+    }));
+  }
+
+  /**
+   * Ask for the canonical state hash, optionally after running to `targetTick`.
+   *
+   * The determinism acceptance path: the same seed and config run to the same
+   * tick must hash identically whether the ticks happened here or in a headless
+   * Node process.
+   */
+  queryStateHash(targetTick: number | null = null): Promise<StateHashPayload> {
+    return this.#request<StateHashPayload>("STATE_HASH", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "QUERY_STATE_HASH",
+      payload: { targetTick },
+    }));
+  }
+
+  /** Stop the Worker and fail every outstanding request. */
+  dispose(): void {
+    if (this.#closed) {
+      return;
+    }
+    this.#send({ protocolVersion: PROTOCOL_VERSION, type: "DISPOSE", payload: {} });
+    this.#closed = true;
+    this.#rejectAllPending(new Error("worker client disposed"));
+    this.#port.close();
+  }
+
+  // --- Internals -------------------------------------------------------------
+
+  #send(message: MainToWorkerMessage, transfer?: readonly ArrayBuffer[]): void {
+    if (this.#closed) {
+      return;
+    }
+    this.#port.post(message, transfer);
+  }
+
+  #request<T>(
+    kind: PendingRequest["kind"],
+    build: (requestId: number) => MainToWorkerMessage,
+  ): Promise<T> {
+    if (this.#closed) {
+      return Promise.reject(new Error("worker client is closed"));
+    }
+    const requestId = this.#nextRequestId;
+    this.#nextRequestId += 1;
+    return new Promise<T>((resolve, reject) => {
+      this.#pending.set(requestId, {
+        resolve,
+        reject,
+        kind,
+      });
+      this.#port.post(build(requestId));
+    });
+  }
+
+  #receive(data: unknown): void {
+    const decoded = decodeWorkerToMainMessage(data);
+    if (!decoded.ok) {
+      this.#handlers.onProtocolViolation?.(decoded.reason);
+      return;
+    }
+    const message: WorkerToMainMessage = decoded.message;
+
+    if (message.requestId !== undefined) {
+      const pending = this.#pending.get(message.requestId);
+      if (pending === undefined) {
+        // Stale: the caller stopped caring before the answer arrived. Errors
+        // still reach the error handler so a failure is never silent.
+        if (message.type === "ERROR") {
+          this.#handlers.onError?.(message.payload);
+        }
+        return;
+      }
+      this.#pending.delete(message.requestId);
+      if (message.type === "ERROR") {
+        pending.reject(new Error(message.payload.message));
+        this.#handlers.onError?.(message.payload);
+        return;
+      }
+      if (message.type !== pending.kind) {
+        pending.reject(
+          new Error(
+            `expected ${pending.kind} for request ${message.requestId}, got ${message.type}`,
+          ),
+        );
+        return;
+      }
+      pending.resolve(message.payload as never);
+      return;
+    }
+
+    switch (message.type) {
+      case "WORLD_READY":
+        this.#handlers.onWorldReady?.(message.payload);
+        return;
+      case "RENDER_SNAPSHOT":
+        this.#handlers.onRenderSnapshot?.(message.payload);
+        return;
+      case "VEGETATION_SNAPSHOT":
+        this.#handlers.onVegetationSnapshot?.(message.payload);
+        return;
+      case "TELEMETRY":
+        this.#handlers.onTelemetry?.(message.payload);
+        return;
+      case "ERROR":
+        if (message.payload.fatal) {
+          this.#rejectAllPending(new Error(message.payload.message));
+        }
+        this.#handlers.onError?.(message.payload);
+        return;
+      default:
+        // A correlated response that arrived without its requestId. Nothing can
+        // be settled, so report it rather than drop it.
+        this.#handlers.onProtocolViolation?.(`${message.type} arrived without a requestId`);
+    }
+  }
+
+  #rejectAllPending(error: Error): void {
+    for (const pending of this.#pending.values()) {
+      pending.reject(error);
+    }
+    this.#pending.clear();
+  }
+}
+
+/** Adapt a real `Worker` to {@link ClientPort}. */
+export function workerPort(worker: Worker): ClientPort {
+  let listener: ((event: MessageEvent) => void) | null = null;
+  return {
+    post(message, transfer): void {
+      if (transfer !== undefined && transfer.length > 0) {
+        worker.postMessage(message, transfer as ArrayBuffer[]);
+      } else {
+        worker.postMessage(message);
+      }
+    },
+    setListener(next): void {
+      if (listener !== null) {
+        worker.removeEventListener("message", listener);
+      }
+      listener = (event: MessageEvent): void => {
+        next(event.data);
+      };
+      worker.addEventListener("message", listener);
+    },
+    close(): void {
+      if (listener !== null) {
+        worker.removeEventListener("message", listener);
+        listener = null;
+      }
+      worker.terminate();
+    },
+  };
+}

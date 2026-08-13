@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@eon/protocol": "workspace:*",
     "pixi.js": "8.19.0"
   }
 }

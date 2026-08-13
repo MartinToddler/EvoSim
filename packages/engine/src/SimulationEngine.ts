@@ -22,6 +22,7 @@ import { integrateMovement, resolveTerrainAndSoftCollisions } from "./organisms/
 import { captureOrganisms, restoreOrganisms } from "./organisms/organismSnapshot";
 import { PhenotypeStore } from "./organisms/phenotype";
 import { spawnFounderPopulation } from "./organisms/spawn";
+import { TickPhase, type TickProfiler } from "./profiling/TickProfiler";
 import { Xoshiro128, type Xoshiro128State } from "./random/Xoshiro128";
 import { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
 import { SpatialGrid } from "./spatial/SpatialGrid";
@@ -95,6 +96,17 @@ export class SimulationEngine {
   readonly #rng: Xoshiro128;
   readonly #context: EngineContext;
   #tick = 0;
+  /**
+   * Optional phase-boundary sink (CLAUDE.md "Profiling").
+   *
+   * Not `readonly`, and settable after construction, because profiling is
+   * attached by whatever is hosting the engine — which does not exist yet when
+   * the constructor runs. It is mutable state on an otherwise frozen object,
+   * and that is safe for exactly one reason: it can only ever *receive* two
+   * integers. There is no path from a profiler back into authoritative state,
+   * so attaching one cannot change a hash. A test asserts that.
+   */
+  #profiler: TickProfiler | null = null;
 
   constructor(options: SimulationEngineOptions) {
     assert(
@@ -248,6 +260,16 @@ export class SimulationEngine {
   }
 
   /**
+   * Attach or detach a phase profiler; `null` disables profiling.
+   *
+   * The engine never reads a clock (CLAUDE.md forbids it), so it reports where
+   * it is and lets the host decide when that was. See `profiling/TickProfiler`.
+   */
+  setProfiler(profiler: TickProfiler | null): void {
+    this.#profiler = profiler;
+  }
+
+  /**
    * Detached copy of the PRNG state, for hashing, serialization and tests.
    * Mutating the returned tuple cannot affect the engine.
    */
@@ -268,10 +290,15 @@ export class SimulationEngine {
     // milestone; the numbering is fixed so insertions cannot silently reorder
     // existing ones. Reordering is an ENGINE_VERSION event.
     const ctx = this.#context;
+    // Profiling is opt-in and reports boundaries only; see setProfiler.
+    const profiler = this.#profiler;
     //   0 applyCommands                     — Milestone 9
     if (this.#tick % this.config.time.environmentInterval === 0) {
+      profiler?.begin(TickPhase.Environment);
       updateEnvironment(this.environment, this.config); // 1 scheduledEnvironmentUpdate
+      profiler?.end(TickPhase.Environment);
     }
+    profiler?.begin(TickPhase.SpatialRebuild);
     ctx.spatialPre.rebuild(this.organisms); //          2 buildPreMovementSpatialIndex
     ctx.carcassIndex.rebuildFrom(
       this.carcasses.slotHighWater,
@@ -279,24 +306,45 @@ export class SimulationEngine {
       this.carcasses.x,
       this.carcasses.y,
     ); //                                                 2 (carcasses, see EngineContext)
+    profiler?.end(TickPhase.SpatialRebuild);
+    profiler?.begin(TickPhase.Sensing);
     senseAll(ctx, this.#tick); //                       3 sense
+    profiler?.end(TickPhase.Sensing);
+    profiler?.begin(TickPhase.Brain);
     runBrainsAndBuildIntents(ctx); //                   4 runBrainsAndBuildIntents
+    profiler?.end(TickPhase.Brain);
+    profiler?.begin(TickPhase.Movement);
     integrateMovement(ctx); //                          5 integrateMovement
     resolveTerrainAndSoftCollisions(ctx); //            6 resolveTerrainAndSoftCollisions
+    profiler?.end(TickPhase.Movement);
+    profiler?.begin(TickPhase.SpatialRebuild);
     ctx.spatialPost.rebuild(this.organisms); //         7 buildPostMovementSpatialIndex
+    profiler?.end(TickPhase.SpatialRebuild);
+    profiler?.begin(TickPhase.Feeding);
     buildFeedingClaims(ctx); //                         8 buildFeedingClaims
     resolveFeedingClaims(ctx); //                       9 resolveFeedingClaims
+    profiler?.end(TickPhase.Feeding);
+    profiler?.begin(TickPhase.Combat);
     buildCombatClaims(ctx); //                         10 buildCombatClaims
     resolveCombatSimultaneously(ctx); //               11 resolveCombatSimultaneously
+    profiler?.end(TickPhase.Combat);
+    profiler?.begin(TickPhase.MetabolismDeath);
     applyMetabolismGrowthThermalAging(ctx); //         12 applyMetabolismGrowthThermalAging
     finalizeDeaths(ctx); //                            13 finalizeDeathsAndCreateCarcasses
+    profiler?.end(TickPhase.MetabolismDeath);
+    profiler?.begin(TickPhase.Reproduction);
     resolveReproduction(ctx); //                       14 resolveReproduction
+    profiler?.end(TickPhase.Reproduction);
     if (this.#tick % this.config.time.carcassDecayInterval === 0) {
+      profiler?.begin(TickPhase.Carcasses);
       decayCarcasses(ctx); //                          15 scheduledCarcassDecay
+      profiler?.end(TickPhase.Carcasses);
     }
     //   16 scheduledSpeciesAnalysis         — Milestone 8
     //   17 scheduledStatisticsAndEvents     — Milestone 8
-    //   18 optionalRenderSnapshot           — Milestone 6
+    //   18 optionalRenderSnapshot           — produced on the host's cadence by
+    //      render/renderSnapshot.ts, deliberately NOT inside the tick: a
+    //      picture is taken between ticks, never as part of one.
 
     this.#tick += 1;
   }

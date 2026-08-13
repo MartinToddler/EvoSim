@@ -47,9 +47,54 @@ export interface HostRuntimeConfig {
 
   /** Maximum organisms promoted to the detailed render layer (docs/06 §3). */
   maxDetailedRenderedOrganisms: number;
+
+  /**
+   * Vegetation field rate. docs/06 §2 puts plant display at ~2-5 Hz: biomass
+   * only changes when the environment phase runs, and a 64 KB field is far too
+   * big to resend at frame rate for something that moves this slowly.
+   */
+  vegetationSnapshotsPerSecond: number;
+
+  /** HUD telemetry rate. Every one of these is a React render, so it is low. */
+  telemetrySnapshotsPerSecond: number;
+
+  /**
+   * Largest tick debt the scheduler will try to repay after falling behind.
+   *
+   * A backgrounded tab accrues wall-clock time it never got to spend. Without a
+   * ceiling it would come back owing thousands of ticks and sprint through them
+   * at full CPU; with one it resumes from where it is and reports that it fell
+   * behind. This changes *when* ticks happen, never what they do.
+   */
+  maxCatchUpTicks: number;
+
+  /**
+   * Hard cap on ticks executed in one scheduler slice.
+   *
+   * The slice normally ends on its millisecond budget. This is the backstop for
+   * when the clock does not advance between reads — a coarse timer, or a fake
+   * clock in a test — where a purely time-based loop would never terminate.
+   */
+  maxTicksPerSlice: number;
+
+  /**
+   * Render snapshot buffers in the recycling pool (docs/02 §10).
+   *
+   * Three is the smallest number that keeps the Worker busy while the renderer
+   * holds one: one being filled, one in flight, one held for hit-testing. Fewer
+   * causes avoidable dropped snapshots; more just costs memory.
+   */
+  renderBufferPoolSize: number;
 }
 
-export const HOST_RUNTIME_CONFIG_SCHEMA_VERSION = 1;
+/**
+ * Bumped to 2 for Milestone 6: the worker host needs cadences and scheduling
+ * bounds that did not exist when this shape was first written. Nothing here is
+ * authoritative, so this bump cannot change a single world hash — which is
+ * precisely why these values live in this file and not in `SimulationConfig`
+ * (ADR 0002 §4).
+ */
+export const HOST_RUNTIME_CONFIG_SCHEMA_VERSION = 2;
 
 export const DEFAULT_HOST_RUNTIME_CONFIG: HostRuntimeConfig = Object.freeze({
   schemaVersion: HOST_RUNTIME_CONFIG_SCHEMA_VERSION,
@@ -60,4 +105,9 @@ export const DEFAULT_HOST_RUNTIME_CONFIG: HostRuntimeConfig = Object.freeze({
   autosaveCheckInterval: 2000,
   ticksPerSimYear: 2000,
   maxDetailedRenderedOrganisms: 250,
+  vegetationSnapshotsPerSecond: 4,
+  telemetrySnapshotsPerSecond: 2,
+  maxCatchUpTicks: 200,
+  maxTicksPerSlice: 2048,
+  renderBufferPoolSize: 3,
 });

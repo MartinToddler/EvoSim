@@ -245,6 +245,32 @@ export { runBrainsAndBuildIntents } from "./brain/intents";
 export { EngineScratch } from "./EngineScratch";
 export type { EngineContext } from "./EngineContext";
 
+// Render projection and inspection queries (Milestone 6, tasks G04/G09).
+//
+// These are read-only projections of authoritative state. They allocate
+// nothing, advance no tick and touch no PRNG, so a renderer or an inspector
+// cannot change the world it is looking at.
+export {
+  RenderFlagBit,
+  speedLUPerTick,
+  writeRenderSnapshot,
+  writeTerrainFields,
+  writeVegetationField,
+  type RenderSnapshotCounts,
+  type RenderSnapshotWriter,
+} from "./render/renderSnapshot";
+export { collectTelemetryAggregates, queryEntity, type EntityDetails } from "./render/queryEntity";
+
+// Phase profiling hooks (CLAUDE.md "Profiling"). The engine reports phase
+// boundaries; the host owns the clock.
+export {
+  TICK_PHASE_COUNT,
+  TICK_PHASE_NAMES,
+  TickPhase,
+  type TickPhaseId,
+  type TickProfiler,
+} from "./profiling/TickProfiler";
+
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG
 // must stay unreachable from outside this package (see internal.ts).

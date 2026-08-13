@@ -1,0 +1,93 @@
+# Publish the EON web application to GitHub Pages.
+#
+# Milestone 6 is the first milestone that produces something worth opening in a
+# browser, so it is the first that needs a public build. There was no
+# deployment before this workflow, and there is no separate preview environment
+# to protect: GitHub Pages gives a repository one site, and this publishes to
+# it.
+#
+# The milestone branch is a trigger on purpose and temporarily. `main` still
+# carries only the Milestone 0-1 skeleton, so restricting this to `main` today
+# would publish an empty page. Once the application is merged, drop the
+# `claude/milestone-6-**` pattern below and let `main` be the only source of
+# the published site.
+name: deploy-pages
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/milestone-6-**"
+  workflow_dispatch:
+
+# `pages` and `id-token` are what the deploy action needs; everything else stays
+# read-only.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one that is already publishing —
+# a half-finished Pages deployment is a broken site, not a stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # A gate, not a formality: a deployment that typechecks and lints cannot
+      # be the "it built locally" kind of broken. The full test suite is not
+      # repeated here because the `verify` workflow runs it on the same commit,
+      # in parallel, and it takes ~20x longer than this job.
+      - name: Typecheck and lint
+        run: pnpm typecheck && pnpm lint
+
+      # `enablement: true` turns Pages on for the repository the first time this
+      # runs, so the deployment does not require a manual settings change.
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # A project site is served from /<repo>/, not from the domain root. Vite
+      # must know that at build time or every asset — including the simulation
+      # Worker — resolves to a 404.
+      - name: Build
+        env:
+          EON_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: pnpm build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,273 @@
+/*
+ * Milestone 6 application chrome.
+ *
+ * Deliberately small: M6 delivers the controls needed to watch and steer a
+ * running world (docs/06 §9 top bar, plus a selection readout). The full
+ * inspector, charts, timeline and tool palette are Milestone 7.
+ *
+ * The canvas is the dominant element (docs/06 §8) and everything else floats
+ * over it, so the world stays visible at every viewport size.
+ */
+
+:root {
+  --eon-bg: #080c10;
+  --eon-panel: rgba(14, 20, 27, 0.92);
+  --eon-panel-border: rgba(120, 160, 190, 0.22);
+  --eon-text: #dbe6ef;
+  --eon-text-dim: #8ba3b8;
+  --eon-accent: #64d0ff;
+  --eon-warn: #ffb454;
+  --eon-danger: #ff6b6b;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--eon-bg);
+  color: var(--eon-text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+.app {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Top bar (docs/06 §9) ------------------------------------------------ */
+
+.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+  background: linear-gradient(to bottom, rgba(6, 10, 14, 0.95), rgba(6, 10, 14, 0));
+  pointer-events: none;
+}
+
+.topbar > * {
+  pointer-events: auto;
+}
+
+.brand {
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  margin-right: 0.25rem;
+}
+
+.stat-group {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--eon-text-dim);
+}
+
+.stat-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.stat-value.warn {
+  color: var(--eon-warn);
+}
+
+.controls {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+  padding: 0.3rem;
+}
+
+button {
+  font: inherit;
+  color: var(--eon-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  /* 44px minimum touch target (docs/06 §16). */
+  min-height: 34px;
+  min-width: 40px;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--eon-accent);
+  outline-offset: 1px;
+}
+
+button[aria-pressed="true"] {
+  background: rgba(100, 208, 255, 0.22);
+  border-color: var(--eon-accent);
+  color: #eaf7ff;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* --- Inspector ------------------------------------------------------------ */
+
+.inspector {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  width: min(22rem, calc(100vw - 1.5rem));
+  max-height: min(60vh, 34rem);
+  overflow: auto;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+}
+
+.inspector h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.inspector dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0;
+}
+
+.inspector dt {
+  color: var(--eon-text-dim);
+}
+
+.inspector dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.inspector .section {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--eon-panel-border);
+}
+
+.inspector .section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--eon-text-dim);
+  margin-bottom: 0.3rem;
+}
+
+.hint {
+  color: var(--eon-text-dim);
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  vertical-align: -1px;
+  margin-right: 0.35rem;
+}
+
+/* --- Status --------------------------------------------------------------- */
+
+.banner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 1rem 1.4rem;
+  text-align: center;
+}
+
+.error-banner {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  max-width: min(34rem, calc(100vw - 1.5rem));
+  background: rgba(60, 16, 16, 0.94);
+  border: 1px solid var(--eon-danger);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+
+.error-banner strong {
+  color: var(--eon-danger);
+}

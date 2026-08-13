@@ -22,6 +22,19 @@ describe("DEFAULT_HOST_RUNTIME_CONFIG", () => {
     expect(DEFAULT_HOST_RUNTIME_CONFIG.maxDetailedRenderedOrganisms).toBe(250);
   });
 
+  it("keeps the Milestone 6 host scheduling values in the documented ranges", () => {
+    // docs/06 §2 puts vegetation display at 2-5 Hz.
+    expect(DEFAULT_HOST_RUNTIME_CONFIG.vegetationSnapshotsPerSecond).toBeGreaterThanOrEqual(2);
+    expect(DEFAULT_HOST_RUNTIME_CONFIG.vegetationSnapshotsPerSecond).toBeLessThanOrEqual(5);
+    // Telemetry drives React renders, so it must stay well below render rate.
+    expect(DEFAULT_HOST_RUNTIME_CONFIG.telemetrySnapshotsPerSecond).toBeLessThan(
+      DEFAULT_HOST_RUNTIME_CONFIG.normalRenderSnapshotsPerSecond,
+    );
+    expect(DEFAULT_HOST_RUNTIME_CONFIG.renderBufferPoolSize).toBeGreaterThanOrEqual(2);
+    expect(DEFAULT_HOST_RUNTIME_CONFIG.maxCatchUpTicks).toBeGreaterThan(0);
+    expect(DEFAULT_HOST_RUNTIME_CONFIG.maxTicksPerSlice).toBeGreaterThan(0);
+  });
+
   it("is frozen and valid", () => {
     expect(Object.isFrozen(DEFAULT_HOST_RUNTIME_CONFIG)).toBe(true);
     expect(() => validateHostRuntimeConfig(DEFAULT_HOST_RUNTIME_CONFIG)).not.toThrow();
@@ -49,5 +62,19 @@ describe("validateHostRuntimeConfig", () => {
     expect(() =>
       validateHostRuntimeConfig(variant((c) => (c.maxModeRenderSnapshotsPerSecond = 60))),
     ).toThrowError(/MAX mode/);
+  });
+
+  it("rejects a single-buffer render pool, which would drop every frame but the first", () => {
+    expect(() =>
+      validateHostRuntimeConfig(variant((c) => (c.renderBufferPoolSize = 1))),
+    ).toThrowError(/renderBufferPoolSize/);
+  });
+
+  it("rejects scheduling bounds that would stall or spin the loop", () => {
+    expect(() => validateHostRuntimeConfig(variant((c) => (c.maxCatchUpTicks = 0)))).toThrow();
+    expect(() => validateHostRuntimeConfig(variant((c) => (c.maxTicksPerSlice = 0)))).toThrow();
+    expect(() =>
+      validateHostRuntimeConfig(variant((c) => (c.telemetrySnapshotsPerSecond = 0))),
+    ).toThrow();
   });
 });

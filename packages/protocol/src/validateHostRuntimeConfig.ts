@@ -42,8 +42,21 @@ export function validateHostRuntimeConfig(config: HostRuntimeConfig): void {
   checkPositiveInt(config.autosaveCheckInterval, "autosaveCheckInterval");
   checkPositiveInt(config.ticksPerSimYear, "ticksPerSimYear");
   checkPositiveInt(config.maxDetailedRenderedOrganisms, "maxDetailedRenderedOrganisms");
+  checkPositiveInt(config.vegetationSnapshotsPerSecond, "vegetationSnapshotsPerSecond");
+  checkPositiveInt(config.telemetrySnapshotsPerSecond, "telemetrySnapshotsPerSecond");
+  checkPositiveInt(config.maxCatchUpTicks, "maxCatchUpTicks");
+  checkPositiveInt(config.maxTicksPerSlice, "maxTicksPerSlice");
+  checkPositiveInt(config.renderBufferPoolSize, "renderBufferPoolSize");
   check(
     config.maxModeRenderSnapshotsPerSecond <= config.normalRenderSnapshotsPerSecond,
     "MAX mode must not emit render snapshots more often than normal mode (docs/02 §8)",
+  );
+  // With a single buffer the Worker cannot fill one while the renderer holds
+  // one, so every snapshot after the first would be dropped and the world would
+  // appear frozen while running perfectly.
+  check(
+    config.renderBufferPoolSize >= 2,
+    "renderBufferPoolSize must be at least 2, or every snapshot after the first is dropped " +
+      "while the renderer holds the only buffer (docs/02 §10)",
   );
 }
