@@ -85,7 +85,11 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
     const mass = massFromRadiusPos(radius, massScale);
     let energy = organisms.energy[slot] as number;
     let healthQ = organisms.healthQ[slot] as number;
-    let damageThisTick = 0;
+    // Seeded from what combat already took off this organism in phase 11, not
+    // zero: `lastDamageQ` means "damage taken this tick", and an organism can be
+    // bitten and starve on the same tick. Overwriting here would make the field
+    // silently report only whichever source happened to run last.
+    let damageThisTick = scratch.combatDamageQ[slot] as number;
 
     const cell = environment.cellIndexFromPosition(
       organisms.x[slot] as number,

@@ -114,14 +114,43 @@ E06 stays open for the same reason as before: the `PopulationCapReached` timelin
 Milestone 8 `EventStore`. Both ADR 0006 notes above are carried forward unchanged.
 
 ## F Predation
-- [ ] F01 carcass store/decay.
-- [ ] F02 carcass sensors/claims.
-- [ ] F03 diet trade-off.
-- [ ] F04 attack claims.
-- [ ] F05 simultaneous damage.
-- [ ] F06 armor/costs.
-- [ ] F07 kill attribution.
-- [ ] F08 predator/prey fixture.
+- [x] F01 carcass store/decay.
+- [x] F02 carcass sensors/claims.
+- [x] F03 diet trade-off.
+- [x] F04 attack claims.
+- [x] F05 simultaneous damage.
+- [x] F06 armor/costs.
+- [x] F07 kill attribution.
+- [x] F08 predator/prey fixture.
+
+Milestone 5 gate: **PASS WITH NOTES** (engine 0.5.0, config schema 6, snapshot schema 6, ADR 0008).
+Phases 10, 11 and 15 of the tick order now run. Carcasses, temperature-driven decay, carcass sensing
+and feeding, the diet trade-off, attack claims with contact/energy/cooldown validation, simultaneous
+damage, armor, impact bonus and kill attribution are implemented and tested (78 new tests). Every
+golden hash regenerated. There is no `Predator` type and no rule that reads one: a hunter is an
+attack gene, an attack output, a carnivore diet gene and a controller that steers at what it senses.
+
+Verified before starting: the Milestone 3/4 tip `734b50b` reproduced all six golden fixture hashes in
+a pristine worktree, so the previous milestone's claims were checked rather than trusted.
+
+Three notes carried forward:
+
+1. **No meat was eaten in 10 000 ticks of the reference world** (ADR 0008 §5a). The founder lineage
+   is herbivore-leaning (mean diet −0.597 from a −0.600 start), and the docs/04 §20 policy only sends
+   an organism to a carcass when meat digests at least as well as plants. The mechanism is proven by
+   the predator/prey fixture and by a controlled diet experiment; whether carnivory is reachable on
+   the default constants at a realistic horizon is a calibration question for **L07**. docs/07 §12
+   lists "carnivory impossible" as a failure mode to monitor, so this is on the watch list rather
+   than patched.
+2. **The carcass cap saturates**: 4 096 live and 4 751 skipped by tick 10 000 (ADR 0008 §5b). At the
+   documented decay rate a carcass survives ~8 000 ticks, so a world losing ~1 organism per tick
+   accumulates toward twice `limits.maxCarcasses`. Behaviour at the cap is correct by specification
+   (deterministic skip + hashed diagnostics counter), but it suppresses the carrion supply this
+   milestone creates. Input for **L07** together with the ADR 0006 §7 population-cap finding — the two
+   share a cause.
+3. **The foundation-gate and Milestone 2.5 branches are still not merged into this line**
+   (ADR 0006 §0, ADR 0008 §0). Milestone 5 does not depend on any of their fixes, but the merge must
+   happen before **J05 / Milestone 9** (terrain raise/lower).
 
 ## G Worker/renderer
 - [ ] G01 protocol unions.

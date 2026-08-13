@@ -73,8 +73,26 @@ export class SpatialGrid {
     return clamp(Math.floor(yPos / this.cellSizePos), 0, this.size - 1);
   }
 
-  /** Rebuild from current positions. Dead slots are skipped. */
+  /** Rebuild from current organism positions. Dead slots are skipped. */
   rebuild(store: OrganismStore): void {
+    this.rebuildFrom(store.slotHighWater, store.alive, store.x, store.y);
+  }
+
+  /**
+   * Rebuild from any Structure-of-Arrays occupancy + position triple.
+   *
+   * Carcasses need the same 3×3-neighbourhood lookup that organisms do — the
+   * carrion sensor would otherwise scan every carcass in the world for every
+   * organism, which is the O(N×M) shape the grid exists to avoid — and they are
+   * a different store with a different capacity. Taking the arrays rather than
+   * the store keeps one implementation of the grid instead of two.
+   */
+  rebuildFrom(
+    slotHighWater: number,
+    occupancy: Uint8Array,
+    xPos: Int32Array,
+    yPos: Int32Array,
+  ): void {
     const head = this.head;
     const next = this.next;
     const occupied = this.#occupiedCells;
@@ -83,12 +101,11 @@ export class SpatialGrid {
     }
     let occupiedCount = 0;
 
-    for (let slot = store.slotHighWater - 1; slot >= 0; slot -= 1) {
-      if (store.alive[slot] !== 1) {
+    for (let slot = slotHighWater - 1; slot >= 0; slot -= 1) {
+      if (occupancy[slot] !== 1) {
         continue;
       }
-      const cell =
-        this.cellY(store.y[slot] as number) * this.size + this.cellX(store.x[slot] as number);
+      const cell = this.cellY(yPos[slot] as number) * this.size + this.cellX(xPos[slot] as number);
       const first = head[cell] as number;
       if (first === -1) {
         occupied[occupiedCount] = cell;

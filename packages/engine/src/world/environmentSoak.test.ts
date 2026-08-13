@@ -43,7 +43,10 @@ describe("100k tick environment soak", () => {
    * world. Regenerate together with the golden fixture whenever ENGINE_VERSION
    * changes.
    */
-  const GOLDEN_SOAK_HASH = "3e09d1db8731558f";
+  // Engine 0.5.0 moved this hash even though this world is lifeless and can
+  // therefore never hold a carcass: the authoritative config digest is part of
+  // the state hash, and Milestone 5 added three config fields (ADR 0008 §3).
+  const GOLDEN_SOAK_HASH = "d999602f57a713a3";
 
   const LIFELESS_CONFIG = (() => {
     const config = cloneConfig(DEFAULT_CONFIG);

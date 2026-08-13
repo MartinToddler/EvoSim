@@ -186,6 +186,8 @@ function populationLine(engine: SimulationEngine): string {
     }
   }
   const capped = organisms.capRejectedBirths > 0 ? ` | CAP ${organisms.capRejectedBirths}` : "";
+  const { carcasses } = engine;
+  const carrionCapped = carcasses.skippedAtCap > 0 ? ` skipped ${carcasses.skippedAtCap}` : "";
   return (
     `pop ${String(stats.population).padStart(4)} | ` +
     `gen ${String(stats.maxGeneration).padStart(3)} | ` +
@@ -194,7 +196,16 @@ function populationLine(engine: SimulationEngine): string {
     `var ${stats.traitVarianceQ2.toFixed(0).padStart(7)} | ` +
     `mean energy ${String(stats.meanEnergy).padStart(7)} | ` +
     `mean growth ${(stats.meanDevelopmentQ / Q).toFixed(2)} | ` +
-    `plant intake ${(stats.plantIntake / 1e3).toFixed(1)}k${capped}` +
+    `plant intake ${(stats.plantIntake / 1e3).toFixed(1)}k${capped} | ` +
+    // Predation is only observable through carrion and kills, so the headless
+    // report has to carry them: a world where nothing is ever eaten looks
+    // identical to one where scavenging works, from the population line alone.
+    `carcasses ${String(carcasses.liveCount).padStart(4)}${carrionCapped} | ` +
+    `meat ${(carcasses.totalMeatCreated / 1e3).toFixed(1)}k created, ` +
+    `${(carcasses.totalMeatEaten / 1e3).toFixed(1)}k eaten | ` +
+    `meat intake ${(stats.meatIntake / 1e3).toFixed(1)}k | ` +
+    `kills ${stats.kills} | ` +
+    `mean diet ${stats.meanDiet.toFixed(3)}` +
     (causes.length > 0 ? ` (${causes.join(", ")})` : "")
   );
 }

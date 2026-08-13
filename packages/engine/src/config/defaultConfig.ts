@@ -216,6 +216,10 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       remainingEnergyToMeatMaxFractionQ: 1024, // 0.25
       baseCarcassDecayFractionQPerDecayStep: 20, // ~0.0049
       hotDecayBonusMaxQ: 4096, // 1.0
+      // The world's temperature field runs roughly -15 °C … +35 °C (docs/03
+      // §17), so rot is free at freezing and doubles at the hot end of the map.
+      hotDecayMinTemperatureCentiC: 0, // 0 °C
+      hotDecayFullBonusTemperatureCentiC: 3500, // 35 °C
     },
   },
 
@@ -267,6 +271,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     attackEnergyMassCoeffQ: 123, // 0.03
     maxImpactDamageBonusQ: 1229, // +0.30
     maxArmorDamageReductionQ: 2662, // 0.65
+    attackSizeFactorFloorQ: 2048, // 0.50 at the smallest body, 1.00 at the largest
   },
 
   reproduction: {

@@ -199,19 +199,47 @@ export {
   type OrganismSnapshot,
 } from "./organisms/organismSnapshot";
 export { SpatialGrid } from "./spatial/SpatialGrid";
+export { FOV_COS_SCALE } from "./spatial/fov";
 export {
-  FOV_COS_SCALE,
   findNearestVisibleCreature,
+  findNearestVisibleCarcass,
+  findCarcassInMouthRange,
+  findContactTarget,
   countCrowding,
   type NearestCreature,
+  type NearestTarget,
 } from "./spatial/queries";
 export {
   FeedingTarget,
   plantBiteUnits,
+  meatBiteUnits,
   buildFeedingClaims,
   resolveFeedingClaims,
   totalAllocatedBiomass,
+  totalAllocatedMeat,
 } from "./ecology/feedingClaims";
+
+// Predation: carrion and combat (Milestone 5, F01-F08).
+export { CarcassStore } from "./ecology/CarcassStore";
+export {
+  MIN_CARCASS_DECAY_UNITS,
+  carcassMeatUnits,
+  carcassDecayFractionQ,
+  createCarcass,
+  decayCarcasses,
+} from "./ecology/carcasses";
+export {
+  attackEnergyCost,
+  attackDamageQ,
+  buildCombatClaims,
+  resolveCombatSimultaneously,
+} from "./ecology/combatClaims";
+export {
+  captureCarcasses,
+  restoreCarcasses,
+  CarcassSnapshotError,
+  type CarcassSnapshot,
+} from "./ecology/carcassSnapshot";
 export { senseAll } from "./brain/sensors";
 export { runBrainsAndBuildIntents } from "./brain/intents";
 export { EngineScratch } from "./EngineScratch";

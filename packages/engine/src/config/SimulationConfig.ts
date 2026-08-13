@@ -350,6 +350,18 @@ export interface OrganismConfig {
     baseCarcassDecayFractionQPerDecayStep: number;
     /** Maximum additional hot-climate decay bonus (1.0). */
     hotDecayBonusMaxQ: number;
+    /**
+     * Temperature at or below which the hot-decay bonus is zero, and the
+     * temperature at which it reaches {@link hotDecayBonusMaxQ}.
+     *
+     * docs/03 §23 requires decay to be affected "at least by temperature" and
+     * docs/08 §15 gives the size of the bonus but no temperature scale to read
+     * it against, so the scale has to be stated somewhere. Two explicit
+     * endpoints are the cheapest honest answer: the bonus rises linearly
+     * between them and saturates above.
+     */
+    hotDecayMinTemperatureCentiC: number;
+    hotDecayFullBonusTemperatureCentiC: number;
   };
 }
 
@@ -444,6 +456,16 @@ export interface CombatConfig {
   maxImpactDamageBonusQ: number;
   /** Damage reduction at full armor (0.65). */
   maxArmorDamageReductionQ: number;
+  /**
+   * Damage multiplier of the smallest possible body (0.50).
+   *
+   * docs/08 §14's `sizeFactor = 0.5 + 0.5 * attackerSizeNorm` is one constant
+   * stated twice: the floor, and the span that carries the factor from the floor
+   * to 1.0 at full size. Only the floor is configured; the span is derived as
+   * `Q - floor` so the two halves cannot drift apart and the factor cannot
+   * silently exceed 1.0.
+   */
+  attackSizeFactorFloorQ: number;
 }
 
 /** Reproduction constants (docs/04 §19, docs/08 §16). */

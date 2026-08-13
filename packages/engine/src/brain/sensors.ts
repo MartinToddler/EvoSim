@@ -9,7 +9,9 @@ import { thermalStressQ } from "../organisms/thermal";
 import { plantGradientXQAt, plantGradientYQAt } from "../world/plants";
 import {
   type NearestCreature,
+  type NearestTarget,
   countCrowding,
+  findNearestVisibleCarcass,
   findNearestVisibleCreature,
 } from "../spatial/queries";
 import { BRAIN_INPUT_COUNT, BrainInput } from "./BrainLayout";
@@ -36,6 +38,7 @@ import { BRAIN_INPUT_COUNT, BrainInput } from "./BrainLayout";
 
 /** Reused across the sensing loop so the hot path allocates nothing. */
 const nearestCreature: NearestCreature = { slot: -1, distSq: 0 };
+const nearestCarcass: NearestTarget = { slot: -1, distSq: 0 };
 
 /** Map a value in [0, scale] onto the full signed sensor range [-Q, Q]. */
 function toSignedRange(value: number, scale: number): number {
@@ -179,10 +182,39 @@ export function senseAll(ctx: EngineContext, tick: number): void {
       Math.trunc((gradX * rightX + gradY * rightY) / TRIG_SCALE),
     );
 
-    // --- Carcasses: no carrion exists before Milestone 5 -------------------
-    sensors[base + BrainInput.CarcassProximity] = -Q;
-    sensors[base + BrainInput.CarcassForward] = 0;
-    sensors[base + BrainInput.CarcassLateral] = 0;
+    // --- Carcasses (docs/04 §13, docs/08 §18, task F02) --------------------
+    // Absence reads -Q, the same as a creature out of sight, and NOT 0: an
+    // organism at the very edge of vision reads -Q, and absence is "further away
+    // than that", so a zero for absence would rank above a distant sighting and
+    // invert the ordering the founder's eat weight is calibrated against
+    // (ADR 0004 §1).
+    findNearestVisibleCarcass(ctx, slot, nearestCarcass);
+    if (nearestCarcass.slot === -1) {
+      sensors[base + BrainInput.CarcassProximity] = -Q;
+      sensors[base + BrainInput.CarcassForward] = 0;
+      sensors[base + BrainInput.CarcassLateral] = 0;
+    } else {
+      const range = Math.max(phenotypes.visionRangePos[slot] as number, 1);
+      const distance = isqrt(nearestCarcass.distSq);
+      sensors[base + BrainInput.CarcassProximity] = clampSignedQ(
+        Q - Math.trunc((2 * Q * distance) / range),
+      );
+
+      const dx = (ctx.carcasses.x[nearestCarcass.slot] as number) - xPos;
+      const dy = (ctx.carcasses.y[nearestCarcass.slot] as number) - yPos;
+      if (distance > 0) {
+        const scale = distance * TRIG_SCALE;
+        sensors[base + BrainInput.CarcassForward] = clampSignedQ(
+          Math.trunc(((dx * forwardX + dy * forwardY) * Q) / scale),
+        );
+        sensors[base + BrainInput.CarcassLateral] = clampSignedQ(
+          Math.trunc(((dx * rightX + dy * rightY) * Q) / scale),
+        );
+      } else {
+        sensors[base + BrainInput.CarcassForward] = 0;
+        sensors[base + BrainInput.CarcassLateral] = 0;
+      }
+    }
 
     // --- Other creatures ---------------------------------------------------
     findNearestVisibleCreature(ctx, slot, nearestCreature);

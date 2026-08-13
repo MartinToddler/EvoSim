@@ -6,6 +6,101 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-13 — Milestone 5: predation, carrion and combat
+
+Versions: `ENGINE_VERSION` 0.4.0 → **0.5.0**, `CONFIG_SCHEMA_VERSION` 5 → **6**,
+`SNAPSHOT_SCHEMA_VERSION` 5 → **6**, `PROTOCOL_VERSION` unchanged (1). **Every golden hash was
+regenerated** — the six fixture checkpoints, the config digest `2d2712ccf817a700` and both soak
+hashes. Two independent causes: the carcass store joined the canonical hash stream, and the carcass
+sensors stopped reporting a pinned absence. The hashes therefore move from tick 0, while the
+reference world's _behaviour_ is bit-identical to 0.4.0 until its first death — population 256,
+births 256, deaths 0 and trait variance 0 at tick 1 000 on both — and diverges only once a body
+exists for something to sense (ADR 0008 §5). The mutation fixture's genes, brain digest and PRNG
+state are **unchanged**; only its version stamps moved. Decisions, measurements and two calibration
+findings in `docs/adr/0008-milestone-5-predation.md`.
+
+Built on the Milestone 3/4 line (`734b50b`), whose six golden hashes were re-verified in a pristine
+worktree before any code was written. The foundation-gate and Milestone 2.5 branches remain
+unmerged; ADR 0006 §0's recommendation to merge them before Milestone 9 stands.
+
+### Added
+
+- **Carcasses (F01).** `ecology/CarcassStore.ts`: Structure-of-Arrays carrion with a LIFO free
+  stack, cleared rows, hashed and serialized in full, carrying the dead organism's entity ID rather
+  than a new identity. Every death leaves a body — starvation, old age, drowning, thermal stress and
+  combat alike — created in phase 13 before the organism's slot is released. At the
+  `limits.maxCarcasses` cap the carcass is deterministically skipped and counted in `skippedAtCap`,
+  never swapped for an existing one (docs/10 §14).
+- **Deterministic decay (F01), phase 15.** `base × (1 + hotBonus)` per decay step, where the bonus
+  ramps from zero at `hotDecayMinTemperatureCentiC` to `hotDecayBonusMaxQ` at
+  `hotDecayFullBonusTemperatureCentiC`. A `MIN_CARCASS_DECAY_UNITS = 1` floor makes decay strictly
+  monotone and guarantees termination — without it a carcass under 205 units would lose nothing
+  forever at the default rate — and it deliberately does not fire when the configured rate is zero,
+  so the "carrion never rots" ablation still works.
+- **Carcass sensing (F02).** `CarcassProximity`/`CarcassForward`/`CarcassLateral` now report real
+  carrion, found through a dedicated carcass spatial index with the observer's own vision range and
+  field of view, ties on lower squared distance then lower entity ID. Absence stays −Q, not 0: the
+  edge of vision reads −Q, so a zero would rank above a distant sighting.
+- **Carcass feeding (F02) and the diet trade-off (F03).** Meat is allocated by the same
+  aggregate-then-share rule as plant biomass, with the integer remainder going to the lowest entity
+  IDs. Energy is `units × meatEnergyPerUnit × meatEfficiency`, where the efficiency comes from the
+  single signed diet gene. The docs/04 §20 target policy is implemented verbatim and documented at
+  the call site: a carcass in mouth range wins only when meat digests at least as well as plants, so
+  a herbivore ignores carrion it is standing on.
+- **Combat (F04–F07), phases 10 and 11.** Attack intent over threshold, contact validated as
+  touching bodies, energy charged before the blow, cooldown, damage accumulated across all attackers
+  and applied simultaneously, armor mitigation, impact bonus from realized speed, and kill
+  attribution to the largest contributor with ties on the lower attacker entity ID. Mutual kills are
+  possible by construction: nothing dies inside the attacker loop.
+- **Three config fields** (§3 of the ADR): `organism.carcass.hotDecayMinTemperatureCentiC`,
+  `organism.carcass.hotDecayFullBonusTemperatureCentiC` and `combat.attackSizeFactorFloorQ`. Each
+  closes a place where docs/08 gives a magnitude without the scale to read it against. Contact range
+  and mouth range deliberately stay geometric — summed body radii and the eater's own radius — rather
+  than becoming tunable constants with no observable meaning.
+- **78 tests** across `ecology/CarcassStore.test.ts`, `ecology/carcasses.test.ts`,
+  `ecology/combatClaims.test.ts`, `ecology/carcassFeeding.test.ts`, `brain/carcassSensors.test.ts`
+  and `predationSimulation.test.ts`. The acceptance fixtures drive the real `SimulationEngine.step()`:
+  a handcrafted hunter detects, closes, wounds, kills, is credited the kill and then scavenges the
+  carcass; two evenly matched fighters kill each other on one tick; and a controlled diet experiment
+  with mutation switched off shows the matching specialist winning realized reproductive success in a
+  plant world and in a meat world.
+- **Predation in the headless report and the sweep.** `pnpm headless` now prints live carcasses,
+  carcasses skipped at the cap, meat created and eaten, meat intake, kills and the population's mean
+  diet — the only way to see whether a world has discovered carnivory. `pnpm sweep` reports the same
+  observables per seed plus "seeds eating meat" and "seeds hitting the carcass cap" in its summary,
+  because both calibration findings below are questions about seeds rather than about one world.
+
+### Changed
+
+- **`lastDamageQ` now includes combat damage.** Combat lands in phase 11 and starvation/thermal
+  damage in phase 12; the physiology phase seeds its accumulator from what combat applied instead of
+  overwriting it, so the field means what its name says.
+- **`SpatialGrid.rebuild` grew a generic `rebuildFrom`** over an occupancy + position triple, so
+  carcasses reuse the organism grid implementation instead of getting a second one.
+- **`FOV_COS_SCALE` moved to `spatial/fov.ts`.** The carcass queries need the phenotype's body
+  radius while the phenotype cache needs the FOV scale, which would have made those two modules
+  import each other.
+- **`totalAllocatedBiomass` is filtered by food kind** and joined by `totalAllocatedMeat`: biomass
+  units and meat units are different quantities, and one total over both would be meaningless.
+
+### Calibration findings (not fixed — input for L07)
+
+- **No meat was eaten in 10 000 ticks of the reference world.** The founder lineage is
+  herbivore-leaning (mean diet −0.597 against a −0.600 start), so under the docs/04 §20 policy no
+  organism ever prefers a body. The mechanism is proven by fixture and by controlled experiment;
+  whether carnivory is reachable _in practice_ on the default constants is a calibration question,
+  and docs/07 §12 lists "carnivory impossible" as a failure mode to monitor rather than to patch.
+- **The carcass cap saturates.** 4 096 live carcasses and 4 751 skipped by tick 10 000: at the
+  documented decay rate a carcass survives roughly 8 000 ticks, so a world losing about one organism
+  per tick accumulates toward twice `maxCarcasses`. Behaviour at the cap is correct by specification,
+  and `skippedAtCap` is hashed so the loss is visible, but it suppresses exactly the carrion supply
+  this milestone exists to create. Linked to ADR 0006 §7's population-cap finding: fewer deaths per
+  tick would relieve both.
+- A second-order effect worth knowing: carrion made herbivores eat **more**. The founder's +0.40
+  `carcassProximity` weight on the eat output (docs/08 §20) was a permanent −0.40 tax while no
+  carcass could exist, and is now a real bonus — so a nearby body raises the drive to graze.
+  Starvation deaths fell and the population at tick 10 000 came out at 4 364 against 4 718.
+
 ## [Unreleased] — 2026-08-13 — Milestone 4 review: reproduction and mutation
 
 Versions: **all unchanged** (`ENGINE_VERSION` 0.4.0, `CONFIG_SCHEMA_VERSION` 5,

@@ -1,4 +1,5 @@
 import type { SimulationConfig } from "../config/SimulationConfig";
+import type { CarcassSnapshot } from "../ecology/carcassSnapshot";
 import type { OrganismSnapshot } from "../organisms/organismSnapshot";
 import type { Xoshiro128State } from "../random/Xoshiro128";
 import type { EnvironmentSnapshot } from "../world/environmentSnapshot";
@@ -8,9 +9,10 @@ import type { EnvironmentSnapshot } from "../world/environmentSnapshot";
  *
  * Captures everything needed to continue the engine exactly: tick, seed, full
  * PRNG state, config, the authoritative environment arrays and the live
- * organism population with its genomes and slot bookkeeping. Later milestones
- * extend this with carcasses, species, the command cursor and the remaining
- * statistics accumulators — each extension bumps SNAPSHOT_SCHEMA_VERSION.
+ * organism population with its genomes and slot bookkeeping, and the carcasses
+ * lying in the world. Later milestones extend this with species, the command
+ * cursor and the remaining statistics accumulators — each extension bumps
+ * SNAPSHOT_SCHEMA_VERSION.
  *
  * This is the abstract in-memory serialization primitive (plain JSON-safe
  * data). The durable binary container with header magic and payload checksum
@@ -36,6 +38,13 @@ export interface EngineCoreSnapshot {
    * birth lands in, and with it every future state (docs/10 §18).
    */
   organisms: OrganismSnapshot;
+  /**
+   * Carrion, with its own slot/free-list state. Carcasses are food that
+   * organisms can already see and claim, so losing them on reload would change
+   * what the next tick does, and rebuilding their free list would change which
+   * slot the next death reuses (docs/10 §18).
+   */
+  carcasses: CarcassSnapshot;
 }
 
 /**

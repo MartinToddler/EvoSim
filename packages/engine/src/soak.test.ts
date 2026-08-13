@@ -78,8 +78,12 @@ const SOAK_TICKS = 100_000;
 /**
  * State hash after 100 000 ticks of the soak world. Regenerate together with the
  * golden fixture whenever ENGINE_VERSION changes.
+ *
+ * Engine 0.5.0 moved it for the same two reasons the fixture moved: the carcass
+ * store joined the hash stream, and carrion changes what organisms sense and
+ * therefore do (ADR 0008 §5).
  */
-const GOLDEN_SOAK_HASH = "8f88a197654c098b";
+const GOLDEN_SOAK_HASH = "84ee01707a012488";
 
 interface Violations {
   /** A live slot with the invalid entity ID 0, or an ID seen twice. */
@@ -96,6 +100,14 @@ interface Violations {
   bookkeeping: number;
   /** A child whose generation does not exceed a plausible bound, or a bad parent link. */
   lineage: number;
+  /**
+   * A carcass with no meat, no identity, a position outside the world, or an
+   * active/free bookkeeping mismatch (docs/07 §4: "carcass meat >= 0").
+   *
+   * Carrion is authoritative state that is created, eaten and decayed by three
+   * different phases, so it gets the same per-sweep audit the organisms get.
+   */
+  carcass: number;
 }
 
 /** Full organism invariant sweep (docs/07 §4 development invariants). */
@@ -113,6 +125,10 @@ function checkOrganisms(engine: SimulationEngine, seenIds: Set<number>): Violati
     body: 0,
     bookkeeping: 0,
     lineage: 0,
+    // Filled by countCarcassViolations at the call site: carcasses are a separate
+    // store, and mixing their sweep into the organism loop would hide which of
+    // the two actually broke.
+    carcass: 0,
   };
 
   seenIds.clear();
@@ -195,7 +211,49 @@ const NO_VIOLATIONS: Violations = {
   body: 0,
   bookkeeping: 0,
   lineage: 0,
+  carcass: 0,
 };
+
+/** Carcass invariant sweep (docs/07 §4, Milestone 5). */
+function countCarcassViolations(engine: SimulationEngine): number {
+  const { carcasses, config } = engine;
+  const maxPos = config.world.sizeLU * POS_SCALE - 1;
+  let violations = 0;
+  let active = 0;
+
+  for (let slot = 0; slot < carcasses.slotHighWater; slot += 1) {
+    if (carcasses.active[slot] !== 1) {
+      // A released row must be blank, or the state hash would depend on the
+      // history of carcasses that no longer exist.
+      if (
+        (carcasses.entityId[slot] as number) !== 0 ||
+        (carcasses.remainingMeat[slot] as number) !== 0
+      ) {
+        violations += 1;
+      }
+      continue;
+    }
+    active += 1;
+    // An active carcass with no meat left should have been released by the phase
+    // that emptied it, whether that was feeding or decay.
+    if ((carcasses.remainingMeat[slot] as number) <= 0) violations += 1;
+    if ((carcasses.entityId[slot] as number) === 0) violations += 1;
+    const x = carcasses.x[slot] as number;
+    const y = carcasses.y[slot] as number;
+    if (x < 0 || y < 0 || x > maxPos || y > maxPos) violations += 1;
+  }
+
+  if (active !== carcasses.liveCount) violations += 1;
+  if (carcasses.liveCount + carcasses.freeCount !== carcasses.slotHighWater) violations += 1;
+  // The conservation identity, checked on every sweep rather than once at the end.
+  if (
+    carcasses.totalMeatEaten + carcasses.totalMeatDecayed + carcasses.totalRemainingMeat() !==
+    carcasses.totalMeatCreated
+  ) {
+    violations += 1;
+  }
+  return violations;
+}
 
 describe("100k tick evolutionary soak (task E07)", () => {
   // ~350 s of simulation on its own. The budget is deliberately several times
@@ -222,6 +280,7 @@ describe("100k tick evolutionary soak (task E07)", () => {
         engine.stepMany(Math.min(CHECK_EVERY, SOAK_TICKS - done));
 
         const violations = checkOrganisms(engine, seenIds);
+        violations.carcass = countCarcassViolations(engine);
         expect(`tick ${engine.tick}: ${JSON.stringify(violations)}`).toBe(
           `tick ${engine.tick}: ${JSON.stringify(NO_VIOLATIONS)}`,
         );

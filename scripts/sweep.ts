@@ -267,6 +267,18 @@ interface RunResult {
   /** The same spread as a per-gene standard deviation, in fractions of a gene range. */
   traitStdDevFraction: number;
   biomassFractionOfCapacity: number;
+  /**
+   * Predation observables (Milestone 5). Carnivory is a calibration question
+   * rather than a settled behaviour — the reference world eats no meat at all in
+   * 10 000 ticks (ADR 0008 §5a) — so L07 needs to be able to see, per seed,
+   * whether any lineage ever preferred a carcass and whether the carcass cap
+   * bound.
+   */
+  meanDiet: number;
+  meatEaten: number;
+  kills: number;
+  carcasses: number;
+  carcassesSkippedAtCap: number;
   finalHash: string;
   wallMs: number;
 }
@@ -307,6 +319,11 @@ function runOne(variant: Variant, seed: number, ticks: number): RunResult {
     traitStdDevFraction: Number(traitStdDevFraction(stats).toFixed(4)),
     biomassFractionOfCapacity:
       capacity > 0 ? Number((totalPlantBiomass(engine.environment) / capacity).toFixed(4)) : 0,
+    meanDiet: Number(stats.meanDiet.toFixed(4)),
+    meatEaten: engine.carcasses.totalMeatEaten,
+    kills: stats.kills,
+    carcasses: engine.carcasses.liveCount,
+    carcassesSkippedAtCap: engine.carcasses.skippedAtCap,
     finalHash: engine.computeStateHash(),
     wallMs: Math.round(performance.now() - startedAt),
   };
@@ -328,6 +345,11 @@ const CSV_COLUMNS: readonly (keyof RunResult)[] = [
   "traitVarianceQ2",
   "traitStdDevFraction",
   "biomassFractionOfCapacity",
+  "meanDiet",
+  "meatEaten",
+  "kills",
+  "carcasses",
+  "carcassesSkippedAtCap",
   "finalHash",
   "wallMs",
 ];
@@ -371,6 +393,11 @@ function main(): void {
             `| sd ${result.traitStdDevFraction.toFixed(4)} ` +
             `| biomass ${(result.biomassFractionOfCapacity * 100).toFixed(1)}% ` +
             `| cap ${String(result.capRejectedBirths).padStart(7)} ` +
+            `| diet ${result.meanDiet.toFixed(3).padStart(6)} ` +
+            `| meat ${String(result.meatEaten).padStart(8)} ` +
+            `| kills ${String(result.kills).padStart(5)} ` +
+            `| carrion ${String(result.carcasses).padStart(5)}` +
+            `${result.carcassesSkippedAtCap > 0 ? `+${result.carcassesSkippedAtCap} skipped` : ""} ` +
             `| ${result.finalHash} | ${(result.wallMs / 1000).toFixed(1)}s`,
         );
       }
@@ -400,7 +427,9 @@ function main(): void {
         ` | median deaths ${median(rows.map((r) => r.deaths))}` +
         ` | median max gen ${median(rows.map((r) => r.maxGeneration))}` +
         ` | median trait sd ${median(rows.map((r) => r.traitStdDevFraction)).toFixed(4)}` +
-        ` | seeds hitting cap ${rows.filter((r) => r.capRejectedBirths > 0).length}`,
+        ` | seeds hitting cap ${rows.filter((r) => r.capRejectedBirths > 0).length}` +
+        ` | seeds eating meat ${rows.filter((r) => r.meatEaten > 0).length}` +
+        ` | seeds hitting the carcass cap ${rows.filter((r) => r.carcassesSkippedAtCap > 0).length}`,
     );
     console.log(
       `${" ".repeat(variant.label.length + 1)} trait sd is per-gene standard deviation as a ` +

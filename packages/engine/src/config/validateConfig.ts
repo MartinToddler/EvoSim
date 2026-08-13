@@ -475,6 +475,21 @@ function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
     qmul(carcass.baseCarcassDecayFractionQPerDecayStep, Q + carcass.hotDecayBonusMaxQ) <= Q,
     "organism.carcass: base decay scaled by the maximum hot bonus must not exceed 100% per decay step",
   );
+  checkCentiCelsius(
+    carcass.hotDecayMinTemperatureCentiC,
+    "organism.carcass.hotDecayMinTemperatureCentiC",
+  );
+  checkCentiCelsius(
+    carcass.hotDecayFullBonusTemperatureCentiC,
+    "organism.carcass.hotDecayFullBonusTemperatureCentiC",
+  );
+  // Strictly ordered, not merely ordered: an empty span would divide by zero in
+  // the decay ramp, and inverting it would make cold carrion rot fastest.
+  check(
+    carcass.hotDecayFullBonusTemperatureCentiC > carcass.hotDecayMinTemperatureCentiC,
+    "organism.carcass.hotDecayFullBonusTemperatureCentiC must be above " +
+      "hotDecayMinTemperatureCentiC, or the hot-decay ramp has no width",
+  );
 }
 
 /**
@@ -711,6 +726,9 @@ function validateCombat(config: DeepReadonly<SimulationConfig>): void {
     combat.maxArmorDamageReductionQ < Q,
     "combat.maxArmorDamageReductionQ must stay below Q or full armor would grant total immunity",
   );
+  // A floor of Q means "size does not matter"; above Q the derived span would be
+  // negative and a big body would hit SOFTER than a small one.
+  checkQFraction(combat.attackSizeFactorFloorQ, "combat.attackSizeFactorFloorQ");
 }
 
 function validateReproduction(config: DeepReadonly<SimulationConfig>): void {

@@ -98,10 +98,10 @@ pnpm sweep --seeds 0xE0A12026,1,2 --ticks 20000   # multi-seed calibration repor
 pnpm --filter @eon/web dev   # run the web shell locally
 ```
 
-Current status: Milestones 0–4 complete — workspace, determinism skeleton (hardened after
-review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005) and
-asexual reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007). There is no
-renderer yet; everything below is headless.
+Current status: Milestones 0–5 complete — workspace, determinism skeleton (hardened after
+review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
+reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007) and predation: carrion,
+combat and the diet trade-off (ADR 0008). There is no renderer yet; everything below is headless.
 
 The simulation is real and evolving:
 
@@ -112,11 +112,11 @@ plants     capacity 168.8M, biomass 84.4M (50.0% of capacity)
 founders   cell 40426 at (234, 157) in a 35507-cell landmass
 organisms  256 spawned, entity IDs 1..256
 
-tick      0 | pop  256 | gen   0 | births    256 | deaths      0 | var       0
-tick   1000 | pop  256 | gen   0 | births    256 | deaths      0 | var       0
-tick   2000 | pop 1503 | gen   1 | births   1525 | deaths     22 | var   35283
-tick   5000 | pop 1700 | gen   4 | births   4533 | deaths   2833 | var  111889
-tick  10000 | pop 4718 | gen   8 | births  15408 | deaths  10690 | var  225530
+tick      0 | pop  256 | gen 0 | births   256 | deaths    0 | var      0 | carcasses    0
+tick   1000 | pop  256 | gen 0 | births   256 | deaths    0 | var      0 | carcasses    0
+tick   2000 | pop 1506 | gen 1 | births  1525 | deaths   19 | var  51257 | carcasses   19
+tick   5000 | pop 1164 | gen 4 | births  4353 | deaths 3189 | var 511118 | carcasses 3189
+tick  10000 | pop 4364 | gen 8 | births 13212 | deaths 8848 | var 777110 | carcasses 4096 (4751 skipped)
 ```
 
 The founders forage, grow to maturity on what they find, compete hard enough that some starve, and
@@ -125,14 +125,31 @@ quantized network as any descendant will, and `var` — the summed variance of t
 genes, hue excluded — starts at exactly **zero**, because every founder is genetically identical.
 All of it comes from mutation.
 
-**Known calibration issue.** The world's carrying capacity is far above the 8 192 organism safety
-cap. Across six seeds at 10 000 ticks all six survive, but **three are pinned at the cap** with
-5.5–6.1 million refused births, and their trait diversity is about half that of the uncapped seeds —
-the cap is filtering by storage order instead of by ecology, exactly the bias docs/01 §11 warns
-about. docs/01 §12 makes not slamming the cap an MVP release gate, so this is on the critical path.
-The defaults were nevertheless implemented faithfully and deliberately **not** tuned, because
-docs/08 §24 requires that order and docs/07 §14 requires 10–30 seeds before any tuning conclusion.
-It is input for task L07, and `pnpm sweep` is the harness. Full table in ADR 0006 §7.
+Predation is available but not scripted anywhere. There is no `Predator` type and no rule that reads
+one: a hunter is an `attackPower` gene, an `attack` brain output, a carnivore `diet` gene and a
+controller that steers at what it senses. A handcrafted predator in
+`packages/engine/src/predationSimulation.test.ts` detects a prey animal, closes the distance, kills
+it, is credited the kill and then eats the carcass — all through the ordinary tick loop.
+
+**Three known calibration issues**, all deliberately left untuned because docs/08 §24 requires the
+defaults to be implemented faithfully first and docs/07 §14 requires 10–30 seeds before a tuning
+conclusion. All three are input for task **L07**, and `pnpm sweep` is the harness.
+
+1. **The world's carrying capacity is far above the 8 192 organism safety cap.** Across six seeds at
+   10 000 ticks all six survive, but **three are pinned at the cap** with 5.5–6.1 million refused
+   births, and their trait diversity is about half that of the uncapped seeds — the cap is filtering
+   by storage order instead of by ecology, exactly the bias docs/01 §11 warns about. docs/01 §12 makes
+   not slamming the cap an MVP release gate, so this is on the critical path. Full table in ADR 0006 §7.
+2. **No meat is eaten in 10 000 ticks of the reference world.** The founder lineage is
+   herbivore-leaning (mean diet −0.597 from a −0.600 start) and docs/04 §20 only sends an organism to
+   a carcass when meat digests at least as well as plants, so carnivory is reachable but not reached
+   on this seed at this horizon. docs/07 §12 lists "carnivory impossible" as a failure mode to
+   monitor. ADR 0008 §5a.
+3. **The carcass cap saturates**: 4 096 live and 4 751 skipped by tick 10 000. At the documented decay
+   rate a carcass survives roughly 8 000 ticks, so a world losing about one organism per tick
+   accumulates toward twice `limits.maxCarcasses`. The behaviour at the cap is correct — a
+   deterministic skip plus a hashed diagnostics counter, never an eviction — but it suppresses the
+   carrion supply predation depends on. ADR 0008 §5b.
 
 Two configurations, deliberately separated (ADR 0002 §4):
 
@@ -144,8 +161,8 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.4.0, protocol 1, snapshot schema 5, config
-schema 5. Design decisions are recorded in `docs/adr/`:
+entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 1, snapshot schema 6, config
+schema 6. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
 - `0002-milestone-1-hardening.md` — state encapsulation, config immutability, the
@@ -167,8 +184,15 @@ schema 5. Design decisions are recorded in `docs/adr/`:
   the measurements behind the eight risks that turned out clean — including a repeated 100 000-tick
   same-seed comparison and save/load restored at every tick of a window.
 
+- `0008-milestone-5-predation.md` — carrion, combat and the diet trade-off: why meat conservation is
+  the invariant that replaces energy conservation, why contact and mouth range stay geometric instead
+  of becoming config, why the attack cooldown is decremented in a different phase from the
+  reproduction one, and two calibration findings — that nothing ate meat in 10 000 ticks and that the
+  carcass cap saturates.
+
 > **Repository note.** Three branches diverged in parallel from the Milestone 2 commit. This line is
-> Milestone 2 → 3 → 4. The Milestone 0–2 "foundation gate" branch
+> Milestone 2 → 3 → 4 → 5. The Milestone 0–2 "foundation gate" branch
 > (`claude/evosim-project-setup-ps3fry`) and the Milestone 2.5 debug web view
 > (`claude/m2-5-review-visualizer-54i8qn`) are **not merged here**. ADR 0006 §0 explains why that
-> was safe for Milestone 4 and why the foundation-gate merge has to happen before Milestone 9.
+> was safe for Milestone 4, ADR 0008 §0 re-checks it for Milestone 5, and the foundation-gate merge
+> still has to happen before Milestone 9.

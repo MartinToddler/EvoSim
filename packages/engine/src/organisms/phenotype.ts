@@ -2,7 +2,7 @@ import { assert, type DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { POS_SCALE, Q, TRIG_SCALE, clamp, qmul } from "../math/fixed";
 import { cosLut } from "../math/trigLut";
-import { FOV_COS_SCALE } from "../spatial/queries";
+import { FOV_COS_SCALE } from "../spatial/fov";
 import {
   Gene,
   accelerationVel,

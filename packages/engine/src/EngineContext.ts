@@ -1,4 +1,5 @@
 import type { ReadonlySimulationConfig } from "./config/cloneConfig";
+import type { CarcassStore } from "./ecology/CarcassStore";
 import type { EngineScratch } from "./EngineScratch";
 import type { GenomeStore } from "./organisms/GenomeStore";
 import type { OrganismStore } from "./organisms/OrganismStore";
@@ -28,10 +29,23 @@ export interface EngineContext {
   readonly organisms: OrganismStore;
   readonly genomes: GenomeStore;
   readonly phenotypes: PhenotypeStore;
+  /** Authoritative carrion (docs/03 §23). */
+  readonly carcasses: CarcassStore;
   /** Spatial index as of before movement; sensing reads it. */
   readonly spatialPre: SpatialGrid;
   /** Spatial index as of after movement; feeding and combat read it. */
   readonly spatialPost: SpatialGrid;
+  /**
+   * Spatial index over carcasses, rebuilt with `spatialPre` in phase 2.
+   *
+   * One index serves both the sensing phase and the feeding phase even though
+   * they run either side of movement: a carcass never moves, and nothing creates
+   * or removes one between phase 2 and phase 9. Carcasses created by phase 13
+   * therefore first become sensible and edible on the following tick, which is
+   * the same rule sensing already follows — an organism cannot react to
+   * something that did not exist when it looked.
+   */
+  readonly carcassIndex: SpatialGrid;
   readonly scratch: EngineScratch;
   /**
    * The authoritative generator. Only phases that genuinely need randomness may

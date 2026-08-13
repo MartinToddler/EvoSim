@@ -10,7 +10,7 @@ import type { SimulationEngine } from "./SimulationEngine";
  * changes hashes and therefore requires an ENGINE_VERSION bump, regenerated
  * goldens and a changelog entry (CLAUDE.md).
  *
- * Canonical sequence (engine 0.4.0):
+ * Canonical sequence (engine 0.5.0):
  *   1. magic word 0x454f4e48 ("EONH")
  *   2. tick as TWO words: low 32 bits, then high bits
  *   3. seed
@@ -19,6 +19,7 @@ import type { SimulationEngine } from "./SimulationEngine";
  *   6. environment arrays (see EnvironmentStore.hashInto)
  *   7. organism slot state and per-slot arrays (OrganismStore.hashInto)
  *   8. genomes and brain weights for the used slot prefix (GenomeStore.hashInto)
+ *   9. carcass slot state and per-slot arrays (CarcassStore.hashInto)
  *
  * Derived state is deliberately absent: the spatial index, the phenotype cache
  * and every scratch buffer are pure functions of what is hashed above, and are
@@ -58,6 +59,7 @@ export function computeStateHash(engine: SimulationEngine): string {
   engine.environment.hashInto(hasher);
   engine.organisms.hashInto(hasher);
   engine.genomes.hashInto(hasher, engine.organisms.slotHighWater);
+  engine.carcasses.hashInto(hasher);
 
   return hasher.digest();
 }

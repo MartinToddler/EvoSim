@@ -4,6 +4,7 @@ import type { SimulationConfig } from "../config/SimulationConfig";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { validateConfig } from "../config/validateConfig";
+import { CarcassStore } from "../ecology/CarcassStore";
 import type { EngineContext } from "../EngineContext";
 import { EngineScratch } from "../EngineScratch";
 import { GENE_COUNT, geneFromQ } from "../genetics/genes";
@@ -56,6 +57,7 @@ export interface TestWorld {
   config: ReadonlySimulationConfig;
   environment: EnvironmentStore;
   organisms: OrganismStore;
+  carcasses: CarcassStore;
   /** World size in sub-units, for placing organisms. */
   worldSizePos: number;
   /** Turn a grid cell into a centre position in sub-units. */
@@ -96,6 +98,7 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
   environment.recomputePassability();
 
   const organisms = new OrganismStore(config.limits.maxOrganisms);
+  const carcasses = new CarcassStore(config.limits.maxCarcasses);
   const ctx: EngineContext = {
     seed: options.seed ?? 0x1234_5678,
     config,
@@ -103,6 +106,7 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     organisms,
     genomes: new GenomeStore(config.limits.maxOrganisms),
     phenotypes: new PhenotypeStore(config.limits.maxOrganisms),
+    carcasses,
     spatialPre: new SpatialGrid(
       config.world.sizeLU,
       config.world.spatialCellSizeLU,
@@ -113,7 +117,16 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
       config.world.spatialCellSizeLU,
       config.limits.maxOrganisms,
     ),
-    scratch: new EngineScratch(config.limits.maxOrganisms, environment.cellCount),
+    carcassIndex: new SpatialGrid(
+      config.world.sizeLU,
+      config.world.spatialCellSizeLU,
+      config.limits.maxCarcasses,
+    ),
+    scratch: new EngineScratch(
+      config.limits.maxOrganisms,
+      environment.cellCount,
+      config.limits.maxCarcasses,
+    ),
     rng: Xoshiro128.fromSeed(options.seed ?? 0x1234_5678),
   };
 
@@ -123,6 +136,7 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     config,
     environment,
     organisms,
+    carcasses,
     worldSizePos: config.world.sizeLU * POS_SCALE,
     cellCenter(gridX: number, gridY: number) {
       return {

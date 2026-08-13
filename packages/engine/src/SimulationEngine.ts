@@ -4,6 +4,10 @@ import { senseAll } from "./brain/sensors";
 import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 import { hashConfig } from "./config/hashConfig";
 import { validateConfig } from "./config/validateConfig";
+import { CarcassStore } from "./ecology/CarcassStore";
+import { captureCarcasses, restoreCarcasses } from "./ecology/carcassSnapshot";
+import { decayCarcasses } from "./ecology/carcasses";
+import { buildCombatClaims, resolveCombatSimultaneously } from "./ecology/combatClaims";
 import { buildFeedingClaims, resolveFeedingClaims } from "./ecology/feedingClaims";
 import { resolveReproduction } from "./ecology/reproduction";
 import type { EngineContext } from "./EngineContext";
@@ -81,6 +85,8 @@ export class SimulationEngine {
   readonly organisms: OrganismStore;
   /** Authoritative inherited state: genes and brain weights (docs/10 §7). */
   readonly genomes: GenomeStore;
+  /** Authoritative carrion left by deaths (docs/03 §23). */
+  readonly carcasses: CarcassStore;
   /** Deterministically chosen region where founders spawn (docs/03 §26). */
   readonly founderRegion: FounderRegion;
   /** Which generation attempt produced this world; 0 means the seed worked directly. */
@@ -118,8 +124,10 @@ export class SimulationEngine {
     this.generationAttempt = world.attempt;
 
     const capacity = this.config.limits.maxOrganisms;
+    const carcassCapacity = this.config.limits.maxCarcasses;
     this.organisms = new OrganismStore(capacity);
     this.genomes = new GenomeStore(capacity);
+    this.carcasses = new CarcassStore(carcassCapacity);
 
     this.#context = {
       seed: this.seed,
@@ -128,6 +136,7 @@ export class SimulationEngine {
       organisms: this.organisms,
       genomes: this.genomes,
       phenotypes: new PhenotypeStore(capacity),
+      carcasses: this.carcasses,
       spatialPre: new SpatialGrid(
         this.config.world.sizeLU,
         this.config.world.spatialCellSizeLU,
@@ -138,7 +147,12 @@ export class SimulationEngine {
         this.config.world.spatialCellSizeLU,
         capacity,
       ),
-      scratch: new EngineScratch(capacity, this.environment.cellCount),
+      carcassIndex: new SpatialGrid(
+        this.config.world.sizeLU,
+        this.config.world.spatialCellSizeLU,
+        carcassCapacity,
+      ),
+      scratch: new EngineScratch(capacity, this.environment.cellCount, carcassCapacity),
       rng: this.#rng,
     };
 
@@ -203,8 +217,10 @@ export class SimulationEngine {
       engine.#context.phenotypes,
       engine.config,
     );
+    restoreCarcasses(snapshot.carcasses, engine.carcasses);
     engine.#context.spatialPre.clear();
     engine.#context.spatialPost.clear();
+    engine.#context.carcassIndex.clear();
 
     return engine;
   }
@@ -257,6 +273,12 @@ export class SimulationEngine {
       updateEnvironment(this.environment, this.config); // 1 scheduledEnvironmentUpdate
     }
     ctx.spatialPre.rebuild(this.organisms); //          2 buildPreMovementSpatialIndex
+    ctx.carcassIndex.rebuildFrom(
+      this.carcasses.slotHighWater,
+      this.carcasses.active,
+      this.carcasses.x,
+      this.carcasses.y,
+    ); //                                                 2 (carcasses, see EngineContext)
     senseAll(ctx, this.#tick); //                       3 sense
     runBrainsAndBuildIntents(ctx); //                   4 runBrainsAndBuildIntents
     integrateMovement(ctx); //                          5 integrateMovement
@@ -264,12 +286,14 @@ export class SimulationEngine {
     ctx.spatialPost.rebuild(this.organisms); //         7 buildPostMovementSpatialIndex
     buildFeedingClaims(ctx); //                         8 buildFeedingClaims
     resolveFeedingClaims(ctx); //                       9 resolveFeedingClaims
-    //   10 buildCombatClaims                — Milestone 5
-    //   11 resolveCombatSimultaneously      — Milestone 5
+    buildCombatClaims(ctx); //                         10 buildCombatClaims
+    resolveCombatSimultaneously(ctx); //               11 resolveCombatSimultaneously
     applyMetabolismGrowthThermalAging(ctx); //         12 applyMetabolismGrowthThermalAging
     finalizeDeaths(ctx); //                            13 finalizeDeathsAndCreateCarcasses
     resolveReproduction(ctx); //                       14 resolveReproduction
-    //   15 scheduledCarcassDecay            — Milestone 5
+    if (this.#tick % this.config.time.carcassDecayInterval === 0) {
+      decayCarcasses(ctx); //                          15 scheduledCarcassDecay
+    }
     //   16 scheduledSpeciesAnalysis         — Milestone 8
     //   17 scheduledStatisticsAndEvents     — Milestone 8
     //   18 optionalRenderSnapshot           — Milestone 6
@@ -311,6 +335,7 @@ export class SimulationEngine {
       config: cloneConfig(this.config),
       environment: captureEnvironment(this.environment, this.founderRegion),
       organisms: captureOrganisms(this.organisms, this.genomes),
+      carcasses: captureCarcasses(this.carcasses),
     };
   }
 }

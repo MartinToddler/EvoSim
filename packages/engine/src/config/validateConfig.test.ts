@@ -95,6 +95,8 @@ describe("validateConfig must not over-constrain legitimate configurations", () 
     ],
     ["combat deals no damage", (c) => void (c.combat.baseAttackDamageQ = 0)],
     ["no attack cooldown", (c) => void (c.combat.attackCooldownTicks = 0)],
+    ["body size does not affect damage", (c) => void (c.combat.attackSizeFactorFloorQ = 4096)],
+    ["attacking is free", (c) => void (c.combat.baseAttackEnergyCost = 0)],
     ["no reproduction cooldown", (c) => void (c.reproduction.reproductionCooldownTicks = 0)],
     ["children spawn on the parent", (c) => void (c.reproduction.childSpawnDistanceMinLU = 0)],
     ["water is harmless", (c) => void (c.organism.movement.waterHealthDamageQPerTick = 0)],
@@ -211,6 +213,39 @@ describe("validateConfig structural invariants", () => {
       c.organism.carcass.hotDecayBonusMaxQ = 4096;
     });
     expect(() => validateConfig(config)).toThrowError(/100%/);
+  });
+
+  it("rejects a hot-decay ramp with no width, in either direction", () => {
+    // The ramp's span is a divisor: an empty one divides by zero, and an
+    // inverted one would make frozen carrion rot fastest.
+    const empty = mutatedConfig((c) => {
+      c.organism.carcass.hotDecayMinTemperatureCentiC = 2000;
+      c.organism.carcass.hotDecayFullBonusTemperatureCentiC = 2000;
+    });
+    expect(() => validateConfig(empty)).toThrowError(/hot-decay ramp/);
+
+    const inverted = mutatedConfig((c) => {
+      c.organism.carcass.hotDecayMinTemperatureCentiC = 3500;
+      c.organism.carcass.hotDecayFullBonusTemperatureCentiC = 0;
+    });
+    expect(() => validateConfig(inverted)).toThrowError(/hot-decay ramp/);
+  });
+
+  it("accepts a hot-decay ramp entirely below freezing", () => {
+    const config = mutatedConfig((c) => {
+      c.organism.carcass.hotDecayMinTemperatureCentiC = -2000;
+      c.organism.carcass.hotDecayFullBonusTemperatureCentiC = -500;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("rejects an attack size factor floor above Q", () => {
+    // Above Q the derived span `Q - floor` is negative and a large body would
+    // hit softer than a small one — the trade-off inverted by arithmetic.
+    const config = mutatedConfig((c) => {
+      c.combat.attackSizeFactorFloorQ = 4097;
+    });
+    expect(() => validateConfig(config)).toThrowError(/attackSizeFactorFloorQ/);
   });
 
   it("rejects a species continuity threshold at or above the split threshold", () => {

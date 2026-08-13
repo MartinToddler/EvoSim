@@ -1,16 +1,16 @@
 {
-  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. Engine 0.4.0 regenerated every hash: reproduction adds three hashed counters plus a per-slot reproduction cooldown to the stream, and phase 14 makes the population grow instead of dying out, so ticks 1 onward describe a different world as well as a different stream. The tick-1000 hash is unchanged by coincidence of the stream layout, not by design.",
-  "engineVersion": "0.4.0",
-  "configSchemaVersion": 5,
+  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. Engine 0.5.0 regenerated every hash for two independent reasons: the carcass store joined the canonical stream, and three new config fields moved the config digest. The reference world also behaves differently from tick 1 onward — the carcass sensors report real carrion instead of a pinned absence, which changes the founder's eat output whenever a body is nearby (ADR 0008 §5).",
+  "engineVersion": "0.5.0",
+  "configSchemaVersion": 6,
   "seedHex": "0xE0A12026",
-  "configHash": "66cfb128e8ff0144",
+  "configHash": "2d2712ccf817a700",
   "commands": [],
   "checkpoints": {
-    "0": "1fee010a36698c7e",
-    "1": "47073dd5617cdee1",
-    "10": "ab02adc06d567aac",
-    "100": "d13cc926a691d31a",
-    "1000": "51afe6f86a9e99e8",
-    "10000": "9a643dca1206bdd2"
+    "0": "07ab4c7d408f0df1",
+    "1": "820a50fb17e1969b",
+    "10": "efbe526fc1eae6ab",
+    "100": "0e618816d8e66c62",
+    "1000": "f21e8203dbcaf2b7",
+    "10000": "f58bac3bde3256f3"
   }
 }

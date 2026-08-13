@@ -1,3 +1,4 @@
+import { createCarcass } from "../ecology/carcasses";
 import type { EngineContext } from "../EngineContext";
 
 /**
@@ -46,8 +47,13 @@ export const DEATH_CAUSE_NAMES: readonly string[] = [
  * Slots are released here, before reproduction would run. That makes LIFO slot
  * reuse part of the deterministic semantics rather than an accident — a child
  * born on the same tick lands in the slot of the most recently released
- * organism (docs/10 §14). Carcass creation belongs to Milestone 5 and will be
- * inserted here, before the release.
+ * organism (docs/10 §14).
+ *
+ * The carcass is created BEFORE the slot is released, in the order docs/10 §14
+ * prescribes: the body's position, mass and species only exist while the row
+ * does. Every cause leaves a carcass, combat included and combat not specially —
+ * a starved organism is as edible as a killed one, which is what keeps
+ * scavenging available to lineages that never learn to fight.
  */
 export function finalizeDeaths(ctx: EngineContext): void {
   const { organisms, genomes, scratch } = ctx;
@@ -66,6 +72,7 @@ export function finalizeDeaths(ctx: EngineContext): void {
     organisms.deathsByCause[cause] = (organisms.deathsByCause[cause] as number) + 1;
     organisms.totalDeaths += 1;
 
+    createCarcass(ctx, slot);
     genomes.clearSlot(slot);
     organisms.releaseSlot(slot);
   }

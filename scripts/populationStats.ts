@@ -19,6 +19,18 @@ export interface PopulationStats {
   meanAgeTicks: number;
   /** Cumulative plant energy ingested by the CURRENTLY LIVING organisms. */
   plantIntake: number;
+  /** Cumulative meat energy ingested by the CURRENTLY LIVING organisms. */
+  meatIntake: number;
+  /** Kills credited to the CURRENTLY LIVING organisms. */
+  kills: number;
+  /**
+   * Mean signed diet gene of the living population, normalized to [-1, 1].
+   *
+   * The single number that says whether a world has discovered carnivory:
+   * founders start herbivore-leaning, and only realized reproductive success can
+   * move this.
+   */
+  meanDiet: number;
   /**
    * Summed population variance of the 15 ecological genes, hue excluded, in
    * normalized Q² units (docs/05 §3 excludes hue from trait comparison).
@@ -40,6 +52,8 @@ export function summarizePopulation(engine: SimulationEngine): PopulationStats {
   let health = 0;
   let age = 0;
   let intake = 0;
+  let meatIntake = 0;
+  let kills = 0;
   let generationSum = 0;
   let maxGeneration = 0;
 
@@ -53,6 +67,8 @@ export function summarizePopulation(engine: SimulationEngine): PopulationStats {
     health += organisms.healthQ[slot] as number;
     age += organisms.ageTicks[slot] as number;
     intake += organisms.plantEnergyEaten[slot] as number;
+    meatIntake += organisms.meatEnergyEaten[slot] as number;
+    kills += organisms.kills[slot] as number;
     const generation = organisms.generation[slot] as number;
     generationSum += generation;
     if (generation > maxGeneration) {
@@ -62,6 +78,12 @@ export function summarizePopulation(engine: SimulationEngine): PopulationStats {
 
   const n = slots.length;
   const divisor = Math.max(n, 1);
+  // Diet is stored unsigned and mapped to a signed Q range, exactly as the
+  // engine's phenotype mapping does (docs/03 §24).
+  let dietSum = 0;
+  for (const slot of slots) {
+    dietSum += (geneToQ(genomes.gene(slot, Gene.Diet)) * 2 - Q) / Q;
+  }
   const varianceByGeneQ2 = new Array<number>(GENE_COUNT).fill(0);
   let traitVarianceQ2 = 0;
 
@@ -94,6 +116,9 @@ export function summarizePopulation(engine: SimulationEngine): PopulationStats {
     meanHealthQ: health / divisor,
     meanAgeTicks: age / divisor,
     plantIntake: intake,
+    meatIntake,
+    kills,
+    meanDiet: dietSum / divisor,
     traitVarianceQ2,
     varianceByGeneQ2,
   };

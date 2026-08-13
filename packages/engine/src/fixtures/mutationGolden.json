@@ -1,7 +1,7 @@
 {
-  "description": "Mutation golden fixture (docs/07 §2 Genome/Brain mutation, tasks E03/E04). Pins the exact result of mutating the founder genome through a 50-generation lineage with a fixed PRNG seed, plus the PRNG draw count of a single birth. Any change to the draw order, the roll-interval partition, the sigma scaling or the clamp moves these values and is an ENGINE_VERSION event.",
-  "engineVersion": "0.4.0",
-  "configSchemaVersion": 5,
+  "description": "Mutation golden fixture (docs/07 §2 Genome/Brain mutation, tasks E03/E04). Pins the exact result of mutating the founder genome through a 50-generation lineage with a fixed PRNG seed, plus the PRNG draw count of a single birth. Any change to the draw order, the roll-interval partition, the sigma scaling or the clamp moves these values and is an ENGINE_VERSION event. Engine 0.5.0 touched none of those: the gene block, the brain digest and the PRNG state below are byte-identical to 0.4.0, and only the version stamps moved.",
+  "engineVersion": "0.5.0",
+  "configSchemaVersion": 6,
   "seedHex": "0xE04A2026",
   "generations": 50,
   "firstBirthPrngWords": 572,
