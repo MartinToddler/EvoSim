@@ -6,6 +6,64 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-13 — Milestone 4 review: reproduction and mutation
+
+Versions: **all unchanged** (`ENGINE_VERSION` 0.4.0, `CONFIG_SCHEMA_VERSION` 5,
+`SNAPSHOT_SCHEMA_VERSION` 5, `PROTOCOL_VERSION` 1). **No golden hash moved.** Both fixes below are
+outside authoritative behaviour, and every golden was reproduced from scratch to prove it: the six
+fixture hashes at ticks 0/1/10/100/1000/10000 and the 100 000-tick soak hash `8f88a197654c098b`.
+Evidence and the full risk-by-risk review in `docs/adr/0007-milestone-4-review.md`.
+
+### Fixed
+
+- **`pnpm verify` failed on a wall clock rather than on a hash.** `testTimeout` was 300 s, derived
+  from a ~150 s measurement of the 10 000-tick reference world. Vitest runs test files in parallel
+  workers, so that test competes with the 100 000-tick soak and the other acceptance suites and
+  actually costs 429–520 s inside the suite against 188 s standalone — a 2.3–2.8x contention factor.
+  Two **mandated** acceptance tests timed out (`goldenFixture` state hashes, `organismSimulation`
+  resume-to-10 000); 486 of 488 tests passed and both failures were timeouts with no assertion
+  involved. docs/07 §8 forbids enforcing an arbitrary CI wall clock on unknown hardware, so the
+  budgets are now hang detectors: global `testTimeout` 300 s → **600 s**, and **1 800 000 ms** inline
+  on the two 10 000-tick determinism tests and on the 100 000-tick environment soak, matching the
+  value `soak.test.ts` already used. Measured costs are recorded in the config comment.
+- **A cooldown above the Uint16 bound was accepted by `validateConfig` and then silently wrapped.**
+  `reproduction.reproductionCooldownTicks` was checked only as a non-negative integer, while the
+  counter it drives is a `Uint16Array` row of `OrganismStore` — and a `Uint16Array` assignment wraps
+  rather than clamps. A configured 70 000 was stored as 4 464, so the parent came off cooldown 65 536
+  ticks early and reproduced roughly fifteen times more often than configured, with nothing
+  reporting a problem. Both `reproduction.reproductionCooldownTicks` and
+  `combat.attackCooldownTicks` (same shape against the `attackCooldown` row, written from Milestone 5)
+  are now bounded by their storage width, as every gene range and `plants.baseCapacityByBiome`
+  already were. The check only ever rejects more configurations; `DEFAULT_CONFIG` is unaffected and
+  the config shape is unchanged.
+
+### Added
+
+- **`genetics/mutationStatistics.test.ts`** — the distribution `mutation.test.ts`'s mechanism tests
+  do not cover. Over 200 000 deterministic births: 1.361 genes and 8.375 weights changed per birth
+  against 1.363 and 8.398 predicted by the roll partition, weight-delta standard deviation 398.8
+  against 398.7 predicted by the two-class mixture, and a delta mean of 0.16 against a standard error
+  of 0.31 — which is what proves `qmul`'s truncation is symmetric rather than a per-mutation downward
+  bias. Also the **no-mutation** fixture (byte-identical genome and brain across 1 000 births, still
+  spending exactly 416 classification draws) and the **forced-mutation** fixture (accepted at the
+  `sum == Q` boundary, every locus perturbed, 1 000 forced generations inside every bound, uniform
+  forced reset across the whole raw span).
+- **`evolutionContinuity.test.ts`** — save/load restored at **every** tick of a 48-tick window that
+  straddles both the 20-tick environment cadence and the 40-tick reproduction cooldown, each
+  continued 24 ticks, with the free list, `nextEntityId`, generation, parent links, cooldowns and the
+  diagnostics counters checked by name as well as through the hash. Sampling chosen ticks cannot
+  catch a field that is only sometimes load-bearing, and reproduction creates several. Plus the
+  docs/07 §12 brain-degradation guard: mean cosine similarity to the founder brain stays above 0.5
+  and weights on the clamp stay under 1%. Measured at 40 000 ticks the similarity is 0.896 after 26
+  generations, so the bound is loose by design (docs/07 §1 forbids asserting an evolutionary story).
+- **A whole-phase energy ledger test** in `ecology/reproduction.test.ts`: across 400 simultaneous
+  births spanning the investment × size grid, the population's total energy must fall by _exactly_
+  the increase in `birthEnergyDiscarded`. The existing tests balance one birth at a time, which
+  cannot catch an accumulation error — a discard credited to the wrong parent balances per birth and
+  not in aggregate. Measured: −1 517 965 against +1 517 965.
+- **Storage-width validation tests** in `config/validateConfig.test.ts` for both cooldowns, at the
+  bound and one past it.
+
 ## [0.4.0] — 2026-08-13 — Milestone 4: asexual reproduction, mutation and evolution
 
 Versions: `ENGINE_VERSION` 0.3.1 → **0.4.0**; `CONFIG_SCHEMA_VERSION` 4 → **5**;

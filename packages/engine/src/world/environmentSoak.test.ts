@@ -51,7 +51,11 @@ describe("100k tick environment soak", () => {
     return config;
   })();
 
-  it("stays valid and deterministic across 100k ticks", { timeout: 300_000 }, () => {
+  // 100 000 environment-only ticks. The budget matches the other soaks': it
+  // exists to catch a hang, not to assert a wall clock on unknown hardware
+  // (docs/07 §8). 300 s was the number that proved too tight for the populated
+  // 10 000-tick tests under parallel-worker contention.
+  it("stays valid and deterministic across 100k ticks", { timeout: 1_800_000 }, () => {
     const engine = new SimulationEngine({ seed: 0xe0a12026, config: LIFELESS_CONFIG });
     const { environment } = engine;
     expect(engine.organisms.liveCount).toBe(0);

@@ -32,7 +32,10 @@ describe("golden deterministic fixture", () => {
     expect(hashConfig(DEFAULT_CONFIG)).toBe(goldenFixture.configHash);
   });
 
-  it("state hashes match at ticks 0, 1, 10, 100, 1000, 10000", () => {
+  // 10 000 ticks of the populated reference world: 188 s standalone, 520 s
+  // observed inside the parallel suite. The budget is a hang detector sized like
+  // the soaks', not a wall-clock assertion (docs/07 §8).
+  it("state hashes match at ticks 0, 1, 10, 100, 1000, 10000", { timeout: 1_800_000 }, () => {
     const seed = Number.parseInt(goldenFixture.seedHex, 16);
     expect(seed).toBe(0xe0a12026);
 

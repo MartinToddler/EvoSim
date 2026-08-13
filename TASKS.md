@@ -84,6 +84,35 @@ Two notes carried forward:
    Milestone 9** (terrain raise/lower), because that is when its `fromSnapshot` fix stops being
    merely an optimization.
 
+Milestone 4 review gate: **PASS** (engine 0.4.0 unchanged, ADR 0007). Reproduction and mutation were
+reviewed against conservation of energy, mutation probability correctness, PRNG coupling,
+iteration-order effects, cap bias, brain degradation, accidental cloning, genome bounds, child
+initialization and snapshot completeness. **All golden hashes were reproduced from scratch and are
+unchanged** — the six fixture hashes and the 100 000-tick soak hash `8f88a197654c098b`.
+
+Verifications: repeated 100k same-seed comparison **0 mismatches** across ten checkpoints; save/load
+restored at **every tick** of a 48-tick window and continued 24 ticks each, **0 mismatches**, plus
+save/load at tick 50 000 continuing to the identical 100 000-tick hash; mutation statistics over
+200 000 births matching the partition's predictions to within 0.3%; no-mutation and forced-mutation
+config fixtures both valid and behaving exactly as specified.
+
+Two defects found and fixed, neither an authoritative behaviour change:
+
+1. **`pnpm verify` failed on a wall clock, not on a hash.** `testTimeout` was 300 s, set from a
+   ~150 s measurement, but Vitest's parallel workers make the 10 000-tick reference-world tests cost
+   429–520 s inside the suite against 188 s standalone. Two mandated acceptance tests timed out
+   (486 of 488 tests passed, both failures timeouts with no assertion involved). docs/07 §8 forbids
+   exactly this — an arbitrary CI wall clock on unknown hardware — so the budgets are now hang
+   detectors: global 600 s, and 1 800 000 ms inline on the long determinism tests, matching the soaks.
+2. **A cooldown above 65 535 was accepted and then silently wrapped.**
+   `reproduction.reproductionCooldownTicks` was validated only as a non-negative integer while its
+   counter is a `Uint16Array` row, so 70 000 was stored as 4 464 and the parent reproduced ~15x more
+   often than configured. Both it and `combat.attackCooldownTicks` are now bounded by the storage
+   width, as every gene range already was.
+
+E06 stays open for the same reason as before: the `PopulationCapReached` timeline event needs the
+Milestone 8 `EventStore`. Both ADR 0006 notes above are carried forward unchanged.
+
 ## F Predation
 - [ ] F01 carcass store/decay.
 - [ ] F02 carcass sensors/claims.

@@ -62,6 +62,15 @@ function liveSlots(ctx: EngineContext): number[] {
   return slots;
 }
 
+/** Energy held by the whole living population. */
+function totalLiveEnergy(ctx: EngineContext): number {
+  let total = 0;
+  for (const slot of liveSlots(ctx)) {
+    total += ctx.organisms.energy[slot] as number;
+  }
+  return total;
+}
+
 describe("reproduction eligibility (task E01)", () => {
   it("accepts a mature, developed, fed adult that asks to reproduce", () => {
     const { ctx, slot } = worldWithAdult();
@@ -211,6 +220,64 @@ describe("reproduction energy accounting (task E02)", () => {
         expect(childEnergy).toBeGreaterThanOrEqual(0);
         expect(parentAfter).toBeGreaterThanOrEqual(0);
       }
+    }
+  });
+
+  it("balances the whole phase exactly, over hundreds of simultaneous births", () => {
+    // The tests above check one birth at a time, which cannot catch an error in
+    // how the phase ACCUMULATES: a discard credited to the wrong parent, or a
+    // deduction applied twice, both balance per birth and not in aggregate.
+    //
+    // Phase 14 is the only thing running, and the only energy it may move is
+    // parent -> child with the surplus destroyed. So the population's total
+    // energy must fall by exactly the increase in birthEnergyDiscarded — an
+    // equality, not a bound.
+    const world = createTestWorld({ gridSize: 32 });
+    const ctx = world.ctx;
+    const { organisms } = ctx;
+
+    const PARENTS = 400;
+    for (let i = 0; i < PARENTS; i += 1) {
+      const { xPos, yPos } = world.cellCenter(2 + (i % 28), 2 + Math.floor(i / 28));
+      const slot = spawnTestOrganism(world, {
+        xPos,
+        yPos,
+        ageTicks: MATURE_AGE,
+        developmentQ: Q,
+        energyFractionQ: Q,
+        // Spread investment and size across their ranges so the run contains
+        // both the fits-easily and the heavily-clamped regimes.
+        genesQ: {
+          [Gene.OffspringInvestment]: Math.trunc((i * Q) / PARENTS),
+          [Gene.AdultSize]: Math.trunc(((i * 7) % PARENTS) * (Q / PARENTS)),
+        },
+      });
+      requestReproduction(ctx, slot);
+    }
+
+    const energyBefore = totalLiveEnergy(ctx);
+    const discardedBefore = organisms.birthEnergyDiscarded;
+    resolveReproduction(ctx);
+
+    expect(organisms.liveCount).toBe(2 * PARENTS);
+    expect(totalLiveEnergy(ctx) - energyBefore).toBe(
+      -(organisms.birthEnergyDiscarded - discardedBefore),
+    );
+    // The discard is real in this sweep, so the equality above is not the
+    // trivial "nothing was destroyed" case.
+    expect(organisms.birthEnergyDiscarded).toBeGreaterThan(0);
+
+    // And nobody ended up holding more than their own body can, or less than
+    // nothing — the two ways a birth could break the store's own invariant.
+    for (const slot of liveSlots(ctx)) {
+      const energy = organisms.energy[slot] as number;
+      const radius = currentRadiusPos(
+        ctx.phenotypes.adultRadiusPos[slot] as number,
+        organisms.developmentQ[slot] as number,
+      );
+      const mass = massFromRadiusPos(radius, ctx.config.organism.massScalePerRadiusSquared);
+      expect(energy).toBeGreaterThanOrEqual(0);
+      expect(energy).toBeLessThanOrEqual(maxEnergyForMass(mass, ctx.config));
     }
   });
 });

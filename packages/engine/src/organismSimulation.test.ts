@@ -378,7 +378,10 @@ describe("deterministic 10k founder simulation", () => {
     expect(b.computeStateHash()).not.toBe(a.computeStateHash());
   });
 
-  it("matches a snapshot taken mid-run and resumed to tick 10 000", () => {
+  // Resumes a populated reference world to tick 10 000: 429 s observed inside
+  // the parallel suite. Budgeted as a hang detector, not a wall-clock
+  // assertion (docs/07 §8).
+  it("matches a snapshot taken mid-run and resumed to tick 10 000", { timeout: 1_800_000 }, () => {
     // The required snapshot/resume acceptance at full scale: an interrupted run
     // must be bit-identical to an uninterrupted one, which means the free list,
     // the entity ID counter and every organism array round-tripped exactly.

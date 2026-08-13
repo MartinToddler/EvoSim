@@ -100,8 +100,8 @@ pnpm --filter @eon/web dev   # run the web shell locally
 
 Current status: Milestones 0–4 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005) and
-asexual reproduction with gene and brain mutation (ADR 0006). There is no renderer yet;
-everything below is headless.
+asexual reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007). There is no
+renderer yet; everything below is headless.
 
 The simulation is real and evolving:
 
@@ -162,6 +162,10 @@ schema 5. Design decisions are recorded in `docs/adr/`:
   partition, why over-investment destroys energy instead of being refunded, why reproduction runs in
   two passes, the population-cap calibration finding, and which foundation branch this line is
   built on.
+- `0007-milestone-4-review.md` — the independent Milestone 4 review: a test wall clock that failed
+  `pnpm verify` without any hash being wrong, a cooldown that wrapped silently in its Uint16 row, and
+  the measurements behind the eight risks that turned out clean — including a repeated 100 000-tick
+  same-seed comparison and save/load restored at every tick of a window.
 
 > **Repository note.** Three branches diverged in parallel from the Milestone 2 commit. This line is
 > Milestone 2 → 3 → 4. The Milestone 0–2 "foundation gate" branch

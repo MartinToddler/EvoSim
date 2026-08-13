@@ -227,3 +227,42 @@ describe("validateConfig structural invariants", () => {
     expect(() => validateConfig(config)).toThrowError(/minDaughterPopulation/);
   });
 });
+
+describe("validateConfig rejects values their storage cannot hold", () => {
+  /**
+   * A cooldown lives in a `Uint16Array` row of `OrganismStore`. Assigning a
+   * larger number does not clamp it, it WRAPS: 70 000 is stored as 4 464, so the
+   * organism comes off cooldown 65 536 ticks early and reproduces or attacks far
+   * faster than the configuration says. Nothing downstream can detect that, so
+   * the only place it can be caught is here.
+   */
+  const UINT16_MAX = 65535;
+
+  it("rejects a reproduction cooldown above the Uint16 row", () => {
+    const config = mutatedConfig((c) => {
+      c.reproduction.reproductionCooldownTicks = UINT16_MAX + 1;
+    });
+    expect(() => validateConfig(config)).toThrowError(/reproductionCooldownTicks/);
+  });
+
+  it("accepts a reproduction cooldown at exactly the Uint16 bound", () => {
+    const config = mutatedConfig((c) => {
+      c.reproduction.reproductionCooldownTicks = UINT16_MAX;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("rejects an attack cooldown above the Uint16 row", () => {
+    const config = mutatedConfig((c) => {
+      c.combat.attackCooldownTicks = 200_000;
+    });
+    expect(() => validateConfig(config)).toThrowError(/attackCooldownTicks/);
+  });
+
+  it("accepts an attack cooldown at exactly the Uint16 bound", () => {
+    const config = mutatedConfig((c) => {
+      c.combat.attackCooldownTicks = UINT16_MAX;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+});

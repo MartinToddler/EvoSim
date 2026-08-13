@@ -20,6 +20,17 @@ export class ConfigValidationError extends Error {
  */
 const TEMPERATURE_CENTI_C_LIMIT = 20_000;
 
+/**
+ * Largest value a `Uint16Array` row can hold.
+ *
+ * Several config fields are counters or capacities that end up stored in a
+ * Uint16 row of `OrganismStore`, `EnvironmentStore` or `PhenotypeStore`. A
+ * value above this bound is not clamped by the assignment, it *wraps* — a
+ * 70 000-tick cooldown becomes 4 464 — so the validator has to reject it here
+ * rather than let the storage silently contradict the configuration.
+ */
+const UINT16_MAX = 65535;
+
 function check(condition: boolean, message: string): void {
   if (!condition) {
     throw new ConfigValidationError(message);
@@ -337,8 +348,8 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
   // Every biome base capacity must fit the Uint16 biomass arrays.
   for (let i = 0; i < BIOME_COUNT; i += 1) {
     check(
-      (plants.baseCapacityByBiome[i] as number) <= 65535,
-      `plants.baseCapacityByBiome[${i}] must fit in the Uint16 biomass array (<= 65535)`,
+      (plants.baseCapacityByBiome[i] as number) <= UINT16_MAX,
+      `plants.baseCapacityByBiome[${i}] must fit in the Uint16 biomass array (<= ${UINT16_MAX})`,
     );
   }
 }
@@ -489,7 +500,7 @@ function validateGeneRanges(config: DeepReadonly<SimulationConfig>): void {
   };
 
   // Uint16 caches hold radius, speed, acceleration, turn, vision and ages.
-  const U16 = 65535;
+  const U16 = UINT16_MAX;
   orderedRange(g.adultRadiusMinPos, g.adultRadiusMaxPos, "adultRadius", U16);
   check(g.adultRadiusMinPos > 0, "organism.geneRanges: adultRadiusMinPos must be positive");
   orderedRange(g.maxSpeedMinVel, g.maxSpeedMaxVel, "maxSpeed", U16);
@@ -683,6 +694,14 @@ function validateCombat(config: DeepReadonly<SimulationConfig>): void {
   // Zero base damage is a valid "combat disabled" ablation.
   checkNonNegativeQCoefficient(combat.baseAttackDamageQ, "combat.baseAttackDamageQ");
   checkNonNegativeInt(combat.attackCooldownTicks, "combat.attackCooldownTicks");
+  // Same Uint16 storage trap as reproduction.reproductionCooldownTicks. The
+  // `attackCooldown` row already exists in OrganismStore, so the bound is
+  // asserted now rather than after Milestone 5 starts writing it.
+  check(
+    combat.attackCooldownTicks <= UINT16_MAX,
+    `combat.attackCooldownTicks must fit in the Uint16 cooldown row (<= ${UINT16_MAX}), got ` +
+      `${combat.attackCooldownTicks}`,
+  );
   checkNonNegativeInt(combat.baseAttackEnergyCost, "combat.baseAttackEnergyCost");
   checkNonNegativeQCoefficient(combat.attackEnergyMassCoeffQ, "combat.attackEnergyMassCoeffQ");
   // An impact bonus above +100% is unusual but not structurally invalid.
@@ -705,6 +724,15 @@ function validateReproduction(config: DeepReadonly<SimulationConfig>): void {
   checkNonNegativeInt(
     reproduction.reproductionCooldownTicks,
     "reproduction.reproductionCooldownTicks",
+  );
+  // The counter it drives is a Uint16 row of OrganismStore. Above the Uint16
+  // bound the assignment wraps instead of clamping, so a parent would come off
+  // cooldown 65 536 ticks early and reproduce far faster than configured — a
+  // silent contradiction of the configuration rather than a visible failure.
+  check(
+    reproduction.reproductionCooldownTicks <= UINT16_MAX,
+    `reproduction.reproductionCooldownTicks must fit in the Uint16 cooldown row ` +
+      `(<= ${UINT16_MAX}), got ${reproduction.reproductionCooldownTicks}`,
   );
   checkNonNegativeInt(reproduction.childSpawnDistanceMinLU, "reproduction.childSpawnDistanceMinLU");
   checkNonNegativeInt(reproduction.childSpawnDistanceMaxLU, "reproduction.childSpawnDistanceMaxLU");

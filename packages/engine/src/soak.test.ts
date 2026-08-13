@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "./SimulationEngine";
+import { BRAIN_WEIGHT_COUNT } from "./brain/BrainLayout";
+import { createFounderBrainWeights } from "./brain/founderBrain";
 import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import { engineInternals } from "./internal";
@@ -293,6 +295,57 @@ describe("100k tick evolutionary soak (task E07)", () => {
       // Entity IDs are monotonic and never reused: every birth consumed exactly
       // one, so the counter and the birth total agree forever.
       expect(organisms.nextEntityId).toBe(organisms.totalBirths + 1);
+
+      // --- Mutation has not destroyed the brains (docs/07 §12) ------------
+      // docs/07 §12 lists "mutation destroys brain too fast" as a calibration
+      // failure to monitor, and this run is the deepest lineage the suite has:
+      // sixty-odd generations of accumulated brain mutation. The observable is
+      // whether a surviving controller still resembles the founder controller it
+      // descends from, measured as cosine similarity against the founder weight
+      // vector — 1.0 is the founder brain, 0.0 an unrelated one.
+      //
+      // Both bounds are deliberately loose, because docs/07 §1 forbids asserting
+      // an evolutionary story: they separate "drifting under selection" from
+      // "erased", nothing finer. An unrelated 400-dimensional brain would score
+      // about 1/sqrt(400) = 0.05, so 0.2 is four times the noise floor. Measured
+      // on this world during the Milestone 4 review: 0.976 at generation 8, 0.947
+      // at 16 and 0.873 at 34, with the worst individual still at 0.824 and
+      // 0.0008% of weights on the clamp (ADR 0007 §3).
+      const founderBrain = createFounderBrainWeights(
+        SOAK_CONFIG.brain.weightScale,
+        SOAK_CONFIG.brain.weightMin,
+        SOAK_CONFIG.brain.weightMax,
+      );
+      let founderNormSq = 0;
+      for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+        founderNormSq += (founderBrain[i] as number) ** 2;
+      }
+      let similaritySum = 0;
+      let brainsMeasured = 0;
+      let weightsAtClamp = 0;
+      for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+        if (organisms.alive[slot] !== 1) {
+          continue;
+        }
+        const base = engine.genomes.weightOffset(slot);
+        let dot = 0;
+        let normSq = 0;
+        for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+          const weight = engine.genomes.brainWeights[base + i] as number;
+          dot += weight * (founderBrain[i] as number);
+          normSq += weight * weight;
+          if (weight === SOAK_CONFIG.brain.weightMin || weight === SOAK_CONFIG.brain.weightMax) {
+            weightsAtClamp += 1;
+          }
+        }
+        similaritySum += normSq > 0 ? dot / Math.sqrt(normSq * founderNormSq) : 0;
+        brainsMeasured += 1;
+      }
+      expect(brainsMeasured).toBe(organisms.liveCount);
+      expect(similaritySum / brainsMeasured).toBeGreaterThan(0.2);
+      // The other half of the failure mode: weights piling onto the clamp would
+      // mean the sigma is saturating brains rather than exploring with them.
+      expect(weightsAtClamp / (brainsMeasured * BRAIN_WEIGHT_COUNT)).toBeLessThan(0.05);
 
       expect(soakHash).toBe(GOLDEN_SOAK_HASH);
 
