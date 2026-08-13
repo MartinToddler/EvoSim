@@ -60,13 +60,32 @@ jobs:
       - name: Typecheck and lint
         run: pnpm typecheck && pnpm lint
 
-      # `enablement: true` turns Pages on for the repository the first time this
-      # runs, so the deployment does not require a manual settings change.
+      # `enablement: true` turns Pages on for the repository if the token is
+      # allowed to. The default GITHUB_TOKEN usually is NOT: creating a Pages
+      # site is an administration-scope operation, and `administration: write`
+      # is not a permission a workflow token can be granted. When that is the
+      # case this step fails with "Resource not accessible by integration" and
+      # the next step explains what to do about it. Once Pages is switched on
+      # once, by a human, this step finds the existing site and succeeds
+      # forever after.
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
+
+      - name: Explain a Pages configuration failure
+        if: failure() && steps.pages.outcome == 'failure'
+        run: |
+          echo "::error::GitHub Pages is not enabled for this repository, and this workflow's"
+          echo "::error::token is not permitted to enable it (creating a Pages site needs"
+          echo "::error::repository-administration scope, which GITHUB_TOKEN cannot hold)."
+          echo "::error::"
+          echo "::error::Fix, once, by hand:"
+          echo "::error::  Settings -> Pages -> Build and deployment -> Source: GitHub Actions"
+          echo "::error::then re-run this workflow. Note that Pages for a PRIVATE repository"
+          echo "::error::requires GitHub Pro or higher; on Free, make the repository public first."
+          exit 1
 
       # A project site is served from /<repo>/, not from the domain root. Vite
       # must know that at build time or every asset — including the simulation

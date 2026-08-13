@@ -27,6 +27,20 @@ function ratio(value: number): string {
   return `${(value * 100).toFixed(0)}%`;
 }
 
+/**
+ * Development needs a decimal that the other ratios do not.
+ *
+ * An organism a hair short of adult is still a juvenile by the engine's rule
+ * (`developmentQ < Q`), but `99.7%` rounded to whole percent reads `100%` — so
+ * the panel showed "100% (juvenile)", which is simply self-contradictory to
+ * anyone reading it. One decimal makes the number precise enough to justify the
+ * label instead of arguing with it.
+ */
+function developmentLabel(development: number): string {
+  const percent = `${(development * 100).toFixed(1)}%`;
+  return development < 1 ? `${percent} (juvenile)` : percent;
+}
+
 function dietLabel(diet: number): string {
   if (diet <= -0.33) {
     return `herbivore (${diet.toFixed(2)})`;
@@ -96,10 +110,7 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element | 
             <dt>Health</dt>
             <dd>{ratio(details.health)}</dd>
             <dt>Development</dt>
-            <dd>
-              {ratio(details.development)}
-              {details.development < 1 ? " (juvenile)" : ""}
-            </dd>
+            <dd>{developmentLabel(details.development)}</dd>
           </dl>
 
           <div className="section">

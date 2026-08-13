@@ -96,4 +96,16 @@ describe("VegetationBufferPool", () => {
     const pool = new VegetationBufferPool(8, 2);
     expect(pool.release(createVegetationBuffer(16))).toBe(false);
   });
+
+  it("does not let foreign recycles erode the allocation ceiling", () => {
+    const pool = new VegetationBufferPool(8, 2);
+    for (let i = 0; i < 50; i += 1) {
+      pool.release(new ArrayBuffer(32));
+      pool.release(createVegetationBuffer(16));
+    }
+    expect(pool.created).toBe(pool.idle + pool.inFlight);
+    expect(pool.acquire()).not.toBeNull();
+    expect(pool.acquire()).not.toBeNull();
+    expect(pool.acquire()).toBeNull();
+  });
 });

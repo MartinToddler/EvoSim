@@ -244,6 +244,13 @@ export class WorkerClient {
       this.#pending.delete(message.requestId);
       if (message.type === "ERROR") {
         pending.reject(new Error(message.payload.message));
+        // A fatal failure kills every outstanding request, not just the one it
+        // happened to be answering — the world is gone, so nothing else can be
+        // answered either, and leaving those promises pending would hang the
+        // callers forever.
+        if (message.payload.fatal) {
+          this.#rejectAllPending(new Error(message.payload.message));
+        }
         this.#handlers.onError?.(message.payload);
         return;
       }

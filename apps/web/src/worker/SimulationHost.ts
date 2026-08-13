@@ -534,6 +534,11 @@ export class SimulationHost {
     if (now - this.#lastRenderAt < 1000 / rate) {
       return;
     }
+    // The cadence clock advances whether or not a buffer was available. Leaving
+    // it behind on a dry pool would retry on every slice — hundreds of times a
+    // second at high speed — and would turn `droppedSnapshots` into a count of
+    // refused *attempts* rather than of frames the viewer actually lost.
+    this.#lastRenderAt = now;
     this.#emitRenderSnapshot();
   }
 
@@ -571,6 +576,10 @@ export class SimulationHost {
     if (now - this.#lastVegetationAt < 1000 / this.#hostRuntime.vegetationSnapshotsPerSecond) {
       return;
     }
+    // Same reasoning as the render cadence: the clock advances even when the
+    // pool is dry, so a missed field costs one skipped update rather than a
+    // retry on every slice.
+    this.#lastVegetationAt = now;
     const buffer = pool.acquire();
     if (buffer === null) {
       return;
@@ -578,7 +587,6 @@ export class SimulationHost {
     const view = viewVegetationSnapshot(buffer);
     writeVegetationField(engine, view.vegetation);
     view.header[FieldHeader.Tick] = engine.tick;
-    this.#lastVegetationAt = now;
     this.#port.post(envelope("VEGETATION_SNAPSHOT", { buffer, tick: engine.tick }), [buffer]);
   }
 

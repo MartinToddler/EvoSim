@@ -15,10 +15,12 @@
     "build": "pnpm --filter @eon/web build",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "headless": "tsx scripts/headless.ts",
+    "equivalence": "tsx scripts/workerEquivalence.ts",
     "sweep": "tsx scripts/sweep.ts"
   },
   "devDependencies": {
     "@eon/engine": "workspace:*",
+    "@eon/protocol": "workspace:*",
     "@eslint/js": "10.0.1",
     "@types/node": "26.2.0",
     "eslint": "10.8.1",

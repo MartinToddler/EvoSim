@@ -203,16 +203,56 @@ All four Milestone 5 notes above are carried forward unchanged; this review conf
 1–3 are calibration questions for **L07**, not defects.
 
 ## G Worker/renderer
-- [ ] G01 protocol unions.
-- [ ] G02 Worker host/scheduler.
-- [ ] G03 MAX yielding.
-- [ ] G04 render snapshot.
-- [ ] G05 Pixi terrain.
-- [ ] G06 organism ParticleContainer.
-- [ ] G07 LOD/detail layer.
-- [ ] G08 camera.
-- [ ] G09 selection/query.
-- [ ] G10 debug overlay.
+- [x] G01 protocol unions.
+- [x] G02 Worker host/scheduler.
+- [x] G03 MAX yielding.
+- [x] G04 render snapshot.
+- [x] G05 Pixi terrain.
+- [x] G06 organism ParticleContainer.
+- [x] G07 LOD/detail layer.
+- [x] G08 camera.
+- [x] G09 selection/query.
+- [x] G10 debug overlay.
+
+Milestone 6 gate: **PASS WITH NOTES** (engine 0.5.0 unchanged, protocol 1 → 2, host runtime schema
+1 → 2, ADR 0010). The simulation runs in a dedicated Worker, render state crosses as packed
+transferable buffers, and a PixiJS renderer draws terrain, organisms, carcasses, a camera, selection
+and a development overlay. **Every golden hash is unchanged and reproduced** — this milestone adds
+projection and hosting, not behaviour, which is what CLAUDE.md requires of a UI-only change.
+
+Determinism acceptance: a world driven through the Worker's scheduler and the same world stepped
+headlessly in Node reach the same canonical hash. Verified twice — a straightforward 240-tick run at
+20×, and a deliberately erratic one (five speed changes, three pauses, a MAX burst, snapshots and
+entity queries interleaved) topped up through the protocol to tick 2 000, identical to 2 000
+uninterrupted steps. Separately, a world observed between every tick and a world never observed
+agree after 80 ticks, so producing a picture cannot perturb the thing pictured.
+
+Browser smoke test (Chromium, seed `0xE0A12026`, 1440×900): world generates and paints, 20× holds
+401 TPS against a 400 target, pause freezes the tick exactly, wheel/drag/pinch and click-selection
+work, the inspector returns live authoritative detail, and MAX reaches 75–92 TPS with ~1 280
+organisms on this container. Zero console errors, zero page errors.
+
+Three notes carried forward:
+
+1. **The deployment is blocked on a repository setting, not on code.** `deploy-pages.yml` builds and
+   publishes `apps/web/dist`, and reaches the Pages step with typecheck and lint green, but GitHub
+   Pages is not enabled for this repository and no workflow token can enable it: creating a Pages
+   site needs repository-administration scope, which `GITHUB_TOKEN` cannot hold. One manual action
+   unblocks it — **Settings → Pages → Build and deployment → Source: GitHub Actions**, then re-run
+   the workflow. Pages on a *private* repository additionally requires GitHub Pro or higher.
+2. **Playwright is still not wired into the repository (L08).** The browser verification above was
+   run ad-hoc against a real Chromium. CLAUDE.md's toolchain policy says to add Playwright once the
+   first interactive vertical slice exists, which is now true, but the suite itself is section L.
+3. **CI's `verify` job had been cancelling at its 20-minute timeout since Milestone 4** (runs 8-13),
+   so no push since the evolution milestone was actually verified by CI, and the cross-platform
+   `determinism` matrix never ran at all because `needs: verify` gated it behind the cancelled job.
+   Both budgets are raised to 60 minutes and documented as hang detectors. This is a symptom of the
+   suite cost that ADR 0006 §9 and ADR 0008 §7 both flagged; the real fix is scheduling the soaks
+   separately, which stays open.
+4. **The foundation-gate and Milestone 2.5 branches are still not merged** (ADR 0006 §0, ADR 0008 §0,
+   ADR 0010 §0). Milestone 6 does not depend on either. The renderer's biome palette deliberately
+   reuses the Milestone 2.5 colours verbatim so the eventual merge is textual rather than visual.
+   The deadline is unchanged: before **J05 / Milestone 9**.
 
 ## H UI/analytics
 - [ ] H01 app shell/top bar.

@@ -11,6 +11,9 @@ importers:
       '@eon/engine':
         specifier: workspace:*
         version: link:packages/engine
+      '@eon/protocol':
+        specifier: workspace:*
+        version: link:packages/protocol
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.8.1)

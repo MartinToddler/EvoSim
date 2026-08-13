@@ -6,6 +6,99 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-13 — Milestone 6: Worker host, render transport and PixiJS renderer
+
+Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `CONFIG_SCHEMA_VERSION` unchanged (6),
+`SNAPSHOT_SCHEMA_VERSION` unchanged (6), `PROTOCOL_VERSION` 1 → **2**,
+`HOST_RUNTIME_CONFIG_SCHEMA_VERSION` 1 → **2**. **No golden hash changed**, and every one was
+reproduced. That is the headline, not a footnote: this milestone is entirely projection and hosting,
+and CLAUDE.md requires that a UI-only change never move an engine hash. Decisions in
+`docs/adr/0010-milestone-6-worker-renderer.md`.
+
+### Added
+
+- **Worker message protocol (G01).** `protocol/messages.ts`: versioned main→worker and worker→main
+  unions with `requestId` correlation for the two request/response pairs, and defensive decoding —
+  `onmessage` receives `unknown`, so a malformed or stale-version message becomes an ERROR envelope
+  instead of an exception thrown inside a handler where it would surface as an unattributable
+  `ErrorEvent`. `protocol/dto.ts` carries the display DTOs: speeds, world summary, telemetry, entity
+  details, worker errors.
+- **Packed render transport (G04, G05).** `protocol/renderSnapshot.ts` and
+  `protocol/terrainSnapshot.ts`: one `ArrayBuffer` per snapshot holding Structure-of-Arrays columns
+  for organisms and carcasses, so a frame costs one transfer and one recycle rather than seventeen.
+  Self-describing header — magic, layout version, capacities, counts and a `Float64` tick, because a
+  tick has not fitted in `uint32` since engine 0.1.1. `RenderBufferPool` and `VegetationBufferPool`
+  recycle a bounded set of buffers and refuse detached, foreign or wrong-shaped ones.
+- **Simulation Worker host (G02, G03).** `apps/web/src/worker/SimulationHost.ts`: one engine, one
+  scheduler, one loop. Clock, scheduler and message port are injected, so pause races, catch-up
+  bursts, MAX yielding and buffer lifecycle are unit-testable in Node against a fake clock.
+  `simulation.worker.ts` supplies `performance.now`, `setTimeout` and `postMessage` and nothing else.
+- **Engine render projections (G04, G09).** `engine/render/renderSnapshot.ts` and
+  `engine/render/queryEntity.ts`: pure readers that fill caller-owned TypedArrays or return one
+  organism's details in human units. No allocation, no tick, no PRNG, no writes. The writer parameter
+  is a structural interface, so the engine does not import the protocol and the protocol does not
+  import the engine.
+- **Tick phase profiling (CLAUDE.md "Profiling").** `engine/profiling/TickProfiler.ts`: the engine
+  reports phase boundaries to an injected profiler and still never reads a clock. A profiler receives
+  two integers and returns nothing, so there is no channel from a clock reading into authoritative
+  state — asserted by running a profiled world beside an unprofiled one.
+- **PixiJS renderer (G05–G10).** `@eon/renderer`: terrain as a 256² data texture recomposed when
+  vegetation arrives, `ParticleContainer` layers for organisms and carcasses created once and updated
+  in place, a pooled detail layer above a screen-size threshold, a screen-space selection ring, a
+  camera with pointer-anchored zoom and pinch support, and an environment-grid debug overlay. Depends
+  on `@eon/protocol` alone — there is no import path from the renderer to the engine.
+- **Application shell.** Top bar with seed, simulated year, tick, population, carcasses, plant
+  biomass, generation and measured TPS; play/pause and 1×/5×/20×/100×/MAX; fit and grid toggles; a
+  selected-organism readout. React holds world metadata, 2 Hz telemetry and the selected entity —
+  never an organism coordinate.
+- **`deploy-pages.yml`.** Builds and publishes `apps/web/dist` to GitHub Pages, gated on typecheck
+  and lint. See "Known limitations" below.
+- **`pnpm equivalence`** (`scripts/workerEquivalence.ts`). Drives the Worker host through an erratic
+  schedule on the real default world and compares the result against a plain `stepMany` and against
+  the committed golden hash. At tick 10 000, with 9 820 of the ticks produced by the scheduler
+  itself, all three agree on `f58bac3bde3256f3`.
+
+### Changed
+
+- **`PROTOCOL_VERSION` 1 → 2.** Version 1 was an envelope type with no message union and no consumer;
+  this is the first version an actual Worker speaks.
+- **`HostRuntimeConfig` schema 1 → 2**, adding `vegetationSnapshotsPerSecond`,
+  `telemetrySnapshotsPerSecond`, `maxCatchUpTicks`, `maxTicksPerSlice` and `renderBufferPoolSize`.
+  None of it is authoritative, which is exactly why it lives in `@eon/protocol` — a render cadence
+  must never move a world hash (ADR 0002 §4).
+- **`SimulationEngine.step()`** now calls optional profiler hooks at phase boundaries, and
+  `setProfiler` attaches or detaches one. Behaviour and hashes are unchanged.
+- **Vite `base` is a build-time environment variable** (`EON_BASE_PATH`), because the same bundle must
+  serve from `/` under `vite dev` and from `/<repo>/` on a project site. A wrong base is silent at
+  build time and fatal at run time — every asset, the Worker included, 404s.
+
+### Fixed
+
+- **CI had not verified anything since Milestone 4.** The `verify` job's
+  `timeout-minutes: 20` is shorter than the test suite, which the 100 000-tick soaks pushed past
+  twenty minutes when evolution landed. Runs 8 through 13 were all cancelled at 20m20s, and a
+  cancelled run reads as "not green" rather than "failed", which is how it went unnoticed for five
+  milestones — the `determinism` matrix never ran at all, because `needs: verify` gated it behind
+  the cancelled job. Both budgets are now 60 minutes and documented as hang detectors, not
+  performance assertions (docs/07 §8). The long-term lever is still scheduling the soaks separately
+  rather than shortening them (ADR 0006 §9).
+- **`?seed=` accepted malformed values as real worlds.** `Number.parseInt` reads `"0x"` as 0 and
+  `"12abc"` as 12, so a typo in a shared link opened a _different_ world instead of the default one.
+  The shape is now validated before parsing.
+
+### Known limitations
+
+- **GitHub Pages is not enabled for this repository, and no workflow can enable it.** Creating a
+  Pages site requires repository-administration scope, which `GITHUB_TOKEN` cannot hold. The
+  workflow reaches the Pages step green and then fails with "Resource not accessible by
+  integration". Unblock once by hand: **Settings → Pages → Build and deployment → Source: GitHub
+  Actions**, then re-run `deploy-pages`. Pages on a private repository additionally requires GitHub
+  Pro or higher.
+- **No Playwright suite (L08).** The browser verification for this milestone was run ad-hoc against
+  a real Chromium; wiring Playwright into the repository is section L work.
+- **No viewport culling.** Every live organism is updated and submitted each frame. At the 8 192 cap
+  that is not a measured hotspot, and CLAUDE.md says to optimize measured hotspots only.
+
 ## [Unreleased] — 2026-08-13 — Milestone 5: predation, carrion and combat
 
 Versions: `ENGINE_VERSION` 0.4.0 → **0.5.0**, `CONFIG_SCHEMA_VERSION` 5 → **6**,

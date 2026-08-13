@@ -351,8 +351,11 @@ export class EonRenderer {
       this.#options.onRecycleRenderBuffer(this.#snapshot.buffer);
       this.#snapshot = null;
     }
-    this.#textures.destroy();
+    // Scene first, then the textures it referenced. `texture: false` keeps Pixi
+    // from destroying them underneath us; doing it in the other order would
+    // free textures that particles still point at.
     this.#app.destroy({ removeView: false }, { children: true, texture: false });
+    this.#textures.destroy();
   }
 
   // --- Frame -----------------------------------------------------------------

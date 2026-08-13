@@ -186,6 +186,56 @@ describe("RenderBufferPool", () => {
     expect(pool.release(new ArrayBuffer(64))).toBe(false);
   });
 
+  it("keeps created === idle + inFlight through every operation", () => {
+    const pool = new RenderBufferPool(16, 8, 3);
+    const check = (): void => {
+      expect(pool.created).toBe(pool.idle + pool.inFlight);
+    };
+    check();
+    const a = pool.acquire() as ArrayBuffer;
+    check();
+    const b = pool.acquire() as ArrayBuffer;
+    check();
+    pool.release(a);
+    check();
+    pool.acquire();
+    check();
+    pool.release(b);
+    check();
+  });
+
+  it("does not let foreign recycles erode the allocation ceiling", () => {
+    // The failure this guards: if a release the pool never handed out
+    // decremented `created`, repeated foreign recycles would push the ceiling
+    // down and then let `acquire` mint buffers without limit — turning the one
+    // piece of back-pressure in the render path into an unbounded allocator.
+    const pool = new RenderBufferPool(16, 8, 2);
+    for (let i = 0; i < 50; i += 1) {
+      pool.release(new ArrayBuffer(64));
+      pool.release(createRenderSnapshotBuffer(999, 8));
+    }
+    expect(pool.created).toBe(pool.idle + pool.inFlight);
+
+    const first = pool.acquire();
+    const second = pool.acquire();
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(pool.acquire()).toBeNull();
+    expect(pool.created).toBeLessThanOrEqual(2);
+  });
+
+  it("frees a slot for a replacement when a buffer comes back detached", () => {
+    const pool = new RenderBufferPool(16, 8, 2);
+    const buffer = pool.acquire() as ArrayBuffer;
+    structuredClone(buffer, { transfer: [buffer] });
+    expect(pool.release(buffer)).toBe(false);
+    expect(pool.created).toBe(pool.idle + pool.inFlight);
+    // The pool can still reach its full complement afterwards.
+    expect(pool.acquire()).not.toBeNull();
+    expect(pool.acquire()).not.toBeNull();
+    expect(pool.acquire()).toBeNull();
+  });
+
   it("requires at least one buffer", () => {
     expect(() => new RenderBufferPool(16, 8, 0)).toThrowError(RenderSnapshotFormatError);
   });

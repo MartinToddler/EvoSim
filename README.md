@@ -95,14 +95,24 @@ pnpm verify          # typecheck + lint + test + build (task A06)
 pnpm test            # Vitest across all packages
 pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000
 pnpm sweep --seeds 0xE0A12026,1,2 --ticks 20000   # multi-seed calibration report (task E08)
-pnpm --filter @eon/web dev   # run the web shell locally
+pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (Milestone 6)
+pnpm --filter @eon/web dev   # run the web app locally
 ```
 
-Current status: Milestones 0–5 complete — workspace, determinism skeleton (hardened after
+Current status: Milestones 0–6 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
-reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007) and predation: carrion,
-combat and the diet trade-off (ADR 0008, reviewed in ADR 0009). There is no renderer yet; everything
-below is headless.
+reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
+combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), and the Worker host, render
+transport and PixiJS renderer (ADR 0010).
+
+**The world is now watchable.** `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
+the plants, and the organisms living in it — pan, zoom, click an organism to inspect it, and run at
+1×, 5×, 20×, 100× or MAX. The simulation itself runs in a dedicated Worker and is unchanged by any
+of it: `ENGINE_VERSION` stayed at 0.5.0 through Milestone 6 and every golden hash is byte-identical,
+because rendering is a projection and never a decision.
+
+Everything below is still reproducible headlessly, which is the point — the same world, the same
+hashes, with or without a browser.
 
 The simulation is real and evolving:
 
@@ -156,14 +166,15 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 - `SimulationConfig` (`@eon/engine`) — authoritative constants only. It is hashed into the
   world state hash, so anything in it defines world identity.
-- `HostRuntimeConfig` (`@eon/protocol`) — wall-clock pacing, render and autosave cadence, LOD
+- `HostRuntimeConfig` (`@eon/protocol`) — wall-clock pacing, render, vegetation, telemetry and
+  autosave cadence, the scheduler's catch-up and slice bounds, the render buffer pool size, the LOD
   budget, the simulated-year display divisor. The pure engine never receives it, so changing a
   render rate cannot change a world hash.
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 1, snapshot schema 6, config
-schema 6. Design decisions are recorded in `docs/adr/`:
+entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 2, snapshot schema 6, config
+schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
 - `0002-milestone-1-hardening.md` — state encapsulation, config immutability, the
@@ -190,6 +201,10 @@ schema 6. Design decisions are recorded in `docs/adr/`:
   of becoming config, why the attack cooldown is decremented in a different phase from the
   reproduction one, and two calibration findings — that nothing ate meat in 10 000 ticks and that the
   carcass cap saturates.
+- `0010-milestone-6-worker-renderer.md` — the Worker host, render transport and PixiJS renderer:
+  why the scheduler takes its clock as a constructor argument, why a render snapshot is one buffer
+  and one transfer, why render snapshots are droppable and ticks are not, how the engine is profiled
+  without ever reading a clock, and why the selection ring is drawn in screen space.
 - `0009-milestone-5-review.md` — the independent Milestone 5 review: a carcass meat value that
   silently wrapped its Uint32 row and conjured 4.3 billion units into the conservation identity, a
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order

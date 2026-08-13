@@ -176,6 +176,7 @@ export class VegetationBufferPool {
 
   readonly #idle: ArrayBuffer[] = [];
   #created = 0;
+  #inFlight = 0;
   #dropped = 0;
 
   constructor(gridSize: number, maxBuffers = 2) {
@@ -202,33 +203,44 @@ export class VegetationBufferPool {
     return this.#dropped;
   }
 
+  /** Buffers currently transferred to the consumer. */
+  get inFlight(): number {
+    return this.#inFlight;
+  }
+
   acquire(): ArrayBuffer | null {
     const pooled = this.#idle.pop();
     if (pooled !== undefined) {
+      this.#inFlight += 1;
       return pooled;
     }
     if (this.#created < this.maxBuffers) {
       this.#created += 1;
+      this.#inFlight += 1;
       return createVegetationBuffer(this.gridSize);
     }
     this.#dropped += 1;
     return null;
   }
 
+  /** Same counter discipline as `RenderBufferPool.release`; see the note there. */
   release(buffer: ArrayBuffer): boolean {
     if (buffer.byteLength === 0) {
-      this.#created -= 1;
+      if (this.#inFlight > 0) {
+        this.#inFlight -= 1;
+        this.#created -= 1;
+      }
       return false;
     }
     try {
-      const view = viewVegetationSnapshot(buffer);
-      if (view.gridSize !== this.gridSize) {
-        this.#created -= 1;
+      if (viewVegetationSnapshot(buffer).gridSize !== this.gridSize) {
         return false;
       }
     } catch {
-      this.#created -= 1;
       return false;
+    }
+    if (this.#inFlight > 0) {
+      this.#inFlight -= 1;
     }
     this.#idle.push(buffer);
     return true;

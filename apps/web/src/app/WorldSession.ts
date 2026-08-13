@@ -77,7 +77,21 @@ export class WorldSession {
     });
     this.#client = new WorkerClient(workerPort(this.#worker), {
       onWorldReady: (payload) => {
-        void this.#handleWorldReady(payload.world, payload.hostRuntime, payload.terrain);
+        // Renderer creation is async and can genuinely fail — a machine with no
+        // WebGL at all, or a lost context. Without this catch the rejection is
+        // unhandled and the page shows an empty canvas with no explanation.
+        this.#handleWorldReady(payload.world, payload.hostRuntime, payload.terrain).catch(
+          (error: unknown) => {
+            options.callbacks.onError({
+              message: `renderer failed to start: ${error instanceof Error ? error.message : String(error)}`,
+              fatal: true,
+              tick: payload.telemetry.tick,
+              seed: payload.world.seed,
+              engineVersion: payload.world.engineVersion,
+              whileHandling: "WORLD_READY",
+            });
+          },
+        );
       },
       onRenderSnapshot: (payload) => {
         this.#handleRenderSnapshot(payload.buffer);

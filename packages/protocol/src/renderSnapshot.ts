@@ -324,6 +324,20 @@ export function readRenderSnapshotCounts(view: RenderSnapshotView): {
  * `release` takes a buffer back from the main thread. A detached buffer is
  * dropped rather than pooled — a transfer that crossed with a recycle would
  * otherwise poison the pool with a zero-length buffer.
+ *
+ * ## The invariant
+ *
+ * `created === idle + inFlight`, always. Every counter change below preserves
+ * it, and that is what makes `maxBuffers` a real bound: a `release` of
+ * something this pool never handed out must not decrement `created`, or
+ * repeated foreign recycles would drive the ceiling down and let the pool
+ * allocate without limit — turning the one piece of back-pressure in the render
+ * path into an unbounded allocator.
+ *
+ * Buffer *identity* deliberately plays no part. A transferred buffer comes back
+ * as a different `ArrayBuffer` object wrapping the same memory, so a pool that
+ * tracked identity would reject every buffer it ever sent. Shape is the only
+ * thing that survives the trip, so shape is what is checked.
  */
 export class RenderBufferPool {
   readonly organismCapacity: number;
@@ -398,12 +412,14 @@ export class RenderBufferPool {
    * because the alternative is a rendering thread quietly reading garbage.
    */
   release(buffer: ArrayBuffer): boolean {
-    if (this.#inFlight > 0) {
-      this.#inFlight -= 1;
-    }
-    // A detached buffer reports byteLength 0; there is nothing to reuse.
+    // A detached buffer reports byteLength 0. It was almost certainly one of
+    // ours whose transfer crossed with this recycle, so its slot is freed for a
+    // replacement — but there is nothing left to reuse.
     if (buffer.byteLength === 0) {
-      this.#created -= 1;
+      if (this.#inFlight > 0) {
+        this.#inFlight -= 1;
+        this.#created -= 1;
+      }
       return false;
     }
     try {
@@ -412,12 +428,15 @@ export class RenderBufferPool {
         view.organismCapacity !== this.organismCapacity ||
         view.carcassCapacity !== this.carcassCapacity
       ) {
-        this.#created -= 1;
         return false;
       }
     } catch {
-      this.#created -= 1;
+      // Not a render snapshot at all: not ours, so no counter moves. Silently
+      // ignoring it keeps `created === idle + inFlight` true.
       return false;
+    }
+    if (this.#inFlight > 0) {
+      this.#inFlight -= 1;
     }
     this.#idle.push(buffer);
     return true;
