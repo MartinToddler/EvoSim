@@ -82,6 +82,14 @@ unmerged; ADR 0006 §0's recommendation to merge them before Milestone 9 stands.
   import each other.
 - **`totalAllocatedBiomass` is filtered by food kind** and joined by `totalAllocatedMeat`: biomass
   units and meat units are different quantities, and one total over both would be meaningless.
+- **The 100 000-tick soak's hang detector rose from 1 800 000 ms to 5 400 000 ms.** Carrion sensing
+  scales with population x carcass density and this world packs up to 4 096 carcasses into 2 304
+  spatial cells, so the soak went from ~350 s to ~1 810 s standalone (1 881 s inside the parallel
+  suite) and tripped the old budget. It is a hang detector, not a performance assertion — docs/07 §8
+  forbids enforcing an arbitrary CI wall clock, which is the same rule ADR 0007 §1 had to restate —
+  and the measurements now sit next to the number. `pnpm test` costs ~1 880 s wall against ~940 s at
+  0.4.0, dominated by that one file. No assertion was removed or weakened; the soak's carcass
+  invariants were _added_ in this milestone.
 
 ### Calibration findings (not fixed — input for L07)
 

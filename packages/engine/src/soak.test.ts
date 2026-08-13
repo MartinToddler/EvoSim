@@ -256,13 +256,23 @@ function countCarcassViolations(engine: SimulationEngine): number {
 }
 
 describe("100k tick evolutionary soak (task E07)", () => {
-  // ~350 s of simulation on its own. The budget is deliberately several times
-  // that: Vitest runs test files in parallel workers, and this file competes with
-  // the 10 000-tick golden fixture and the two acceptance suites, so the observed
-  // wall time under contention is 2-3x the isolated figure.
+  // This is a HANG DETECTOR, not a performance assertion: docs/07 §8 forbids
+  // enforcing an arbitrary CI wall clock on unknown hardware, which is the rule
+  // ADR 0007 §1 had to restate after a 300 s budget failed `pnpm verify` without
+  // any hash being wrong.
+  //
+  // Measured on the Milestone 5 machine: ~1 810 s standalone, and 1 881 s inside
+  // the parallel suite, where it competes with the 10 000-tick golden fixture and
+  // the two acceptance suites. Milestone 5 is what made it expensive — carrion
+  // sensing scales with population x carcass density, and this world packs up to
+  // 4 096 carcasses into 2 304 spatial cells (ADR 0008 §7) — so the 1 800 000 ms
+  // budget that fitted Milestone 4's ~350 s soak now trips on the real thing.
+  //
+  // 5 400 000 ms keeps roughly 3x headroom over the observed cost, the same ratio
+  // ADR 0007 chose for the global budget.
   it(
     "runs 100k ticks of live evolution without corruption and reproduces its hash",
-    { timeout: 1_800_000 },
+    { timeout: 5_400_000 },
     () => {
       const engine = new SimulationEngine({ seed: SOAK_SEED, config: SOAK_CONFIG });
       const { environment, organisms } = engine;

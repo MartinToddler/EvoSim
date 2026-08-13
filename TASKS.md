@@ -151,6 +151,14 @@ Three notes carried forward:
 3. **The foundation-gate and Milestone 2.5 branches are still not merged into this line**
    (ADR 0006 §0, ADR 0008 §0). Milestone 5 does not depend on any of their fixes, but the merge must
    happen before **J05 / Milestone 9** (terrain raise/lower).
+4. **`pnpm test` now costs ~1 880 s wall, against ~940 s at 0.4.0**, dominated by the 100 000-tick
+   soak: carrion sensing scales with population × carcass density and the soak world packs up to
+   4 096 carcasses into 2 304 spatial cells (ADR 0008 §7). The soak's inline hang detector was raised
+   from 1 800 000 ms to 5 400 000 ms with the measurements recorded next to it — it is a hang
+   detector, not a wall-clock assertion (docs/07 §8). No assertion was weakened, and the soak gained
+   a carcass invariant sweep. ADR 0006 §9's note is now more pressing: if `pnpm verify` becomes a
+   per-commit gate, the lever is scheduling the soak rather than shortening it, since docs/07 §6 asks
+   for 100 000 ticks routinely.
 
 ## G Worker/renderer
 - [ ] G01 protocol unions.

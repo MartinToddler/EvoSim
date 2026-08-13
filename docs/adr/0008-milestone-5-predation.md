@@ -292,6 +292,16 @@ looks for a carcass every tick whether or not its diet could use one, and the so
 4 096 carcasses into 2 304 spatial cells (~1.8 per cell against ~0.25 in the reference world). The
 100 000-tick soak went from ~350 s to 1 817 s including the environment soak in the same run.
 
+**Consequence for the test suite.** The 100 000-tick soak's inline hang detector had to rise from
+1 800 000 ms to 5 400 000 ms. Measured 1 810 s standalone and 1 881 s inside the parallel suite, it
+tripped the old budget — the second time this project has hit exactly the trap docs/07 §8 names and
+ADR 0007 §1 had to restate: a wall-clock number that was set from a measurement and then became an
+assertion about unknown hardware. The new value keeps ~3x headroom, the ratio ADR 0007 chose for the
+global budget, and the measurements are recorded next to it. `pnpm test` now costs ~1 880 s wall
+against ~940 s at 0.4.0, dominated by this one file. ADR 0006 §9's note stands and is now more
+pressing: if `pnpm verify` becomes a per-commit gate, the lever is running the soak on a schedule
+rather than per commit, not shortening it — docs/07 §6 asks for 100 000 ticks routinely.
+
 That is a measured regression and it is reported rather than optimized, because the numbers do not
 justify optimizing yet: the peak 23.7 ms/tick is still inside the docs/07 §8 ideal, and it occurs in
 a deliberately harsh test world rather than at the design target. docs/07 §10 and CLAUDE.md both say
