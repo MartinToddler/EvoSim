@@ -14,7 +14,8 @@
     "test": "vitest run",
     "build": "pnpm --filter @eon/web build",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
-    "headless": "tsx scripts/headless.ts"
+    "headless": "tsx scripts/headless.ts",
+    "sweep": "tsx scripts/sweep.ts"
   },
   "devDependencies": {
     "@eon/engine": "workspace:*",

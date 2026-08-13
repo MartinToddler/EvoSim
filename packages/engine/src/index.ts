@@ -124,6 +124,15 @@ export {
 } from "./genetics/genes";
 export { FOUNDER_GENE_Q, createFounderGenes } from "./genetics/founderGenome";
 export {
+  MutationClass,
+  classifyGeneRoll,
+  classifyWeightRoll,
+  geneDeltaRaw,
+  mutateEcologicalGenes,
+  mutateBrainWeights,
+  mutateGenome,
+} from "./genetics/mutation";
+export {
   BRAIN_INPUT_COUNT,
   BRAIN_HIDDEN_COUNT,
   BRAIN_OUTPUT_COUNT,
@@ -175,7 +184,14 @@ export {
   spawnOrganism,
   spawnFounderPopulation,
   type SpawnRequest,
+  type SpawnEnergy,
 } from "./organisms/spawn";
+export {
+  canReproduce,
+  reproductionEnergyCost,
+  resolveReproduction,
+  type ReproductionCost,
+} from "./ecology/reproduction";
 export {
   captureOrganisms,
   restoreOrganisms,

@@ -399,6 +399,11 @@ export interface BrainConfig {
 
 /** Mutation constants (docs/08 §17). Probabilities are Q fractions. */
 export interface MutationConfig {
+  /**
+   * Ecological gene mutation. Sigmas are Q fractions of the NORMALIZED gene
+   * range, as docs/08 §17 states them ("0.025 normalized"), and are scaled onto
+   * the raw Uint16 span at use.
+   */
   ecological: {
     perGeneMutationProbabilityQ: number;
     smallSigmaQ: number;
@@ -406,10 +411,24 @@ export interface MutationConfig {
     largeSigmaQ: number;
     resetProbabilityQ: number;
   };
+  /**
+   * Brain weight mutation. Sigmas are in STORED weight units, not Q fractions:
+   * docs/08 §17 gives `weightSmallSigmaQ` as "0.06 weight units", i.e.
+   * 0.06 × `brain.weightScale`.
+   */
   brain: {
     perWeightMutationProbabilityQ: number;
     weightSmallSigmaQ: number;
     largeWeightMutationProbabilityQ: number;
+    /**
+     * Sigma of the rare large weight jump, in stored weight units.
+     *
+     * docs/08 §17 and docs/04 §18 give the brain block a large *probability* but
+     * no large sigma, while the ecological block gets both. This field closes
+     * that gap rather than reusing an ecological sigma whose units are
+     * different; see ADR 0006 §3.
+     */
+    weightLargeSigmaQ: number;
   };
 }
 

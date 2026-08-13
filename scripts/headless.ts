@@ -26,6 +26,7 @@ import {
   totalPlantBiomass,
   totalPlantCapacity,
 } from "@eon/engine";
+import { summarizePopulation } from "./populationStats";
 
 interface CliOptions {
   seed: number;
@@ -171,22 +172,12 @@ function printWorldSummary(engine: SimulationEngine): void {
 
 /**
  * Population line printed at each checkpoint (docs/10 §26: prove the
- * simulation is real without any rendering).
+ * simulation is real without any rendering — "Tick 10000 | pop 301 |
+ * biomass 1.21e9 | births 88 | deaths 43 | gen max 5").
  */
 function populationLine(engine: SimulationEngine): string {
   const { organisms } = engine;
-  let energy = 0;
-  let development = 0;
-  let intake = 0;
-  for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
-    if (organisms.alive[slot] !== 1) {
-      continue;
-    }
-    energy += organisms.energy[slot] as number;
-    development += organisms.developmentQ[slot] as number;
-    intake += organisms.plantEnergyEaten[slot] as number;
-  }
-  const alive = Math.max(organisms.liveCount, 1);
+  const stats = summarizePopulation(engine);
   const causes: string[] = [];
   for (let cause = 0; cause < DEATH_CAUSE_COUNT; cause += 1) {
     const count = organisms.deathsByCause[cause] as number;
@@ -194,12 +185,17 @@ function populationLine(engine: SimulationEngine): string {
       causes.push(`${DEATH_CAUSE_NAMES[cause]} ${count}`);
     }
   }
+  const capped = organisms.capRejectedBirths > 0 ? ` | CAP ${organisms.capRejectedBirths}` : "";
   return (
-    `pop ${String(organisms.liveCount).padStart(4)} | ` +
-    `mean energy ${String(Math.round(energy / alive)).padStart(7)} | ` +
-    `mean growth ${(development / alive / Q).toFixed(2)} | ` +
-    `plant intake ${(intake / 1e3).toFixed(1)}k | ` +
-    `deaths ${organisms.totalDeaths}${causes.length > 0 ? ` (${causes.join(", ")})` : ""}`
+    `pop ${String(stats.population).padStart(4)} | ` +
+    `gen ${String(stats.maxGeneration).padStart(3)} | ` +
+    `births ${String(organisms.totalBirths).padStart(6)} | ` +
+    `deaths ${String(organisms.totalDeaths).padStart(6)} | ` +
+    `var ${stats.traitVarianceQ2.toFixed(0).padStart(7)} | ` +
+    `mean energy ${String(stats.meanEnergy).padStart(7)} | ` +
+    `mean growth ${(stats.meanDevelopmentQ / Q).toFixed(2)} | ` +
+    `plant intake ${(stats.plantIntake / 1e3).toFixed(1)}k${capped}` +
+    (causes.length > 0 ? ` (${causes.join(", ")})` : "")
   );
 }
 

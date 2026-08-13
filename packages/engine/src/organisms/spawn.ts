@@ -29,6 +29,23 @@ export const FOUNDER_SPECIES_ID = 1;
  */
 export const FOUNDER_PLACEMENT_ATTEMPTS = 64;
 
+/**
+ * How much energy a newborn starts with.
+ *
+ * There are genuinely two cases and conflating them would hide a bug. A founder
+ * is endowed as a *fraction of its own* maximum (docs/04 §5) because nothing
+ * paid for it. A child is endowed with an *absolute* amount that its parent paid
+ * out of its own reserves (docs/04 §19), and that amount is set by the parent's
+ * body, not the child's — so it can exceed what the child can hold.
+ *
+ * Both forms are clamped to the newborn's own maximum energy in exactly one
+ * place, {@link spawnOrganism}, and the caller learns what was actually granted
+ * by reading `organisms.energy[slot]` back.
+ */
+export type SpawnEnergy =
+  | { readonly kind: "fractionOfMax"; readonly fractionQ: number }
+  | { readonly kind: "absolute"; readonly units: number };
+
 export interface SpawnRequest {
   /** Position in world sub-units. */
   xPos: number;
@@ -39,8 +56,7 @@ export interface SpawnRequest {
   generation: number;
   parentEntityId: number;
   speciesId: number;
-  /** Starting energy as a Q fraction of the newborn's maximum energy. */
-  energyFractionQ: number;
+  energy: SpawnEnergy;
 }
 
 /**
@@ -79,6 +95,10 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   organisms.waterTicks[slot] = 0;
   organisms.lastDamageQ[slot] = 0;
   organisms.attackCooldown[slot] = 0;
+  // A newborn starts off cooldown. It still cannot reproduce for a long while —
+  // maturity age and 90% development are far away — so this is a statement about
+  // the counter, not a head start.
+  organisms.reproductionCooldown[slot] = 0;
   organisms.plantEnergyEaten[slot] = 0;
   organisms.meatEnergyEaten[slot] = 0;
   organisms.kills[slot] = 0;
@@ -87,9 +107,17 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   organisms.parentEntityId[slot] = request.parentEntityId;
   organisms.speciesId[slot] = request.speciesId;
 
+  // Energy is capped by the NEWBORN's body, not by its adult potential. A parent
+  // that over-invests loses the surplus (see ecology/reproduction.ts); energy is
+  // never created here.
   const radius = currentRadiusPos(phenotypes.adultRadiusPos[slot] as number, developmentQ);
   const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
-  organisms.energy[slot] = qmul(maxEnergyForMass(mass, config), request.energyFractionQ);
+  const maxEnergy = maxEnergyForMass(mass, config);
+  const requested =
+    request.energy.kind === "fractionOfMax"
+      ? qmul(maxEnergy, request.energy.fractionQ)
+      : request.energy.units;
+  organisms.energy[slot] = clamp(requested, 0, maxEnergy);
 
   organisms.totalBirths += 1;
   return slot;
@@ -154,7 +182,7 @@ export function spawnFounderPopulation(ctx: EngineContext, region: FounderRegion
       generation: 0,
       parentEntityId: 0,
       speciesId: FOUNDER_SPECIES_ID,
-      energyFractionQ: config.organism.initialEnergyFractionQ,
+      energy: { kind: "fractionOfMax", fractionQ: config.organism.initialEnergyFractionQ },
     });
     if (slot < 0) {
       break;

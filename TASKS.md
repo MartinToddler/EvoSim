@@ -54,14 +54,35 @@ ordered by slot instead of entity ID, `allocateSlot` losing a slot if entity IDs
 and snapshot restore trusting a malformed free list. Golden hashes unchanged.
 
 ## E Evolution
-- [ ] E01 reproduction conditions.
-- [ ] E02 child energy/spawn.
-- [ ] E03 ecological mutation.
-- [ ] E04 brain mutation.
-- [ ] E05 generation/parent IDs.
-- [ ] E06 population cap event.
-- [ ] E07 100k deterministic soak.
-- [ ] E08 parameter sweep harness.
+- [x] E01 reproduction conditions.
+- [x] E02 child energy/spawn.
+- [x] E03 ecological mutation.
+- [x] E04 brain mutation.
+- [x] E05 generation/parent IDs.
+- [ ] E06 population cap event — deterministic rejection and diagnostics counters done; the
+      `PopulationCapReached` timeline event needs the Milestone 8 `EventStore`.
+- [x] E07 100k deterministic soak.
+- [x] E08 parameter sweep harness.
+
+Milestone 4 gate: **PASS WITH NOTES** (engine 0.4.0, config schema 5, snapshot schema 5,
+ADR 0006). Asexual reproduction, ecological and brain mutation, generation/parent lineage,
+deterministic cap rejection and the 100k evolutionary soak are implemented and tested; all golden
+hashes regenerated.
+
+Two notes carried forward:
+
+1. **The world's carrying capacity is far above the 8 192 safety cap** (ADR 0006 §7). Six seeds at
+   10 000 ticks: all survive, **three pinned at the cap** with 5.5–6.1M refused births, and their
+   trait diversity roughly half the uncapped seeds' — the cap is filtering by storage order instead
+   of ecology. The defaults were implemented faithfully and deliberately not tuned: docs/08 §24
+   requires that order, and docs/07 §14 requires 10–30 seeds before a tuning conclusion. This is
+   input for **L07** (10+ seed calibration), and `pnpm sweep` is the harness. docs/01 §12 makes
+   "population does not normally slam into engine cap" an MVP release gate, so L07 is now on the
+   critical path.
+2. **The Milestone 0–2 foundation-gate branch is not merged into this line** (ADR 0006 §0). It fixes
+   six real defects that Milestone 4 does not depend on, but the merge must happen before **J05 /
+   Milestone 9** (terrain raise/lower), because that is when its `fromSnapshot` fix stops being
+   merely an optimization.
 
 ## F Predation
 - [ ] F01 carcass store/decay.

@@ -6,6 +6,82 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [0.4.0] — 2026-08-13 — Milestone 4: asexual reproduction, mutation and evolution
+
+Versions: `ENGINE_VERSION` 0.3.1 → **0.4.0**; `CONFIG_SCHEMA_VERSION` 4 → **5**;
+`SNAPSHOT_SCHEMA_VERSION` 4 → **5**; `PROTOCOL_VERSION` unchanged (1). **Every golden hash was
+regenerated.** Decisions and evidence in `docs/adr/0006-milestone-4-evolution.md`.
+
+### Added
+
+- **Phase 14, `resolveReproduction`** (`ecology/reproduction.ts`). Asexual only. An organism must be
+  alive, at or past its genetic maturity age, at or above 90% realized development, off cooldown,
+  asking through its brain's reproduce output, and holding enough energy for the child's endowment
+  plus its own 20% reserve. The brain's output is a request, never a permission.
+- **Mutation** (`genetics/mutation.ts`). One uniform draw per locus selects between disjoint reset,
+  large, small and none classes, so each marginal probability is exactly the configured value and the
+  outcomes cannot combine. 16 genes then 400 weights, in that fixed order. Ecological sigmas are Q
+  fractions of the normalized gene range; brain sigmas are in stored weight units, as docs/08 §17
+  words them. No crossover.
+- **`mutation.brain.weightLargeSigmaQ`** (1476 = 0.36 weight units). docs/04 §18 and docs/08 §17 give
+  the brain block a large-mutation probability and no large sigma; the value applies the 6x
+  large/small ratio the ecological block does specify. Only new config field in the milestone.
+- **Three new authoritative fields**, all hashed and serialized: per-slot `reproductionCooldown`,
+  and the cumulative counters `capRejectedBirths` and `birthEnergyDiscarded`.
+- **`OrganismStore.canAllocate()`**, so reproduction can check the population cap _before_ drawing
+  any randomness. A birth refused by the cap now consumes nothing from the PRNG and cannot shift the
+  random stream of the organisms after it.
+- **`pnpm sweep`** (task E08). Runs a config variant across many seeds and reports population, peak,
+  births, deaths, generations, trait variance, biomass, cap rejections, final hash and wall time as a
+  table, CSV or JSON. Analytics live in `scripts/populationStats.ts`, outside `packages/engine`, so
+  docs/05 §21's "analytics never feed back into selection" is structural.
+- **`soak.test.ts`** — the 100 000-tick evolutionary soak (task E07), on a 96x96 / 64-founder world.
+  Sweeps identity, slot-bookkeeping, energy, health, body and lineage invariants every 997 ticks,
+  carries over every environment invariant from the Milestone 2 soak, and round-trips a snapshot at
+  tick 100 000. Measured: 50 716 births, 50 280 deaths, generation 63, no cap rejections, ~350 s.
+- **`evolutionSimulation.test.ts`** — Milestone 4 acceptance on the reference world, plus the closed
+  -system energy test: in a world with no food the population's total energy is asserted
+  non-increasing on every one of 2 500 ticks while reproduction is running.
+- **Mutation golden fixture** (`fixtures/mutationGolden.json`): exact genes and brain digest after a
+  50-generation lineage, and the PRNG draw count of a single birth (572 words).
+
+### Changed
+
+- **The reference world no longer empties.** Before this milestone the founder cohort died of old age
+  together at tick 6 100 and tick 10 000 held zero organisms. It now holds ~4 700. Milestone 3
+  acceptance assertions that depended on "nothing reproduces yet" were rewritten, not deleted.
+- **`world/environmentSoak.test.ts` runs a lifeless world** (`initialOrganisms = 0`). Its assertions
+  describe the plant model and were only true because grazing was negligible; isolating them keeps
+  them meaningful and makes the run nearly free. `validateConfig` now accepts zero founders —
+  a lifeless control world is a legitimate configuration.
+- **`SpawnRequest.energy` is a discriminated union.** A founder is endowed as a fraction of its own
+  maximum; a child is endowed with an absolute amount its parent paid. Both are clamped to the
+  newborn's own maximum in one place.
+- **Vitest's global timeout rose from 60 s to 300 s**, and long-run engines are shared within a test
+  file. A 10 000-tick reference run costs ~150 s now that the population persists, against ~9 s
+  before.
+- **Ecological mutation sigmas are validated as Q fractions** (tightened from "non-negative"), which
+  is both the meaningful bound and what keeps `geneDeltaRaw`'s product exact.
+  `reproduction.spawnAngleCandidates` is now bounded by `ANGLE_STEPS`.
+
+### Notes
+
+- **Energy is never created by a birth.** The parent pays its full offspring investment; the child
+  receives that amount clamped to what its newborn body can hold; the surplus is destroyed and
+  counted in `birthEnergyDiscarded`. Charging the parent only the usable part would make every
+  investment gene above the saturation point free, and a free gene drifts to its maximum.
+- **The world's carrying capacity is far above the 8 192 organism safety cap.** Measured across six
+  seeds at 10 000 ticks: all six survive, and **three are pinned at the cap** with 5.5–6.1 million
+  refused births. The capped seeds' trait spread is about half the uncapped seeds' — the concrete
+  form of docs/01 §11's warning that the cap biases evolution — and docs/01 §12 makes not slamming
+  the cap an MVP release gate. This was deliberately **not** tuned: docs/08 §24 requires implementing
+  the defaults faithfully first, and docs/07 §14 requires 10–30 seeds before a tuning conclusion. It
+  is input for task L07, and `pnpm sweep` is the harness. Full table in ADR 0006 §7.
+- **This line does not include the Milestone 0–2 foundation-gate branch**
+  (`claude/evosim-project-setup-ps3fry`). Milestone 4 depends on Milestone 3, which descends directly
+  from the Milestone 2 commit, and none of the six foundation defects threaten this milestone.
+  The merge must happen before Milestone 9 (terrain edits). See ADR 0006 §0.
+
 ## [0.3.1] — 2026-08-12 — Milestone 3 independent review
 
 Versions: `ENGINE_VERSION` 0.3.0 → **0.3.1**; snapshot, config and protocol schema versions

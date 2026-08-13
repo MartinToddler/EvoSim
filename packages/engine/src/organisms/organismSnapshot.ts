@@ -27,6 +27,8 @@ export interface OrganismSnapshot {
   nextEntityId: number;
   totalBirths: number;
   totalDeaths: number;
+  capRejectedBirths: number;
+  birthEnergyDiscarded: number;
   deathsByCause: Uint32Array;
 
   alive: Uint8Array;
@@ -48,6 +50,7 @@ export interface OrganismSnapshot {
   waterTicks: Uint16Array;
   lastDamageQ: Uint16Array;
   attackCooldown: Uint16Array;
+  reproductionCooldown: Uint16Array;
   plantEnergyEaten: Uint32Array;
   meatEnergyEaten: Uint32Array;
   kills: Uint16Array;
@@ -73,6 +76,8 @@ export function captureOrganisms(organisms: OrganismStore, genomes: GenomeStore)
     nextEntityId: organisms.nextEntityId,
     totalBirths: organisms.totalBirths,
     totalDeaths: organisms.totalDeaths,
+    capRejectedBirths: organisms.capRejectedBirths,
+    birthEnergyDiscarded: organisms.birthEnergyDiscarded,
     deathsByCause: new Uint32Array(organisms.deathsByCause),
 
     alive: new Uint8Array(organisms.alive.subarray(0, used)),
@@ -94,6 +99,7 @@ export function captureOrganisms(organisms: OrganismStore, genomes: GenomeStore)
     waterTicks: new Uint16Array(organisms.waterTicks.subarray(0, used)),
     lastDamageQ: new Uint16Array(organisms.lastDamageQ.subarray(0, used)),
     attackCooldown: new Uint16Array(organisms.attackCooldown.subarray(0, used)),
+    reproductionCooldown: new Uint16Array(organisms.reproductionCooldown.subarray(0, used)),
     plantEnergyEaten: new Uint32Array(organisms.plantEnergyEaten.subarray(0, used)),
     meatEnergyEaten: new Uint32Array(organisms.meatEnergyEaten.subarray(0, used)),
     kills: new Uint16Array(organisms.kills.subarray(0, used)),
@@ -157,6 +163,7 @@ export function restoreOrganisms(
     [snapshot.waterTicks, organisms.waterTicks, "waterTicks"],
     [snapshot.lastDamageQ, organisms.lastDamageQ, "lastDamageQ"],
     [snapshot.attackCooldown, organisms.attackCooldown, "attackCooldown"],
+    [snapshot.reproductionCooldown, organisms.reproductionCooldown, "reproductionCooldown"],
     [snapshot.plantEnergyEaten, organisms.plantEnergyEaten, "plantEnergyEaten"],
     [snapshot.meatEnergyEaten, organisms.meatEnergyEaten, "meatEnergyEaten"],
     [snapshot.kills, organisms.kills, "kills"],
@@ -171,6 +178,8 @@ export function restoreOrganisms(
   organisms.deathsByCause.set(snapshot.deathsByCause);
   organisms.totalBirths = snapshot.totalBirths;
   organisms.totalDeaths = snapshot.totalDeaths;
+  organisms.capRejectedBirths = snapshot.capRejectedBirths;
+  organisms.birthEnergyDiscarded = snapshot.birthEnergyDiscarded;
 
   organisms.adoptSlotState(
     used,

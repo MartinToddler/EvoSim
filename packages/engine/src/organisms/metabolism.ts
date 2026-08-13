@@ -205,7 +205,15 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
       }
     }
 
-    // 7. Aging. Old age is a deterministic hard cap in MVP (docs/04 §22).
+    // 7. Aging and per-tick counters. Old age is a deterministic hard cap in MVP
+    //    (docs/04 §22). The reproduction cooldown ticks down here, in the one
+    //    phase that already runs exactly once per living organism per tick; it
+    //    runs BEFORE reproduction (phase 14), so a cooldown of N really does
+    //    space births N ticks apart.
+    const cooldown = organisms.reproductionCooldown[slot] as number;
+    if (cooldown > 0) {
+      organisms.reproductionCooldown[slot] = cooldown - 1;
+    }
     const age = (organisms.ageTicks[slot] as number) + 1;
     organisms.ageTicks[slot] = age;
     if (age >= (phenotypes.maxAgeTicks[slot] as number)) {

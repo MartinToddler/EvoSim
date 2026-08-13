@@ -8,10 +8,15 @@ import type { EngineContext } from "../EngineContext";
 import { EngineScratch } from "../EngineScratch";
 import { GENE_COUNT, geneFromQ } from "../genetics/genes";
 import { createFounderGenes } from "../genetics/founderGenome";
-import { POS_SCALE, Q } from "../math/fixed";
+import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { GenomeStore } from "../organisms/GenomeStore";
 import { OrganismStore } from "../organisms/OrganismStore";
-import { PhenotypeStore } from "../organisms/phenotype";
+import {
+  PhenotypeStore,
+  currentRadiusPos,
+  massFromRadiusPos,
+  maxEnergyForMass,
+} from "../organisms/phenotype";
 import { type SpawnRequest, spawnOrganism } from "../organisms/spawn";
 import { Xoshiro128 } from "../random/Xoshiro128";
 import { SpatialGrid } from "../spatial/SpatialGrid";
@@ -146,6 +151,10 @@ export interface TestOrganismOptions {
   /** Use an all-zero brain instead of the founder controller. */
   silentBrain?: boolean;
   energyFractionQ?: number;
+  /** Age in ticks at spawn, for tests about maturity. */
+  ageTicks?: number;
+  /** Realized development at spawn, for tests about the 90% gate. */
+  developmentQ?: number;
 }
 
 /** Spawn one organism into a test world and return its slot. */
@@ -176,7 +185,34 @@ export function spawnTestOrganism(world: TestWorld, options: TestOrganismOptions
     generation: 0,
     parentEntityId: 0,
     speciesId: 1,
-    energyFractionQ: options.energyFractionQ ?? config.organism.initialEnergyFractionQ,
+    energy: {
+      kind: "fractionOfMax",
+      fractionQ: options.energyFractionQ ?? config.organism.initialEnergyFractionQ,
+    },
   };
-  return spawnOrganism(ctx, request);
+  const slot = spawnOrganism(ctx, request);
+  if (slot < 0) {
+    return slot;
+  }
+
+  // Reproduction tests need mature, fully developed organisms without running a
+  // thousand ticks of physiology first. Setting age and development directly is
+  // exactly what the store would hold at that age, and the energy is re-derived
+  // so it stays consistent with the larger body.
+  if (options.ageTicks !== undefined) {
+    ctx.organisms.ageTicks[slot] = options.ageTicks;
+  }
+  if (options.developmentQ !== undefined) {
+    ctx.organisms.developmentQ[slot] = options.developmentQ;
+    const radius = currentRadiusPos(
+      ctx.phenotypes.adultRadiusPos[slot] as number,
+      options.developmentQ,
+    );
+    const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
+    ctx.organisms.energy[slot] = qmul(
+      maxEnergyForMass(mass, config),
+      options.energyFractionQ ?? config.organism.initialEnergyFractionQ,
+    );
+  }
+  return slot;
 }

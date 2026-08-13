@@ -1,4 +1,10 @@
-import { BRAIN_HIDDEN_COUNT, BRAIN_INPUT_COUNT, BRAIN_OUTPUT_COUNT } from "./brain/BrainLayout";
+import {
+  BRAIN_HIDDEN_COUNT,
+  BRAIN_INPUT_COUNT,
+  BRAIN_OUTPUT_COUNT,
+  BRAIN_WEIGHT_COUNT,
+} from "./brain/BrainLayout";
+import { GENE_COUNT } from "./genetics/genes";
 
 /**
  * Reusable per-tick working memory (docs/10 §4).
@@ -77,7 +83,21 @@ export class EngineScratch {
   readonly pendingDeath: Uint8Array;
   readonly deathCause: Uint8Array;
 
+  // --- Reproduction (docs/04 §19) -------------------------------------------
+  /**
+   * Slots that passed every reproduction condition, in ascending slot order.
+   *
+   * Collected before any birth happens, which is what makes it impossible for a
+   * newborn — which may land in a lower slot than its own parent — to be treated
+   * as a parent on its birth tick.
+   */
+  readonly reproducers: Int32Array;
+  /** One child's genome, mutated here before it is handed to the spawner. */
+  readonly childGenes: Uint16Array;
+  readonly childBrainWeights: Int16Array;
+
   #demandedCellCount = 0;
+  #reproducerCount = 0;
 
   constructor(capacity: number, environmentCellCount: number) {
     this.capacity = capacity;
@@ -110,6 +130,26 @@ export class EngineScratch {
 
     this.pendingDeath = new Uint8Array(capacity);
     this.deathCause = new Uint8Array(capacity);
+
+    this.reproducers = new Int32Array(capacity);
+    this.childGenes = new Uint16Array(GENE_COUNT);
+    this.childBrainWeights = new Int16Array(BRAIN_WEIGHT_COUNT);
+  }
+
+  /** Number of eligible parents collected this tick. */
+  get reproducerCount(): number {
+    return this.#reproducerCount;
+  }
+
+  /** Start a fresh reproduction pass. */
+  resetReproducers(): void {
+    this.#reproducerCount = 0;
+  }
+
+  /** Record an eligible parent. Called in ascending slot order. */
+  noteReproducer(slot: number): void {
+    this.reproducers[this.#reproducerCount] = slot;
+    this.#reproducerCount += 1;
   }
 
   /** Number of environment cells that received a feeding claim this tick. */

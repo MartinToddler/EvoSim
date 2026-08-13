@@ -74,6 +74,17 @@ export class OrganismStore {
   readonly waterTicks: Uint16Array;
   readonly lastDamageQ: Uint16Array;
   readonly attackCooldown: Uint16Array;
+  /**
+   * Ticks remaining before this organism may reproduce again (docs/08 §16).
+   *
+   * Not in the docs/03 §6 array list, for the same reason `developmentQ` and
+   * `waterTicks` are not: the list predates the rules that need them.
+   * `reproduction.reproductionCooldownTicks` is an authoritative config field, so
+   * the counter it drives is authoritative state — it is hashed and serialized,
+   * because a cooldown that reset on reload would let a player double a
+   * lineage's birth rate by saving and loading.
+   */
+  readonly reproductionCooldown: Uint16Array;
 
   // --- Lifetime counters ----------------------------------------------------
   readonly plantEnergyEaten: Uint32Array;
@@ -93,6 +104,26 @@ export class OrganismStore {
   totalDeaths = 0;
   /** Cumulative births, including the founder generation. */
   totalBirths = 0;
+  /**
+   * Cumulative births refused because the population cap was already full.
+   *
+   * docs/03 §2 makes the cap a safety limit whose only correct response is a
+   * deterministic rejection plus diagnostics — never a silent cull and never a
+   * randomized order to hide the bias (docs/10 §15). This counter is what makes
+   * "the world is running against its ceiling, and evolution is being distorted
+   * by it" visible instead of invisible, so it is saved like every other
+   * statistics accumulator (docs/02 §9).
+   */
+  capRejectedBirths = 0;
+  /**
+   * Cumulative energy destroyed because a parent's offspring investment exceeded
+   * what its newborn's body could hold.
+   *
+   * The conservation audit: with this counter, plant biomass converted to energy
+   * minus metabolic spend minus this equals the energy alive in the population,
+   * so a test can prove that a birth never creates energy.
+   */
+  birthEnergyDiscarded = 0;
 
   // --- Slot bookkeeping -----------------------------------------------------
   /** LIFO stack of released slots. */
@@ -135,6 +166,7 @@ export class OrganismStore {
     this.waterTicks = new Uint16Array(capacity);
     this.lastDamageQ = new Uint16Array(capacity);
     this.attackCooldown = new Uint16Array(capacity);
+    this.reproductionCooldown = new Uint16Array(capacity);
 
     this.plantEnergyEaten = new Uint32Array(capacity);
     this.meatEnergyEaten = new Uint32Array(capacity);
@@ -174,6 +206,18 @@ export class OrganismStore {
   }
 
   /**
+   * Whether {@link allocateSlot} would succeed right now.
+   *
+   * Reproduction asks this *before* drawing any randomness, so a birth refused
+   * by the population cap consumes nothing from the PRNG and therefore cannot
+   * shift the random stream of the organisms processed after it. Without the
+   * separate query, the cap would silently become part of the random sequence.
+   */
+  canAllocate(): boolean {
+    return this.#freeCount > 0 || this.#slotHighWater < this.capacity;
+  }
+
+  /**
    * Claim a slot and a fresh entity ID, or -1 when the population cap is
    * reached.
    *
@@ -182,7 +226,7 @@ export class OrganismStore {
    * never a silent cull (docs/03 §2).
    */
   allocateSlot(): number {
-    if (this.#freeCount === 0 && this.#slotHighWater >= this.capacity) {
+    if (!this.canAllocate()) {
       return -1;
     }
 
@@ -249,6 +293,7 @@ export class OrganismStore {
     this.waterTicks[slot] = 0;
     this.lastDamageQ[slot] = 0;
     this.attackCooldown[slot] = 0;
+    this.reproductionCooldown[slot] = 0;
     this.plantEnergyEaten[slot] = 0;
     this.meatEnergyEaten[slot] = 0;
     this.kills[slot] = 0;
@@ -263,6 +308,8 @@ export class OrganismStore {
     this.deathsByCause.fill(0);
     this.totalDeaths = 0;
     this.totalBirths = 0;
+    this.capRejectedBirths = 0;
+    this.birthEnergyDiscarded = 0;
     this.#freeCount = 0;
     this.#slotHighWater = 0;
     this.#liveCount = 0;
@@ -363,6 +410,8 @@ export class OrganismStore {
     hasher.array(HASH_TAG.i32, this.freeSlots.subarray(0, this.#freeCount));
     hasher.safeInteger(this.totalBirths);
     hasher.safeInteger(this.totalDeaths);
+    hasher.safeInteger(this.capRejectedBirths);
+    hasher.safeInteger(this.birthEnergyDiscarded);
     hasher.array(HASH_TAG.u32, this.deathsByCause);
 
     hasher.array(HASH_TAG.u8, this.alive.subarray(0, used));
@@ -384,6 +433,7 @@ export class OrganismStore {
     hasher.array(HASH_TAG.u16, this.waterTicks.subarray(0, used));
     hasher.array(HASH_TAG.u16, this.lastDamageQ.subarray(0, used));
     hasher.array(HASH_TAG.u16, this.attackCooldown.subarray(0, used));
+    hasher.array(HASH_TAG.u16, this.reproductionCooldown.subarray(0, used));
     hasher.array(HASH_TAG.u32, this.plantEnergyEaten.subarray(0, used));
     hasher.array(HASH_TAG.u32, this.meatEnergyEaten.subarray(0, used));
     hasher.array(HASH_TAG.u16, this.kills.subarray(0, used));

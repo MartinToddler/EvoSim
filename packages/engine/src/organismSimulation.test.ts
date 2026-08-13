@@ -3,6 +3,7 @@ import { POS_SCALE, Q } from "./math/fixed";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import { cloneConfig } from "./config/cloneConfig";
 import { DEATH_CAUSE_COUNT, DeathCause } from "./organisms/death";
+import type { EngineCoreSnapshot } from "./snapshot/EngineSnapshot";
 import { engineFromSnapshot } from "./snapshot/deserialize";
 import { SimulationEngine } from "./SimulationEngine";
 import { totalPlantBiomass } from "./world/plants";
@@ -15,8 +16,13 @@ import { totalPlantBiomass } from "./world/plants";
  * so the suite states an ecological story rather than re-running the engine
  * per claim. What it deliberately does NOT do is assert a specific outcome at
  * a specific tick beyond the pinned hash — docs/07 §1 forbids brittle
- * evolutionary stories, and Milestone 3 has no reproduction, so the founder
- * cohort can only shrink.
+ * evolutionary stories.
+ *
+ * Milestone 4 changed the ecology these tests observe: the founder cohort still
+ * reaches its 6 100-tick maximum age together, but the world no longer empties
+ * behind it, because the cohort reproduced. Assertions that depended on
+ * "nothing reproduces yet" were rewritten rather than deleted, and the
+ * Milestone 4 story lives in `evolutionSimulation.test.ts`.
  */
 
 const FIXTURE_SEED = 0xe0a12026;
@@ -26,6 +32,14 @@ interface Sample {
   population: number;
   meanEnergyRatioQ: number;
   meanDevelopmentQ: number;
+  /**
+   * Development of the best-grown organism alive.
+   *
+   * Reported alongside the mean because from Milestone 4 the mean mixes adults
+   * with newborns that start at 45% of adult size, so "the cohort grew up" is a
+   * statement about the top of the distribution, not its centre.
+   */
+  maxDevelopmentQ: number;
   meanHealthQ: number;
   totalPlantEnergyEaten: number;
 }
@@ -34,6 +48,7 @@ function sample(engine: SimulationEngine): Sample {
   const { organisms } = engine;
   let energy = 0;
   let development = 0;
+  let maxDevelopment = 0;
   let health = 0;
   let eaten = 0;
   let alive = 0;
@@ -43,7 +58,11 @@ function sample(engine: SimulationEngine): Sample {
     }
     alive += 1;
     energy += organisms.energy[slot] as number;
-    development += organisms.developmentQ[slot] as number;
+    const slotDevelopment = organisms.developmentQ[slot] as number;
+    development += slotDevelopment;
+    if (slotDevelopment > maxDevelopment) {
+      maxDevelopment = slotDevelopment;
+    }
     health += organisms.healthQ[slot] as number;
     eaten += organisms.plantEnergyEaten[slot] as number;
   }
@@ -53,25 +72,42 @@ function sample(engine: SimulationEngine): Sample {
     population: alive,
     meanEnergyRatioQ: Math.trunc(energy / n),
     meanDevelopmentQ: Math.trunc(development / n),
+    maxDevelopmentQ: maxDevelopment,
     meanHealthQ: Math.trunc(health / n),
     totalPlantEnergyEaten: eaten,
   };
 }
 
+/** Tick at which the shared run's snapshot is taken, for the resume test. */
+const MIDRUN_SNAPSHOT_TICK = 3_000;
+
 /** One shared 10 000-tick run of the reference world. */
 const reference = (() => {
   const engine = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
   const samples: Sample[] = [sample(engine)];
-  const checkpoints = [100, 500, 1_000, 2_000, 3_000, 5_000, 6_000, 10_000];
+  const checkpoints = [100, 500, 1_000, 2_000, MIDRUN_SNAPSHOT_TICK, 5_000, 6_000, 10_000];
   const biomassAtStart = totalPlantBiomass(engine.environment);
+  // Serialized in passing, so the resume test does not have to re-run the first
+  // 3 000 ticks in a second engine just to have something to restore.
+  let midrunSnapshot: EngineCoreSnapshot | undefined;
+  let midrunHash = "";
   for (const target of checkpoints) {
     engine.stepMany(target - engine.tick);
     samples.push(sample(engine));
+    if (target === MIDRUN_SNAPSHOT_TICK) {
+      midrunSnapshot = engine.serialize();
+      midrunHash = engine.computeStateHash();
+    }
+  }
+  if (midrunSnapshot === undefined) {
+    throw new Error("mid-run snapshot was not taken");
   }
   return {
     engine,
     samples,
     biomassAtStart,
+    midrunSnapshot,
+    midrunHash,
     at(tick: number): Sample {
       const found = samples.find((entry) => entry.tick === tick);
       if (found === undefined) {
@@ -179,13 +215,20 @@ describe("founder forages and survives the calibrated world", () => {
   it("grows to maturity on what it forages", () => {
     const birth = DEFAULT_CONFIG.organism.birthSizeFractionQ;
     expect(reference.at(0).meanDevelopmentQ).toBe(birth);
+    expect(reference.at(0).maxDevelopmentQ).toBe(birth);
     expect(reference.at(500).meanDevelopmentQ).toBeGreaterThan(birth);
-    // Founder maturity is ~1120 ticks, so the cohort is fully grown by 2 000.
-    expect(reference.at(2_000).meanDevelopmentQ).toBe(Q);
+    // Founder maturity is ~1 120 ticks, so the cohort is fully grown by 2 000.
+    // Asserted on the maximum, not the mean: from Milestone 4 the mean also
+    // averages in newborns that start back at 45% of adult size, so it can never
+    // reach Q again in a reproducing population.
+    expect(reference.at(2_000).maxDevelopmentQ).toBe(Q);
+    expect(reference.at(2_000).meanDevelopmentQ).toBeGreaterThan(birth);
   });
 
   it("keeps most of the cohort alive well past maturity", () => {
     const founders = DEFAULT_CONFIG.world.initialOrganisms;
+    // Founder maturity is ~1 120 ticks, so tick 1 000 still holds the original
+    // cohort exactly: nothing has died and nothing has been born yet.
     expect(reference.at(1_000).population).toBe(founders);
     expect(reference.at(3_000).population).toBeGreaterThan(founders / 2);
     expect(reference.at(5_000).population).toBeGreaterThan(founders / 2);
@@ -199,13 +242,15 @@ describe("founder forages and survives the calibrated world", () => {
     expect(reference.at(5_000).meanHealthQ).toBeGreaterThan(Q / 2);
   });
 
-  it("dies of old age at the genetic maximum, since nothing reproduces yet", () => {
-    // Every founder shares one genome, so the whole cohort reaches its 6 100
-    // tick maximum together. Reproduction (Milestone 4) is what breaks up this
-    // synchronized cohort.
+  it("dies of old age at the genetic maximum", () => {
+    // Every founder shares one genome, so the whole original cohort reaches its
+    // 6 100 tick maximum together. Before Milestone 4 that emptied the world by
+    // tick 10 000; now the cohort's descendants outlive it, which is exactly the
+    // synchronized-cohort break-up ADR 0004 §7 predicted reproduction would
+    // cause. Old-age deaths still have to appear.
     expect(reference.at(6_000).population).toBeGreaterThan(0);
-    expect(reference.at(10_000).population).toBe(0);
     expect(reference.engine.organisms.deathsByCause[DeathCause.OldAge]).toBeGreaterThan(0);
+    expect(reference.at(10_000).population).toBeGreaterThan(0);
   });
 
   it("grazes the world without collapsing it", () => {
@@ -266,14 +311,21 @@ describe("founder forages and survives the calibrated world", () => {
 });
 
 describe("no post-spawn heuristics", () => {
-  it("leaves the authoritative PRNG untouched by the tick loop", () => {
-    // Founder spawn is the only PRNG consumer in Milestone 3. If any phase
-    // secretly drew from it — a random nudge, a tie broken by chance — the
-    // generator state would move.
+  it("draws from the authoritative PRNG only when a birth happens", () => {
+    // Reproduction is the tick loop's ONLY randomness consumer. If some other
+    // phase secretly drew — a random nudge, a tie broken by chance, a sensor
+    // jitter — the generator would move before the first organism is mature.
     const engine = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
     const afterSpawn = engine.getRngState();
     engine.stepMany(300);
+    expect(engine.organisms.totalBirths).toBe(DEFAULT_CONFIG.world.initialOrganisms);
     expect(engine.getRngState()).toEqual(afterSpawn);
+
+    // And it does move once births start, or reproduction would not be drawing
+    // its placement and mutations from the project PRNG at all.
+    engine.stepMany(1_700);
+    expect(engine.organisms.totalBirths).toBeGreaterThan(DEFAULT_CONFIG.world.initialOrganisms);
+    expect(engine.getRngState()).not.toEqual(afterSpawn);
   });
 
   it("reduces a silenced brain to pure neutral output, with no behaviour left over", () => {
@@ -327,21 +379,19 @@ describe("deterministic 10k founder simulation", () => {
   });
 
   it("matches a snapshot taken mid-run and resumed to tick 10 000", () => {
-    // The required snapshot/resume acceptance at full scale: an interrupted
-    // run must be bit-identical to an uninterrupted one, which means the free
-    // list, the entity ID counter and every organism array round-tripped
-    // exactly.
-    const interrupted = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
-    interrupted.stepMany(3_000);
-    const snapshot = interrupted.serialize();
+    // The required snapshot/resume acceptance at full scale: an interrupted run
+    // must be bit-identical to an uninterrupted one, which means the free list,
+    // the entity ID counter and every organism array round-tripped exactly.
+    //
+    // The snapshot comes from the shared run rather than a second engine stepped
+    // to the same tick — the two are the same state by definition, and a
+    // populated 3 000-tick run is no longer cheap enough to do twice.
+    const resumed = engineFromSnapshot(reference.midrunSnapshot);
+    expect(resumed.tick).toBe(MIDRUN_SNAPSHOT_TICK);
+    expect(resumed.computeStateHash()).toBe(reference.midrunHash);
+    expect(resumed.organisms.liveCount).toBe(reference.at(MIDRUN_SNAPSHOT_TICK).population);
 
-    const resumed = engineFromSnapshot(snapshot);
-    expect(resumed.tick).toBe(3_000);
-    expect(resumed.computeStateHash()).toBe(interrupted.computeStateHash());
-    expect(resumed.organisms.liveCount).toBe(interrupted.organisms.liveCount);
-    expect(resumed.organisms.nextEntityId).toBe(interrupted.organisms.nextEntityId);
-
-    resumed.stepMany(7_000);
+    resumed.stepMany(10_000 - MIDRUN_SNAPSHOT_TICK);
     expect(resumed.tick).toBe(10_000);
     expect(resumed.computeStateHash()).toBe(reference.engine.computeStateHash());
   });
@@ -369,11 +419,20 @@ describe("deterministic 10k founder simulation", () => {
   });
 
   it("round-trips a snapshot with dead slots on the free list", () => {
-    // Taken after the cohort has started dying, so the snapshot carries a
-    // non-empty free list. Rebuilding that list by scanning for dead slots
-    // instead of restoring it verbatim would change which slot the next birth
-    // lands in (docs/10 §18).
-    const engine = reference.engine;
+    // Rebuilding the free list by scanning for dead slots instead of restoring it
+    // verbatim would change which slot the next birth lands in (docs/10 §18).
+    //
+    // The engine is stepped until the free list is actually non-empty rather than
+    // sampled at a fixed tick. Before Milestone 4 any tick past the first death
+    // would do, because nothing consumed free slots; now births drain the list
+    // every tick, so a non-empty list only exists on ticks where deaths outnumber
+    // births. That is a property of the run, not of a tick number.
+    const engine = new SimulationEngine({ seed: FIXTURE_SEED, config: DEFAULT_CONFIG });
+    const LIMIT = 4_000;
+    while (engine.organisms.freeCount === 0 && engine.tick < LIMIT) {
+      engine.step();
+    }
+    expect(engine.tick).toBeLessThan(LIMIT);
     expect(engine.organisms.freeCount).toBeGreaterThan(0);
 
     const restored = engineFromSnapshot(engine.serialize());

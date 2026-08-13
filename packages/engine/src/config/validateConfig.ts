@@ -161,7 +161,12 @@ function validateWorld(config: DeepReadonly<SimulationConfig>): void {
     "world: minLandFractionQ must be below maxLandFractionQ",
   );
   checkPositiveInt(world.generationMaxRetries, "world.generationMaxRetries");
-  checkPositiveInt(world.initialOrganisms, "world.initialOrganisms");
+  // Zero founders is a legitimate configuration, not a mistake: it is the
+  // lifeless control world that isolates the environment model from grazing,
+  // which is what the 100k environment soak needs now that a populated world
+  // reproduces. Nothing in the engine special-cases it — spawnFounderPopulation
+  // simply places nobody and draws nothing.
+  checkNonNegativeInt(world.initialOrganisms, "world.initialOrganisms");
   checkPositiveInt(world.founderSpawnRadiusLU, "world.founderSpawnRadiusLU");
   check(
     world.founderSpawnRadiusLU * 2 <= world.sizeLU,
@@ -621,8 +626,23 @@ function validateMutation(config: DeepReadonly<SimulationConfig>): void {
     "mutation.ecological.largeMutationProbabilityQ",
   );
   checkQFraction(ecological.resetProbabilityQ, "mutation.ecological.resetProbabilityQ");
-  checkNonNegativeQCoefficient(ecological.smallSigmaQ, "mutation.ecological.smallSigmaQ");
-  checkNonNegativeQCoefficient(ecological.largeSigmaQ, "mutation.ecological.largeSigmaQ");
+  // The three classes are disjoint intervals of one uniform draw in [0, Q)
+  // (genetics/mutation.ts), so their sum has to fit inside that draw. A config
+  // whose probabilities summed above Q would silently make the last class
+  // unreachable instead of failing.
+  check(
+    ecological.resetProbabilityQ +
+      ecological.largeMutationProbabilityQ +
+      ecological.perGeneMutationProbabilityQ <=
+      Q,
+    "mutation.ecological: reset + large + perGene probabilities must not exceed Q",
+  );
+  // Sigmas are Q fractions of the normalized gene range. Bounding them at Q is
+  // both meaningful (a standard deviation wider than the whole gene range is not
+  // a mutation, it is a re-roll — that is what resetProbabilityQ is for) and
+  // what keeps geneDeltaRaw's product inside exact integer range.
+  checkQFraction(ecological.smallSigmaQ, "mutation.ecological.smallSigmaQ");
+  checkQFraction(ecological.largeSigmaQ, "mutation.ecological.largeSigmaQ");
   check(
     ecological.largeSigmaQ >= ecological.smallSigmaQ,
     "mutation.ecological: largeSigmaQ must not be smaller than smallSigmaQ",
@@ -636,7 +656,25 @@ function validateMutation(config: DeepReadonly<SimulationConfig>): void {
     brain.largeWeightMutationProbabilityQ,
     "mutation.brain.largeWeightMutationProbabilityQ",
   );
+  check(
+    brain.largeWeightMutationProbabilityQ + brain.perWeightMutationProbabilityQ <= Q,
+    "mutation.brain: large + perWeight probabilities must not exceed Q",
+  );
   checkNonNegativeQCoefficient(brain.weightSmallSigmaQ, "mutation.brain.weightSmallSigmaQ");
+  checkNonNegativeQCoefficient(brain.weightLargeSigmaQ, "mutation.brain.weightLargeSigmaQ");
+  check(
+    brain.weightLargeSigmaQ >= brain.weightSmallSigmaQ,
+    "mutation.brain: weightLargeSigmaQ must not be smaller than weightSmallSigmaQ",
+  );
+  // Brain sigmas are in stored weight units, so the meaningful ceiling is the
+  // clamp span: a sigma wider than the whole legal weight range would put almost
+  // every mutated weight on one of the two bounds.
+  const weightSpan = config.brain.weightMax - config.brain.weightMin;
+  check(
+    brain.weightLargeSigmaQ <= weightSpan,
+    `mutation.brain.weightLargeSigmaQ must not exceed the weight clamp span ${weightSpan}, ` +
+      `got ${brain.weightLargeSigmaQ}`,
+  );
 }
 
 function validateCombat(config: DeepReadonly<SimulationConfig>): void {
@@ -675,6 +713,14 @@ function validateReproduction(config: DeepReadonly<SimulationConfig>): void {
     "reproduction: childSpawnDistanceMinLU must be <= childSpawnDistanceMaxLU",
   );
   checkPositiveInt(reproduction.spawnAngleCandidates, "reproduction.spawnAngleCandidates");
+  // The placement search rotates by floor(ANGLE_STEPS / candidates) per attempt.
+  // Above ANGLE_STEPS that step truncates to zero and every "alternative" angle
+  // would be the same angle, so the retries would silently do nothing.
+  check(
+    reproduction.spawnAngleCandidates <= ANGLE_STEPS,
+    `reproduction.spawnAngleCandidates must not exceed ANGLE_STEPS (${ANGLE_STEPS}), got ` +
+      `${reproduction.spawnAngleCandidates}`,
+  );
 }
 
 function validateSpecies(config: DeepReadonly<SimulationConfig>): void {

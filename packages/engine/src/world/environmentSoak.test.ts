@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "../SimulationEngine";
+import { cloneConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { Q } from "../math/fixed";
 import { Biome } from "./biomes";
@@ -15,6 +16,21 @@ import { totalPlantBiomass, totalPlantCapacity } from "./plants";
  * above capacity, no cell silently frozen, and the same seed still landing on
  * the same state.
  *
+ * ## Why this world is lifeless
+ *
+ * It runs the reference world geometry with `initialOrganisms = 0`. Up to
+ * Milestone 3 the founder cohort died out by tick 6 100 and the remaining 94% of
+ * the run was already an empty world, so the distinction did not exist; the
+ * assertions below — vegetation rising toward carrying capacity and saturating
+ * — describe the plant model, and were only ever true because grazing was
+ * negligible.
+ *
+ * Milestone 4 made the population persistent, which both invalidated those
+ * assertions and multiplied the run's cost by ~40x. Splitting the two concerns
+ * is strictly more coverage than before, not less: this file pins the
+ * environment model in isolation over 100 000 ticks, and `soak.test.ts` pins the
+ * environment AND a reproducing population over another 100 000 ticks.
+ *
  * Determinism is checked against a recorded hash rather than by running a
  * second engine: it costs half the time and is strictly stronger, because a
  * golden also catches drift between platforms and between engine versions,
@@ -23,14 +39,22 @@ import { totalPlantBiomass, totalPlantCapacity } from "./plants";
 describe("100k tick environment soak", () => {
   const SOAK_TICKS = 100_000;
   /**
-   * State hash after 100 000 ticks for seed 0xE0A12026 + DEFAULT_CONFIG.
-   * Regenerate together with the golden fixture whenever ENGINE_VERSION changes.
+   * State hash after 100 000 ticks for seed 0xE0A12026 + the lifeless reference
+   * world. Regenerate together with the golden fixture whenever ENGINE_VERSION
+   * changes.
    */
-  const GOLDEN_SOAK_HASH = "8ea1c3d5387f8e91";
+  const GOLDEN_SOAK_HASH = "3e09d1db8731558f";
+
+  const LIFELESS_CONFIG = (() => {
+    const config = cloneConfig(DEFAULT_CONFIG);
+    config.world.initialOrganisms = 0;
+    return config;
+  })();
 
   it("stays valid and deterministic across 100k ticks", { timeout: 300_000 }, () => {
-    const engine = new SimulationEngine({ seed: 0xe0a12026, config: DEFAULT_CONFIG });
+    const engine = new SimulationEngine({ seed: 0xe0a12026, config: LIFELESS_CONFIG });
     const { environment } = engine;
+    expect(engine.organisms.liveCount).toBe(0);
 
     const initialBiomass = totalPlantBiomass(environment);
     const capacity = totalPlantCapacity(environment);
@@ -65,10 +89,8 @@ describe("100k tick environment soak", () => {
     });
 
     // Vegetation grows from the configured half-capacity start toward carrying
-    // capacity, and saturates rather than growing without bound. The founder
-    // cohort grazes locally, but 256 organisms in a 65 536-cell world cannot
-    // reverse the world-wide trend — the local depletion they do cause is
-    // asserted in the Milestone 3 acceptance suite instead.
+    // capacity, and saturates rather than growing without bound. With nothing
+    // alive to graze it, this is the plant model on its own.
     expect(midpointBiomass).toBeGreaterThan(initialBiomass);
     expect(finalBiomass).toBeGreaterThanOrEqual(midpointBiomass);
     expect(finalBiomass).toBeLessThanOrEqual(capacity);

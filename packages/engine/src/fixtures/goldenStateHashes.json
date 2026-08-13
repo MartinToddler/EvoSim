@@ -1,16 +1,16 @@
 {
-  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. The hashes are unchanged from engine 0.3.0: 0.3.1 fixed the coincident-body separation direction (ADR 0005), and two organisms never occupy exactly the same position anywhere in this fixture, so the branch that changed is never reached by it.",
-  "engineVersion": "0.3.1",
-  "configSchemaVersion": 4,
+  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. Engine 0.4.0 regenerated every hash: reproduction adds three hashed counters plus a per-slot reproduction cooldown to the stream, and phase 14 makes the population grow instead of dying out, so ticks 1 onward describe a different world as well as a different stream. The tick-1000 hash is unchanged by coincidence of the stream layout, not by design.",
+  "engineVersion": "0.4.0",
+  "configSchemaVersion": 5,
   "seedHex": "0xE0A12026",
-  "configHash": "87f9421a9ffe0b16",
+  "configHash": "66cfb128e8ff0144",
   "commands": [],
   "checkpoints": {
-    "0": "a8e4afa79e6fb8bb",
-    "1": "60b4d2381f31c308",
-    "10": "5c1493d8e01030c8",
-    "100": "e99fcf24cfd740a8",
-    "1000": "8da354a820f0ac8c",
-    "10000": "8aacac9b1812856b"
+    "0": "1fee010a36698c7e",
+    "1": "47073dd5617cdee1",
+    "10": "ab02adc06d567aac",
+    "100": "d13cc926a691d31a",
+    "1000": "51afe6f86a9e99e8",
+    "10000": "9a643dca1206bdd2"
   }
 }

@@ -46,6 +46,7 @@ const HASHED_CONFIG_LEAF_PATHS: readonly string[] = [
   "limits.recentDeadHistorySize",
   "mutation.brain.largeWeightMutationProbabilityQ",
   "mutation.brain.perWeightMutationProbabilityQ",
+  "mutation.brain.weightLargeSigmaQ",
   "mutation.brain.weightSmallSigmaQ",
   "mutation.ecological.largeMutationProbabilityQ",
   "mutation.ecological.largeSigmaQ",

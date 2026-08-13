@@ -18,6 +18,6 @@
  * world hash (ADR 0002 §4). CLAUDE.md lists four required version constants;
  * this is a fifth, non-authoritative one.
  */
-export const ENGINE_VERSION = "0.3.1";
-export const SNAPSHOT_SCHEMA_VERSION = 4;
-export const CONFIG_SCHEMA_VERSION = 4;
+export const ENGINE_VERSION = "0.4.0";
+export const SNAPSHOT_SCHEMA_VERSION = 5;
+export const CONFIG_SCHEMA_VERSION = 5;

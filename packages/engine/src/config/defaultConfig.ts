@@ -251,6 +251,11 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       perWeightMutationProbabilityQ: 82, // 0.02
       weightSmallSigmaQ: 246, // 0.06 weight units
       largeWeightMutationProbabilityQ: 4, // ~0.001
+      // docs/08 §17 omits this; 6x the small sigma matches the ratio the
+      // ecological block does specify (614/102), which puts a large jump at
+      // ~0.36 weight units against founder skip weights of 0.10 … 1.80 —
+      // disruptive but not destructive (ADR 0006 §3).
+      weightLargeSigmaQ: 1476, // 0.36 weight units
     },
   },
 

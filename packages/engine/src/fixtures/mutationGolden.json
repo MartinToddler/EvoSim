@@ -1,0 +1,14 @@
+{
+  "description": "Mutation golden fixture (docs/07 §2 Genome/Brain mutation, tasks E03/E04). Pins the exact result of mutating the founder genome through a 50-generation lineage with a fixed PRNG seed, plus the PRNG draw count of a single birth. Any change to the draw order, the roll-interval partition, the sigma scaling or the clamp moves these values and is an ENGINE_VERSION event.",
+  "engineVersion": "0.4.0",
+  "configSchemaVersion": 5,
+  "seedHex": "0xE04A2026",
+  "generations": 50,
+  "firstBirthPrngWords": 572,
+  "genes": [
+    28976, 32143, 33669, 333, 32333, 34242, 14146, 8410, 8332, 32171, 38143, 30131, 23420, 31389,
+    27198, 24507
+  ],
+  "brainWeightDigest": "13485fc83ea97b98",
+  "rngStateAfter": [2412641644, 2569105281, 2913072987, 3713110766]
+}

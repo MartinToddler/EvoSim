@@ -5,6 +5,7 @@ import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig
 import { hashConfig } from "./config/hashConfig";
 import { validateConfig } from "./config/validateConfig";
 import { buildFeedingClaims, resolveFeedingClaims } from "./ecology/feedingClaims";
+import { resolveReproduction } from "./ecology/reproduction";
 import type { EngineContext } from "./EngineContext";
 import { EngineScratch } from "./EngineScratch";
 import { computeStateHash } from "./hashState";
@@ -267,7 +268,7 @@ export class SimulationEngine {
     //   11 resolveCombatSimultaneously      — Milestone 5
     applyMetabolismGrowthThermalAging(ctx); //         12 applyMetabolismGrowthThermalAging
     finalizeDeaths(ctx); //                            13 finalizeDeathsAndCreateCarcasses
-    //   14 resolveReproduction              — Milestone 4
+    resolveReproduction(ctx); //                       14 resolveReproduction
     //   15 scheduledCarcassDecay            — Milestone 5
     //   16 scheduledSpeciesAnalysis         — Milestone 8
     //   17 scheduledStatisticsAndEvents     — Milestone 8

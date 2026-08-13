@@ -94,14 +94,16 @@ pnpm install         # install locked dependencies
 pnpm verify          # typecheck + lint + test + build (task A06)
 pnpm test            # Vitest across all packages
 pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000
+pnpm sweep --seeds 0xE0A12026,1,2 --ticks 20000   # multi-seed calibration report (task E08)
 pnpm --filter @eon/web dev   # run the web shell locally
 ```
 
-Current status: Milestones 0–3 complete — workspace, determinism skeleton (hardened after
-review), the procedural environment, and organism mechanics (reviewed and hardened, ADR 0005).
-Milestone 4 (reproduction and mutation) has not started, so the founder cohort can only shrink.
+Current status: Milestones 0–4 complete — workspace, determinism skeleton (hardened after
+review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005) and
+asexual reproduction with gene and brain mutation (ADR 0006). There is no renderer yet;
+everything below is headless.
 
-The simulation is real and inspectable headlessly:
+The simulation is real and evolving:
 
 ```text
 world      256x256 cells, generation attempt 0
@@ -110,17 +112,27 @@ plants     capacity 168.8M, biomass 84.4M (50.0% of capacity)
 founders   cell 40426 at (234, 157) in a 35507-cell landmass
 organisms  256 spawned, entity IDs 1..256
 
-tick      0 | pop  256 | mean energy   10023 | mean growth 0.45 | plant intake 0.0k | deaths 0
-tick   1000 | pop  256 | mean energy   56108 | mean growth 0.98 | plant intake 27705.9k | deaths 0
-tick   3000 | pop  250 | mean energy   53234 | mean growth 1.00 | plant intake 85104.4k | deaths 6 (starvation 6)
-tick   6000 | pop  225 | mean energy   55493 | mean growth 1.00 | plant intake 169897.8k | deaths 31 (starvation 31)
-tick  10000 | pop    0 | mean energy       0 | mean growth 0.00 | plant intake 0.0k | deaths 256 (starvation 31, oldAge 225)
+tick      0 | pop  256 | gen   0 | births    256 | deaths      0 | var       0
+tick   1000 | pop  256 | gen   0 | births    256 | deaths      0 | var       0
+tick   2000 | pop 1503 | gen   1 | births   1525 | deaths     22 | var   35283
+tick   5000 | pop 1700 | gen   4 | births   4533 | deaths   2833 | var  111889
+tick  10000 | pop 4718 | gen   8 | births  15408 | deaths  10690 | var  225530
 ```
 
-The founders forage, grow to maturity on what they find, compete hard enough that some starve,
-and — since nothing reproduces yet — die together of old age at their genetic maximum of 6100
-ticks. Nothing about them is scripted: after spawn they run the same quantized network as any
-descendant will.
+The founders forage, grow to maturity on what they find, compete hard enough that some starve, and
+from tick ~1120 they reproduce. Nothing about them is scripted: after spawn they run the same
+quantized network as any descendant will, and `var` — the summed variance of the 15 ecological
+genes, hue excluded — starts at exactly **zero**, because every founder is genetically identical.
+All of it comes from mutation.
+
+**Known calibration issue.** The world's carrying capacity is far above the 8 192 organism safety
+cap. Across six seeds at 10 000 ticks all six survive, but **three are pinned at the cap** with
+5.5–6.1 million refused births, and their trait diversity is about half that of the uncapped seeds —
+the cap is filtering by storage order instead of by ecology, exactly the bias docs/01 §11 warns
+about. docs/01 §12 makes not slamming the cap an MVP release gate, so this is on the critical path.
+The defaults were nevertheless implemented faithfully and deliberately **not** tuned, because
+docs/08 §24 requires that order and docs/07 §14 requires 10–30 seeds before any tuning conclusion.
+It is input for task L07, and `pnpm sweep` is the harness. Full table in ADR 0006 §7.
 
 Two configurations, deliberately separated (ADR 0002 §4):
 
@@ -132,8 +144,8 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.3.1, protocol 1, snapshot schema 4, config
-schema 4. Design decisions are recorded in `docs/adr/`:
+entry (see `CLAUDE.md`). Current versions: engine 0.4.0, protocol 1, snapshot schema 5, config
+schema 5. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
 - `0002-milestone-1-hardening.md` — state encapsulation, config immutability, the
@@ -146,3 +158,13 @@ schema 4. Design decisions are recorded in `docs/adr/`:
 - `0005-milestone-3-review-fixes.md` — the independent Milestone 3 review: the coincident-body
   separation order bug, two slot-bookkeeping defects, and the determinism, conservation,
   allocation and performance checks that the milestone passed.
+- `0006-milestone-4-evolution.md` — asexual reproduction and mutation: the one-roll mutation
+  partition, why over-investment destroys energy instead of being refunded, why reproduction runs in
+  two passes, the population-cap calibration finding, and which foundation branch this line is
+  built on.
+
+> **Repository note.** Three branches diverged in parallel from the Milestone 2 commit. This line is
+> Milestone 2 → 3 → 4. The Milestone 0–2 "foundation gate" branch
+> (`claude/evosim-project-setup-ps3fry`) and the Milestone 2.5 debug web view
+> (`claude/m2-5-review-visualizer-54i8qn`) are **not merged here**. ADR 0006 §0 explains why that
+> was safe for Milestone 4 and why the foundation-gate merge has to happen before Milestone 9.
