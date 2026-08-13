@@ -101,7 +101,8 @@ pnpm --filter @eon/web dev   # run the web shell locally
 Current status: Milestones 0–5 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007) and predation: carrion,
-combat and the diet trade-off (ADR 0008). There is no renderer yet; everything below is headless.
+combat and the diet trade-off (ADR 0008, reviewed in ADR 0009). There is no renderer yet; everything
+below is headless.
 
 The simulation is real and evolving:
 
@@ -189,6 +190,11 @@ schema 6. Design decisions are recorded in `docs/adr/`:
   of becoming config, why the attack cooldown is decremented in a different phase from the
   reproduction one, and two calibration findings — that nothing ate meat in 10 000 ticks and that the
   carcass cap saturates.
+- `0009-milestone-5-review.md` — the independent Milestone 5 review: a carcass meat value that
+  silently wrapped its Uint32 row and conjured 4.3 billion units into the conservation identity, a
+  kill-attribution tie-break test that could not have failed because slot order and entity-ID order
+  agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
+  same-seed comparison and save/load restored at every tick of a live combat window.
 
 > **Repository note.** Three branches diverged in parallel from the Milestone 2 commit. This line is
 > Milestone 2 → 3 → 4 → 5. The Milestone 0–2 "foundation gate" branch

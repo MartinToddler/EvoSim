@@ -109,6 +109,62 @@ unmerged; ADR 0006 §0's recommendation to merge them before Milestone 9 stands.
   carcass could exist, and is now a real bonus — so a nearby body raises the drive to graze.
   Starvation deaths fell and the population at tick 10 000 came out at 4 364 against 4 718.
 
+## [Unreleased] — 2026-08-13 — Milestone 5 review: predation, carrion and combat
+
+Versions: **all unchanged** (`ENGINE_VERSION` 0.5.0, `CONFIG_SCHEMA_VERSION` 6,
+`SNAPSHOT_SCHEMA_VERSION` 6, `PROTOCOL_VERSION` 1). **No golden hash moved** — the six fixture
+checkpoints, the config digest `2d2712ccf817a700` and both 100 000-tick soak hashes are unchanged
+and reproduced, which is the check that the fix below touched no authoritative behaviour. Full
+risk-by-risk review, including what was examined and found clean, in
+`docs/adr/0009-milestone-5-review.md`.
+
+### Fixed
+
+- **Carcass meat above 2³²−1 was silently truncated into its storage row, breaking meat
+  conservation.** `CarcassStore.remainingMeat` is a `Uint32Array` while `totalMeatCreated` is a
+  plain safe integer, and `organism.carcass.meatPerMass` was validated only as a non-negative
+  integer with no upper bound. A configuration the validator **accepted** therefore produced a body
+  worth 6 075 000 948 meat units, stored 1 780 033 652, and added the full amount to the counter —
+  conjuring 4 294 967 296 units into `created == eaten + decayed + Σ remaining`, the invariant ADR
+  0008 §2 names as this milestone's replacement for energy conservation. It broke silently in a way
+  none of the invariant's own tests could detect, because all three levels of assertion read the
+  counter. Same class as the Uint16 cooldown wrap ADR 0007 §2 fixed, and fixed the same way:
+  `validateConfig` now computes the largest body a configuration can grow — mirroring
+  `carcassMeatUnits` at full development, energy term included — and rejects any config whose
+  worst-case carcass would not fit the row, while `CarcassStore.create` asserts the bound at the
+  storage boundary so it can never happen silently if some future path bypasses the validator. The
+  bound does not constrain tuning: the default is 3 and 1 000 000 still validates. Not reachable
+  from `DEFAULT_CONFIG`, hence no version bump and no hash change.
+
+### Changed
+
+- **The kill-attribution tie-break is now pinned by a test that could fail.** The existing test
+  spawned its two attackers in entity-ID order, which is also slot order until something dies and
+  its slot is reused — exactly the situation the tie-break exists for — so it would have passed
+  against an implementation that simply kept the first attacker it iterated over. Target selection
+  had no tie-break test at all. The implementation was correct; three tests were added that free a
+  slot, hand it to the _later-born_ organism, and assert the winner is the one at the **higher**
+  slot: attribution on equal damage, target choice between equidistant bodies, and that a released
+  slot left in a stale index is neither targeted nor charged for.
+- **Snapshot/restore is now verified at every tick of a live combat window** rather than at a single
+  tick, since a save's tick decides whether it catches a counting-down cooldown, a filed claim, a
+  carcass created by phase 13 or a slot returned to the free list by phase 9 or 15. Each save is
+  resumed to a common horizon and compared at every tick — the method ADR 0007 used for
+  reproduction, applied to the state this milestone introduced.
+- `findCarcassInMouthRange`'s doc comment claimed to read "the POST-movement index"; it reads the
+  phase-2 carcass index, and no post-movement carcass index exists. The behaviour was right — a
+  carcass never moves and the eater's position is read live — but the comment stated a false premise
+  in the one file whose correctness argument is about which index is read when.
+
+### Known limits
+
+- Accumulated combat damage (`scratch.damageAccumQ`, an `Int32Array`) could wrap at roughly
+  `combat.baseAttackDamageQ > 49 × Q` with ~8 000 bodies in one contact pile, and a wrapped negative
+  total would be skipped by the `damage <= 0` guard. Documented rather than fixed (ADR 0009 §2):
+  health is capped at `Q`, so `baseAttackDamageQ = Q` already one-shots any organism, and reaching
+  the overflow needs a constant ~49× beyond instantly lethal. Unlike the meat bound, no principled
+  ceiling exists for a field docs/08 leaves open.
+
 ## [Unreleased] — 2026-08-13 — Milestone 4 review: reproduction and mutation
 
 Versions: **all unchanged** (`ENGINE_VERSION` 0.4.0, `CONFIG_SCHEMA_VERSION` 5,

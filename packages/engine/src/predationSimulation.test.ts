@@ -512,4 +512,48 @@ describe("deterministic snapshot and resume with carrion", () => {
       carcasses.totalMeatEaten + carcasses.totalMeatDecayed + carcasses.totalRemainingMeat(),
     ).toBe(carcasses.totalMeatCreated);
   });
+
+  /**
+   * One snapshot tick can be lucky. Combat and carrion state changes shape from
+   * tick to tick — a cooldown counting down, a claim filed, a carcass created in
+   * phase 13, a slot returned to the free list by phase 9 or 15 — so the tick a
+   * save happens to land on decides which of those a naive restore would drop.
+   * This saves at EVERY tick of a window in which all of it is happening, the
+   * same method ADR 0007 used for reproduction.
+   */
+  it("resumes identically from a snapshot taken at every tick of a combat window", () => {
+    const WINDOW_START = 100;
+    const WINDOW = 24;
+    const CONTINUE_TO = 200;
+
+    const engine = predationWorld();
+    engine.stepMany(WINDOW_START);
+
+    const saves: { tick: number; snapshot: ReturnType<SimulationEngine["serialize"]> }[] = [];
+    const hashByTick = new Map<number, string>();
+    for (let i = 0; i < WINDOW; i += 1) {
+      engine.step();
+      saves.push({ tick: engine.tick, snapshot: engine.serialize() });
+      hashByTick.set(engine.tick, engine.computeStateHash());
+    }
+    while (engine.tick < CONTINUE_TO) {
+      engine.step();
+      hashByTick.set(engine.tick, engine.computeStateHash());
+    }
+
+    // The window has to contain the state it claims to cover, or this proves
+    // nothing: carcasses lying about, and a free list that has already been used.
+    expect(engine.carcasses.totalCreated).toBeGreaterThan(0);
+    expect(engine.carcasses.totalMeatEaten).toBeGreaterThan(0);
+
+    for (const save of saves) {
+      const resumed = engineFromSnapshot(save.snapshot);
+      expect(resumed.tick).toBe(save.tick);
+      expect(resumed.computeStateHash()).toBe(hashByTick.get(save.tick));
+      while (resumed.tick < CONTINUE_TO) {
+        resumed.step();
+        expect(resumed.computeStateHash()).toBe(hashByTick.get(resumed.tick));
+      }
+    }
+  });
 });

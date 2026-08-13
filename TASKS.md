@@ -160,6 +160,48 @@ Three notes carried forward:
    per-commit gate, the lever is scheduling the soak rather than shortening it, since docs/07 §6 asks
    for 100 000 ticks routinely.
 
+Milestone 5 review gate: **PASS** (engine 0.5.0 unchanged, ADR 0009). Carrion, combat and the diet
+trade-off were reviewed against thirty risks and eighteen mandated scenarios. **All golden hashes are
+unchanged and reproduced** — the six fixture checkpoints, the config digest `2d2712ccf817a700` and
+both 100 000-tick soak hashes.
+
+Verifications: two independently built predation worlds agree on the state hash at **every one of
+600 ticks** through real kills, carcasses and scavenging; save/load restored at **every tick** of a
+24-tick combat window and continued to a common horizon, **0 mismatches**; 800 ticks with a per-tick
+check of meat conservation, entity-ID uniqueness, carcass validity and energy/health bounds; 1v1,
+2v1, 1v2, mutual lethal and multi-contributor combat, armor, cooldown spacing, attack cost,
+out-of-range swings, dead targets, carcass lifecycle and multi-feeder conservation all verified
+against hand-built states.
+
+One defect found and fixed, plus two gaps:
+
+1. **Carcass meat above 2³²−1 silently truncated into its storage row.** `remainingMeat` is a
+   `Uint32Array` while `totalMeatCreated` is a plain safe integer, and `organism.carcass.meatPerMass`
+   had no upper bound — so a config the validator *accepted* stored a 6 075 000 948-unit body as
+   1 780 033 652 and conjured 4 294 967 296 units into the accounting. That breaks
+   `created == eaten + decayed + Σ remaining`, the invariant ADR 0008 §2 names as this milestone's
+   replacement for energy conservation, and it breaks it in a way none of its own tests could see,
+   because they all read the counter. Same class as ADR 0007 §2's Uint16 cooldown wrap, and fixed the
+   same way: the validator now rejects any config whose largest possible body would overflow the row,
+   and the store asserts the bound at the storage boundary. Not reachable from `DEFAULT_CONFIG`, so
+   no hash moved.
+2. **The kill-attribution tie-break test could not have failed.** It spawned the two attackers in
+   entity-ID order, which is also slot order until something dies — so it would have passed against
+   an implementation that simply kept the first attacker it iterated over, the exact slot-order bias
+   the phase split exists to prevent. Target selection had no tie-break test at all. The
+   implementation is correct; three tests were added that hand a freed slot to the *later-born*
+   organism so the two orders disagree.
+3. **Snapshot coverage saved at one tick.** Now saves at **every tick** of a window in which kills,
+   feeding and decay are all happening — the method ADR 0007 used for reproduction.
+
+One limit is documented rather than fixed (ADR 0009 §2): accumulated combat damage could wrap
+`Int32` at roughly `baseAttackDamageQ > 49 × Q` with ~8 000 bodies in one pile. Since
+`baseAttackDamageQ = Q` already one-shots any organism, that config is meaningless before the
+arithmetic fails, and the only fix would be an invented ceiling on a field docs/08 leaves open.
+
+All four Milestone 5 notes above are carried forward unchanged; this review confirms that findings
+1–3 are calibration questions for **L07**, not defects.
+
 ## G Worker/renderer
 - [ ] G01 protocol unions.
 - [ ] G02 Worker host/scheduler.

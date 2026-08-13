@@ -2,6 +2,18 @@ import { assert } from "@eon/shared";
 import { HASH_TAG, type StateHash } from "../math/hash";
 
 /**
+ * Largest value the `remainingMeat` row can hold.
+ *
+ * A larger value assigned to a `Uint32Array` is not clamped, it *wraps*, while
+ * the conservation counters are plain safe integers that would keep the full
+ * amount — so the store would report having created meat it does not hold. The
+ * config validator rejects any configuration whose largest possible body could
+ * reach this bound, which is what makes the assertion in {@link
+ * CarcassStore.create} unreachable rather than merely unlikely.
+ */
+const UINT32_MAX = 4_294_967_295;
+
+/**
  * Carrion as Structure-of-Arrays (docs/03 §§1, 23, docs/10 §1, task F01).
  *
  * A carcass is the only thing a death leaves behind, and it is what makes
@@ -135,6 +147,14 @@ export class CarcassStore {
     assert(
       Number.isSafeInteger(meat) && meat >= 0,
       `carcass meat must be a non-negative integer, got ${meat}`,
+    );
+    // Not clamped: a body worth more than the row holds must fail loudly rather
+    // than wrap, because `totalMeatCreated` below would still count the full
+    // amount and the conservation identity would silently stop holding.
+    assert(
+      meat <= UINT32_MAX,
+      `carcass meat ${meat} exceeds the Uint32 remainingMeat row (max ${UINT32_MAX}); storing it ` +
+        "would wrap the row while totalMeatCreated kept the full value, breaking meat conservation",
     );
     if (!this.canAllocate()) {
       this.skippedAtCap += 1;

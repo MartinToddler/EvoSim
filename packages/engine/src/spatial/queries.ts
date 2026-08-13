@@ -224,7 +224,11 @@ export function findNearestVisibleCarcass(
  * with no observable meaning, while a body radius is already the length scale
  * every other contact rule in the engine uses.
  *
- * Reads the POST-movement index, because feeding resolves after movement.
+ * Reads the CARCASS index, which is the one built in phase 2 alongside
+ * `spatialPre` and is the only carcass index there is — a carcass never moves,
+ * so one index serves sensing (phase 3) and feeding (phase 8) even though
+ * movement runs between them. The eater's own position is read live, so the
+ * cells this query visits are the ones around where it actually ended up.
  */
 export function findCarcassInMouthRange(
   ctx: EngineContext,

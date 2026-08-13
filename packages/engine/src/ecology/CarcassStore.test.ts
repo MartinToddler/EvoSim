@@ -99,6 +99,26 @@ describe("meat accounting", () => {
     expect(store.remainingMeat[slot]).toBe(0);
     expect(store.totalMeatDecayed).toBe(5);
   });
+
+  it("refuses a body worth more meat than the Uint32 row can hold", () => {
+    const store = new CarcassStore(2);
+    // The row would wrap while totalMeatCreated kept the full amount, so the
+    // store would report having created meat it does not hold. The config
+    // validator makes this unreachable; the assertion is what guarantees it can
+    // never happen silently if some future path bypasses the validator.
+    expect(() => create(store, 1, 4_294_967_296)).toThrow(/remainingMeat row/);
+    expect(store.totalMeatCreated).toBe(0);
+    expect(store.liveCount).toBe(0);
+  });
+
+  it("accepts the largest value the row can hold", () => {
+    const store = new CarcassStore(2);
+    const slot = create(store, 1, 4_294_967_295);
+    expect(store.remainingMeat[slot]).toBe(4_294_967_295);
+    expect(store.totalMeatEaten + store.totalMeatDecayed + store.totalRemainingMeat()).toBe(
+      store.totalMeatCreated,
+    );
+  });
 });
 
 describe("carcass hashing", () => {

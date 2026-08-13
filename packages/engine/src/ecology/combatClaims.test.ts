@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { Gene } from "../genetics/genes";
-import { DeathCause, finalizeDeaths } from "../organisms/death";
+import { DeathCause, finalizeDeaths, markDeath } from "../organisms/death";
 import { currentRadiusPos, massFromRadiusPos } from "../organisms/phenotype";
 import { createTestWorld, spawnTestOrganism, type TestWorld } from "../testing/harness";
 import {
@@ -23,6 +23,9 @@ import {
 
 /** A genome that can actually hurt something: full attack gene, no armor. */
 const FIGHTER = { [Gene.AttackPower]: Q, [Gene.Armor]: 0 } as const;
+
+/** Cannot fight back: used wherever a pure target is needed. */
+const PACIFIST = { [Gene.AttackPower]: 0, [Gene.Armor]: 0 } as const;
 
 function combat(world: TestWorld): void {
   world.ctx.spatialPost.rebuild(world.organisms);
@@ -343,14 +346,49 @@ describe("kill attribution", () => {
     expect(world.organisms.kills[younger]).toBe(0);
   });
 
-  it("does not credit a kill when the target survives", () => {
+  it("breaks the tie on entity ID even when slot order says the opposite", () => {
+    // The test above cannot tell "lowest entity ID wins" from "first in storage
+    // order wins", because the two agree until something dies. Here they are
+    // made to DISAGREE: a released slot is handed back to the LATER-born
+    // attacker, so the winner sits at the higher slot and can only be chosen by
+    // identity. This is the property that keeps attribution reproducible, since
+    // slot order carries the accident of who died recently.
     const world = createTestWorld();
     const place = world.cellCenter(5, 5);
-    const attacker = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+
+    // Spawned first, so the victim owns the lowest ID and both fighters pick it
+    // rather than each other.
     const target = spawnTestOrganism(world, {
       ...place,
       genesQ: { [Gene.AttackPower]: 0, [Gene.Armor]: 0 },
     });
+    const placeholder = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+    const lowerId = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+    markDeath(world.ctx, placeholder, DeathCause.Other);
+    finalizeDeaths(world.ctx);
+    const higherId = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+
+    expect(higherId).toBeLessThan(lowerId); // storage order
+    expect(world.organisms.entityId[lowerId] as number).toBeLessThan(
+      world.organisms.entityId[higherId] as number,
+    ); // identity order, deliberately the reverse
+    expect(attackDamageQ(world.ctx, lowerId, target)).toBe(
+      attackDamageQ(world.ctx, higherId, target),
+    );
+
+    world.organisms.healthQ[target] = 1;
+    intendAttack(world, lowerId, higherId);
+    combat(world);
+
+    expect(world.organisms.kills[lowerId]).toBe(1);
+    expect(world.organisms.kills[higherId]).toBe(0);
+  });
+
+  it("does not credit a kill when the target survives", () => {
+    const world = createTestWorld();
+    const place = world.cellCenter(5, 5);
+    const attacker = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+    const target = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
     world.organisms.healthQ[target] = Q;
 
     intendAttack(world, attacker);
@@ -359,5 +397,57 @@ describe("kill attribution", () => {
     expect(world.organisms.healthQ[target]).toBeGreaterThan(0);
     expect(world.organisms.kills[attacker]).toBe(0);
     expect(world.ctx.scratch.pendingDeath[target]).toBe(0);
+  });
+});
+
+describe("target selection", () => {
+  it("attacks the equidistant candidate with the lower entity ID, not the lower slot", () => {
+    // Contact range picks the nearest body and breaks ties on entity ID
+    // (docs/03 §10). With both candidates at the same point the tie-break is the
+    // whole decision, so the two orders are again made to disagree.
+    const world = createTestWorld();
+    const place = world.cellCenter(5, 5);
+
+    const placeholder = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
+    const lowerIdTarget = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
+    markDeath(world.ctx, placeholder, DeathCause.Other);
+    finalizeDeaths(world.ctx);
+    const higherIdTarget = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
+    const attacker = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+
+    expect(higherIdTarget).toBeLessThan(lowerIdTarget);
+    expect(world.organisms.entityId[lowerIdTarget] as number).toBeLessThan(
+      world.organisms.entityId[higherIdTarget] as number,
+    );
+
+    intendAttack(world, attacker);
+    combat(world);
+
+    expect(world.ctx.scratch.combatDamageQ[lowerIdTarget]).toBeGreaterThan(0);
+    expect(world.ctx.scratch.combatDamageQ[higherIdTarget]).toBe(0);
+  });
+
+  it("never targets an organism whose slot has already been released", () => {
+    // The post-movement index is rebuilt before combat, but the alive check is
+    // what actually guarantees this: a stale index entry must not become a
+    // target, and a swing at a dead body must not be charged for.
+    const world = createTestWorld();
+    const place = world.cellCenter(5, 5);
+    const attacker = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
+    const victim = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
+
+    world.ctx.spatialPost.rebuild(world.organisms);
+    markDeath(world.ctx, victim, DeathCause.Other);
+    finalizeDeaths(world.ctx);
+
+    const energyBefore = world.organisms.energy[attacker] as number;
+    intendAttack(world, attacker);
+    // Deliberately NOT rebuilt: the index still lists the released slot.
+    buildCombatClaims(world.ctx);
+    resolveCombatSimultaneously(world.ctx);
+
+    expect(world.ctx.scratch.damageAccumQ[victim]).toBe(0);
+    expect(world.organisms.energy[attacker]).toBe(energyBefore);
+    expect(world.organisms.attackCooldown[attacker]).toBe(0);
   });
 });

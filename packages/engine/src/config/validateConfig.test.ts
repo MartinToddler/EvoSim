@@ -239,6 +239,28 @@ describe("validateConfig structural invariants", () => {
     expect(() => validateConfig(config)).not.toThrow();
   });
 
+  it("rejects a meat rate whose largest body would overflow the remainingMeat row", () => {
+    // `remainingMeat` is a Uint32 row while the conservation counters are plain
+    // safe integers, so an oversized body wraps the row and leaves the store
+    // claiming to have created meat it does not hold. Verified before the fix:
+    // meatPerMass 3 000 000 produced a 6 075 000 948-unit body stored as
+    // 1 780 033 652, and `created == eaten + decayed + remaining` stopped
+    // holding — the invariant ADR 0008 §2 rests on.
+    const config = mutatedConfig((c) => {
+      c.organism.carcass.meatPerMass = 3_000_000;
+    });
+    expect(() => validateConfig(config)).toThrowError(/remainingMeat row/);
+  });
+
+  it("still accepts a meat rate far above the default that does fit the row", () => {
+    // The bound must not be so tight that it forbids legitimate tuning: the
+    // default is 3, and this is five orders of magnitude above it.
+    const config = mutatedConfig((c) => {
+      c.organism.carcass.meatPerMass = 1_000_000;
+    });
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
   it("rejects an attack size factor floor above Q", () => {
     // Above Q the derived span `Q - floor` is negative and a large body would
     // hit softer than a small one — the trade-off inverted by arithmetic.

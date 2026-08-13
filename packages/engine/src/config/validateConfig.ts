@@ -1,5 +1,5 @@
 import type { DeepReadonly } from "@eon/shared";
-import { ANGLE_STEPS, Q, qmul } from "../math/fixed";
+import { ANGLE_STEPS, POS_SCALE, Q, qmul } from "../math/fixed";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
 import type { SimulationConfig } from "./SimulationConfig";
@@ -30,6 +30,16 @@ const TEMPERATURE_CENTI_C_LIMIT = 20_000;
  * rather than let the storage silently contradict the configuration.
  */
 const UINT16_MAX = 65535;
+
+/**
+ * Largest value a `Uint32Array` row can hold.
+ *
+ * Same reasoning as {@link UINT16_MAX} one storage width up: `CarcassStore`
+ * keeps `remainingMeat` in a Uint32 row while its conservation counters are
+ * plain safe integers, so a body worth more meat than this would wrap the row
+ * and leave the store claiming to have created meat it does not hold.
+ */
+const UINT32_MAX = 4_294_967_295;
 
 function check(condition: boolean, message: string): void {
   if (!condition) {
@@ -489,6 +499,34 @@ function validateOrganism(config: DeepReadonly<SimulationConfig>): void {
     carcass.hotDecayFullBonusTemperatureCentiC > carcass.hotDecayMinTemperatureCentiC,
     "organism.carcass.hotDecayFullBonusTemperatureCentiC must be above " +
       "hotDecayMinTemperatureCentiC, or the hot-decay ramp has no width",
+  );
+
+  // The largest body this configuration can grow must leave a carcass that fits
+  // the Uint32 `remainingMeat` row. `meatPerMass` is otherwise unbounded, and a
+  // large enough value wraps the row while `totalMeatCreated` keeps the full
+  // amount — meat conservation, the invariant this milestone rests on, then
+  // silently stops holding (ADR 0008 §2). Bounding the inputs here is what makes
+  // the store's own assertion unreachable, exactly as the Uint16 cooldown bound
+  // does for the reproduction counter (ADR 0007 §2).
+  //
+  // The arithmetic mirrors `ecology/carcasses.ts#carcassMeatUnits` at full
+  // development, which is where the largest body is reached.
+  const maxRadiusPos = organism.geneRanges.adultRadiusMaxPos;
+  const maxMass = Math.trunc(
+    (organism.massScalePerRadiusSquared * maxRadiusPos * maxRadiusPos) / (POS_SCALE * POS_SCALE),
+  );
+  const maxBodyMeat = maxMass * carcass.meatPerMass;
+  const maxRecoverable = qmul(
+    organism.baseMaxEnergy + maxMass * organism.maxEnergyPerMass,
+    carcass.remainingEnergyToMeatMaxFractionQ,
+  );
+  const meatEnergyPerUnit = config.plants.meatEnergyPerUnit;
+  const maxEnergyMeat = meatEnergyPerUnit > 0 ? Math.trunc(maxRecoverable / meatEnergyPerUnit) : 0;
+  check(
+    maxBodyMeat + maxEnergyMeat <= UINT32_MAX,
+    `organism.carcass.meatPerMass ${carcass.meatPerMass} makes the largest possible body worth ` +
+      `${maxBodyMeat + maxEnergyMeat} meat units, above the Uint32 remainingMeat row ` +
+      `(max ${UINT32_MAX}); the row would wrap and meat conservation would break silently`,
   );
 }
 
