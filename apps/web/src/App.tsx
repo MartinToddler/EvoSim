@@ -90,6 +90,9 @@ export function App(): React.JSX.Element {
       session.setRenderStream(!document.hidden);
     };
     document.addEventListener("visibilitychange", onVisibility);
+    // Apply the current state too: a page opened in a background tab gets no
+    // visibilitychange event until the user first switches to it.
+    onVisibility();
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);

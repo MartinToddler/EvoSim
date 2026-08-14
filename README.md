@@ -103,7 +103,7 @@ Current status: Milestones 0–6 complete — workspace, determinism skeleton (h
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
 combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), and the Worker host, render
-transport and PixiJS renderer (ADR 0010).
+transport and PixiJS renderer (ADR 0010, reviewed and hardened in ADR 0011).
 
 **The world is now watchable — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,

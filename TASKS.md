@@ -263,6 +263,32 @@ Three notes carried forward:
    reuses the Milestone 2.5 colours verbatim so the eventual merge is textual rather than visual.
    The deadline is unchanged: before **J05 / Milestone 9**.
 
+Milestone 6 review gate: **PASS** (engine 0.5.0 unchanged, protocol 2 unchanged, ADR 0011). The
+worker host, protocol, render transport, renderer and React shell were reviewed against the 26
+hostile-review categories: loops, pause/speed races, MAX yielding, queue/backlog growth, requestId
+correlation, transferable ownership, buffer leaks, copy volume, main-thread state, React frequency,
+Pixi churn, renderer leaks, selection validity, query purity, scheduling-vs-determinism, protocol
+versioning, malformed messages and worker lifecycle. **Every golden hash is unchanged and was
+independently reproduced** — worker = headless = golden on the real default world at tick 1 000
+(`f21e8203dbcaf2b7`) and tick 10 000 (`f58bac3bde3256f3`), the second with 9 820 of the ticks
+produced by the worker's own scheduler through pauses, speed changes and a suspended render stream.
+
+Verifications beyond the shipped suite: adversarial hash-equality tests that inject malformed
+messages, foreign/detached recycles, dead-entity queries, a starved render pool, a 30-round
+pause/resume storm alternating ×100 with MAX, rapid speed cycling and a mid-run worker
+dispose-and-replace (`SimulationHost.adversarial.test.ts`); and a real-Chromium pass over the
+production build covering pause exactness, storms, MAX responsiveness, selection, selected-entity
+death, resize, reload-as-worker-recreation and a grown ~2 000-organism world with zero console and
+zero page errors.
+
+**No P0/P1 defects.** Five contained defects found and fixed, none able to move a hash: a failed
+renderer start left the simulation running invisibly behind a "stopped" banner (P2); a replacement
+world inherited the previous world's suspended render stream (P2); buffer pools accepted releases
+while nothing was in flight, breaking `created === idle + inFlight` (P3); a stale fatal ERROR
+swept only its own pending request (P3); `queryEntity` duplicated `VELOCITY_SCALE` as a literal
+(P3); plus two P3 app-shell gaps (initial tab visibility; snapshot-buffer validation errors thrown
+through the message listener). Details in ADR 0011.
+
 ## H UI/analytics
 - [ ] H01 app shell/top bar.
 - [ ] H02 time controls/actual TPS.

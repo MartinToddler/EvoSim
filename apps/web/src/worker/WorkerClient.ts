@@ -235,8 +235,14 @@ export class WorkerClient {
       const pending = this.#pending.get(message.requestId);
       if (pending === undefined) {
         // Stale: the caller stopped caring before the answer arrived. Errors
-        // still reach the error handler so a failure is never silent.
+        // still reach the error handler so a failure is never silent — and a
+        // fatal one still fails every other outstanding request, exactly as it
+        // would have if its own request were still pending. The world is gone
+        // either way.
         if (message.type === "ERROR") {
+          if (message.payload.fatal) {
+            this.#rejectAllPending(new Error(message.payload.message));
+          }
           this.#handlers.onError?.(message.payload);
         }
         return;

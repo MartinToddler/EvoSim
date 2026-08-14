@@ -1,5 +1,6 @@
 import { engineInternals } from "../internal";
 import { ANGLE_STEPS, POS_SCALE, Q } from "../math/fixed";
+import { VELOCITY_SCALE } from "../organisms/movement";
 import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
 import type { SimulationEngine } from "../SimulationEngine";
 import { BIOME_NAMES } from "../world/biomes";
@@ -75,7 +76,7 @@ export interface EntityDetails {
 const DEGREES_PER_STEP = 360 / ANGLE_STEPS;
 const RADIANS_PER_STEP = (Math.PI * 2) / ANGLE_STEPS;
 /** Velocity units per location unit per tick; see movement.ts. */
-const VELOCITY_UNITS_PER_LU = 256 * POS_SCALE;
+const VELOCITY_UNITS_PER_LU = VELOCITY_SCALE * POS_SCALE;
 
 /**
  * Details for one live organism, or `null` if that entity ID is not alive.

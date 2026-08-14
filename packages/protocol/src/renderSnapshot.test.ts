@@ -224,6 +224,23 @@ describe("RenderBufferPool", () => {
     expect(pool.created).toBeLessThanOrEqual(2);
   });
 
+  it("refuses any release while nothing is in flight, even a same-shape buffer", () => {
+    // A buffer with exactly the right shape can still not be ours if nothing
+    // of ours is out — most plausibly a leftover from a previous world whose
+    // config had identical caps, recycled into the new world's pool. Adopting
+    // it would grow `idle` past `created` and break the pool's invariant.
+    const pool = new RenderBufferPool(16, 8, 2);
+    expect(pool.release(createRenderSnapshotBuffer(16, 8))).toBe(false);
+    expect(pool.created).toBe(pool.idle + pool.inFlight);
+    expect(pool.idle).toBe(1);
+
+    // And a detached one must not free a slot that was never occupied.
+    const detached = new ArrayBuffer(8);
+    structuredClone(null, { transfer: [detached] });
+    expect(pool.release(detached)).toBe(false);
+    expect(pool.created).toBe(1);
+  });
+
   it("frees a slot for a replacement when a buffer comes back detached", () => {
     const pool = new RenderBufferPool(16, 8, 2);
     const buffer = pool.acquire() as ArrayBuffer;

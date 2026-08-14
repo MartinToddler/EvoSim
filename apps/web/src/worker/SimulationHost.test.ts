@@ -115,6 +115,18 @@ describe("initialization", () => {
     expect(host.tick).toBe(0);
   });
 
+  it("re-enables the render stream for a replacement world", () => {
+    init("paused");
+    host.handleMessage(message("SET_RENDER_STREAM", { enabled: false }));
+    runtime.clearPosted();
+
+    // The new world must open with a picture even though the old world's
+    // stream was suspended: "a paused world must still be visible" holds per
+    // world, not per worker lifetime.
+    init("paused");
+    expect(runtime.postCounts.get("RENDER_SNAPSHOT")).toBe(1);
+  });
+
   it("rejects an invalid config with an error instead of throwing", () => {
     host.handleMessage(
       message("INIT_NEW_WORLD", {

@@ -6,6 +6,47 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 6 review: worker, transport and renderer hardening
+
+Independent review of the Milestone 6 line against the 26 hostile-review categories (ADR 0011).
+**No P0/P1 defects.** `ENGINE_VERSION` unchanged at 0.5.0, `PROTOCOL_VERSION` unchanged at 2,
+**every golden hash unchanged and independently reproduced** — worker = headless = golden at both
+tick 1 000 (`f21e8203dbcaf2b7`) and tick 10 000 (`f58bac3bde3256f3`) on the real default world.
+
+### Fixed
+
+- **A renderer that failed to start left the world running invisibly (P2).** `WorldSession` now
+  pauses the simulation when `EonRenderer.create` rejects, so the fatal "Simulation stopped"
+  banner no longer sits on top of a worker ticking at full CPU forever with nothing watching.
+- **A replacement world inherited the previous world's stream state (P2).** `INIT_NEW_WORLD` now
+  re-enables the render stream and clears `behindTarget`, so a second world opened through the
+  same worker paints its "world opens visible" snapshot even if the first world's stream was
+  suspended. Unreachable via the current app (one worker per world); reachable via the protocol.
+- **Buffer pools accepted a release while nothing was in flight (P3).** A same-shape buffer —
+  plausibly a leftover from a previous same-config world — released into an all-idle pool grew
+  `idle` past `created`, breaking the pool's own `created === idle + inFlight` invariant. Both
+  pools now refuse releases when nothing is out, which also stops a stray detached recycle from
+  eroding the allocation ceiling for a slot that was never occupied.
+- **A stale fatal ERROR left other pending requests hanging (P3).** `WorkerClient` swept pending
+  requests on a fatal error only when that error's own `requestId` was still pending; the sweep
+  is now unconditional.
+- **`queryEntity` duplicated the velocity scale as a literal `256` (P3).** It now imports
+  `VELOCITY_SCALE` from `movement.ts`, so a future scale change cannot silently corrupt the
+  inspector's speed readouts.
+- **A page opened in a hidden tab streamed snapshots to nobody (P3).** The visibility handler is
+  now applied once at session start, not only on the first `visibilitychange`.
+- **A malformed snapshot buffer threw through the worker message listener (P3).**
+  `WorldSession` now contains buffer-validation failures and reports them through the session's
+  error channel, extending to binary payloads the same discipline the host applies to envelopes.
+
+### Added
+
+- **`SimulationHost.adversarial.test.ts`**: worker-vs-headless hash equality under hostile
+  traffic injected _while the world runs_ — malformed messages, foreign/detached recycles, a
+  starved render pool, a 30-round pause/resume storm alternating ×100 with MAX, rapid speed
+  cycling, DISPOSE mid-run with a from-scratch replacement host, and dead-entity queries. Plus
+  pool-invariant and stale-fatal-sweep tests beside the code they pin.
+
 ## [Unreleased] — 2026-08-13 — Milestone 6: Worker host, render transport and PixiJS renderer
 
 Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `CONFIG_SCHEMA_VERSION` unchanged (6),

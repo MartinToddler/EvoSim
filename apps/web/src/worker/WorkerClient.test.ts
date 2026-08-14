@@ -200,6 +200,30 @@ describe("stale responses", () => {
     // Correlation is gone, but a failure must never vanish.
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "late failure" }));
   });
+
+  it("fails every outstanding request when a fatal error arrives stale", async () => {
+    // A fatal error whose own request has already been settled (or was never
+    // pending here) still means the world is gone: everything else waiting for
+    // that world must reject rather than hang forever.
+    const harness = createHarness();
+    const orphan = harness.client.queryEntity(5);
+    harness.deliver(
+      response(
+        "ERROR",
+        {
+          message: "engine exploded",
+          fatal: true,
+          tick: 3,
+          seed: 1,
+          engineVersion: "0.5.0",
+          whileHandling: "tick",
+        },
+        424_242,
+      ),
+    );
+    await expect(orphan).rejects.toThrow("engine exploded");
+    expect(harness.client.pendingRequestCount).toBe(0);
+  });
 });
 
 describe("subscriptions", () => {
