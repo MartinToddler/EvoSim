@@ -2,12 +2,15 @@ import {
   PROTOCOL_VERSION,
   decodeWorkerToMainMessage,
   type EntityDetailsPayload,
+  type HistoryEventsPayload,
   type HostRuntimeConfig,
   type MainToWorkerMessage,
   type RenderSnapshotPayload,
   type SimulationSpeed,
+  type SpeciesDetailsPayload,
   type StateHashPayload,
   type TelemetryDto,
+  type TreeSnapshotPayload,
   type VegetationSnapshotPayload,
   type WorkerErrorDto,
   type WorkerToMainMessage,
@@ -60,7 +63,7 @@ export interface WorkerClientHandlers {
 interface PendingRequest {
   resolve: (value: never) => void;
   reject: (error: Error) => void;
-  kind: "ENTITY_DETAILS" | "STATE_HASH";
+  kind: "ENTITY_DETAILS" | "SPECIES_DETAILS" | "TREE_SNAPSHOT" | "HISTORY_EVENTS" | "STATE_HASH";
 }
 
 export class WorkerClient {
@@ -165,6 +168,34 @@ export class WorkerClient {
       requestId,
       type: "QUERY_ENTITY",
       payload: { entityId },
+    }));
+  }
+
+  querySpecies(speciesId: number): Promise<SpeciesDetailsPayload> {
+    return this.#request<SpeciesDetailsPayload>("SPECIES_DETAILS", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "QUERY_SPECIES",
+      payload: { speciesId },
+    }));
+  }
+
+  requestTree(): Promise<TreeSnapshotPayload> {
+    return this.#request<TreeSnapshotPayload>("TREE_SNAPSHOT", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "REQUEST_TREE",
+      payload: {},
+    }));
+  }
+
+  /** Fetch retained events newer than `sinceEventId` plus the world series. */
+  requestHistory(sinceEventId: number): Promise<HistoryEventsPayload> {
+    return this.#request<HistoryEventsPayload>("HISTORY_EVENTS", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "REQUEST_HISTORY_RANGE",
+      payload: { sinceEventId },
     }));
   }
 

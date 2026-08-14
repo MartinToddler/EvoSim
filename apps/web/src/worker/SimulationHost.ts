@@ -6,18 +6,30 @@ import {
   DEATH_CAUSE_NAMES,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
+  EVENT_SEVERITY_NAMES,
+  POS_SCALE,
+  Q,
   SNAPSHOT_SCHEMA_VERSION,
+  SPECIES_END_REASON_NAMES,
   SimulationEngine,
   TEMPERATURE_DISPLAY_MAX_CENTI_C,
   TEMPERATURE_DISPLAY_MIN_CENTI_C,
+  TRAIT_DIM_NAMES,
   TickPhase,
+  WORLD_EVENT_TYPE_NAMES,
   capacityDisplayReference,
   collectTelemetryAggregates,
   queryEntity,
+  queryHistory,
+  querySpecies,
+  queryTree,
   writeRenderSnapshot,
   writeTerrainFields,
   writeVegetationField,
+  type HistorySlice,
   type SimulationConfig,
+  type SpeciesDetails,
+  type SpeciesSummary,
 } from "@eon/engine";
 import {
   DEFAULT_HOST_RUNTIME_CONFIG,
@@ -35,9 +47,12 @@ import {
   viewRenderSnapshot,
   viewTerrainSnapshot,
   viewVegetationSnapshot,
+  type HistorySliceDto,
   type HostRuntimeConfig,
   type MainToWorkerMessage,
   type SimulationSpeed,
+  type SpeciesDetailsDto,
+  type SpeciesSummaryDto,
   type TelemetryDto,
   type WorkerToMainMessage,
   type WorldSummaryDto,
@@ -252,6 +267,15 @@ export class SimulationHost {
       case "QUERY_ENTITY":
         this.#answerEntityQuery(message.payload.entityId, message.requestId ?? 0);
         return;
+      case "QUERY_SPECIES":
+        this.#answerSpeciesQuery(message.payload.speciesId, message.requestId ?? 0);
+        return;
+      case "REQUEST_TREE":
+        this.#answerTreeRequest(message.requestId ?? 0);
+        return;
+      case "REQUEST_HISTORY_RANGE":
+        this.#answerHistoryRequest(message.payload.sinceEventId, message.requestId ?? 0);
+        return;
       case "QUERY_STATE_HASH":
         this.#answerStateHashQuery(message.payload.targetTick, message.requestId ?? 0);
         return;
@@ -322,6 +346,10 @@ export class SimulationHost {
         brainInputLabels: [...BRAIN_INPUT_NAMES],
         brainIntentLabels: [...BRAIN_OUTPUT_NAMES],
         deathCauseLabels: [...DEATH_CAUSE_NAMES],
+        eventTypeLabels: [...WORLD_EVENT_TYPE_NAMES],
+        eventSeverityLabels: [...EVENT_SEVERITY_NAMES],
+        speciesEndReasonLabels: [...SPECIES_END_REASON_NAMES],
+        traitDimensionLabels: [...TRAIT_DIM_NAMES],
         temperatureDisplayMinC: TEMPERATURE_DISPLAY_MIN_CENTI_C / 100,
         temperatureDisplayMaxC: TEMPERATURE_DISPLAY_MAX_CENTI_C / 100,
         capacityDisplayReference: capacityDisplayReference(engine.config),
@@ -670,6 +698,11 @@ export class SimulationHost {
       organismMass: aggregates.organismMass,
       meanEnergyFraction: aggregates.meanEnergyFraction,
       traitMeans: aggregates.traitMeans,
+      activeSpeciesCount: engine.species.activeCount,
+      totalSpeciesCount: engine.species.count,
+      extinctSpeciesCount:
+        engine.species.count - engine.species.activeCount - countSplitSpecies(engine),
+      latestEventId: engine.events.latestEventId,
       speed: this.#speed,
       achievedTicksPerSecond,
       targetTicksPerSecond: target,
@@ -691,6 +724,54 @@ export class SimulationHost {
       requestEnvelope(
         "ENTITY_DETAILS",
         { entityId, details: queryEntity(engine, entityId), tick: engine.tick },
+        requestId,
+      ),
+    );
+  }
+
+  #answerSpeciesQuery(speciesId: number, requestId: number): void {
+    const engine = this.#engine;
+    if (engine === null) {
+      throw new Error("cannot query a species before a world is initialized");
+    }
+    const details = querySpecies(engine, speciesId);
+    this.#port.post(
+      requestEnvelope(
+        "SPECIES_DETAILS",
+        {
+          speciesId,
+          details: details === null ? null : speciesDetailsDto(details),
+          tick: engine.tick,
+        },
+        requestId,
+      ),
+    );
+  }
+
+  #answerTreeRequest(requestId: number): void {
+    const engine = this.#engine;
+    if (engine === null) {
+      throw new Error("cannot snapshot the tree before a world is initialized");
+    }
+    const tree = queryTree(engine);
+    this.#port.post(
+      requestEnvelope(
+        "TREE_SNAPSHOT",
+        { tree: { tick: tree.tick, species: tree.species.map(speciesSummaryDto) } },
+        requestId,
+      ),
+    );
+  }
+
+  #answerHistoryRequest(sinceEventId: number, requestId: number): void {
+    const engine = this.#engine;
+    if (engine === null) {
+      throw new Error("cannot fetch history before a world is initialized");
+    }
+    this.#port.post(
+      requestEnvelope(
+        "HISTORY_EVENTS",
+        { history: historySliceDto(queryHistory(engine, sinceEventId)) },
         requestId,
       ),
     );
@@ -752,4 +833,89 @@ export class SimulationHost {
         : requestEnvelope("ERROR", payload, requestId),
     );
   }
+}
+
+// --- Species/history DTO conversion (Milestone 8) ----------------------------
+//
+// The engine's query results use its native units (Q fractions, position
+// sub-units); the DTOs speak the UI's units (unit fractions, location units).
+// The conversion lives here because the host is the one module that
+// legitimately imports both packages — the same reason the display labels are
+// copied here.
+
+/** Species with `endReason === Split`, for the extinct-count telemetry split. */
+function countSplitSpecies(engine: SimulationEngine): number {
+  let split = 0;
+  for (const record of engine.species.records) {
+    if (record.endReason === 1) {
+      split += 1;
+    }
+  }
+  return split;
+}
+
+function speciesSummaryDto(summary: SpeciesSummary): SpeciesSummaryDto {
+  return {
+    id: summary.id,
+    parentSpeciesId: summary.parentSpeciesId,
+    originTick: summary.originTick,
+    endTick: summary.endTick,
+    endReason: summary.endReason,
+    population: summary.population,
+    plantEnergyConsumed: summary.plantEnergyConsumed,
+    meatEnergyConsumed: summary.meatEnergyConsumed,
+    carnivoreDetected: summary.carnivoreDetected,
+    centroidDiet: summary.centroidDietQ / Q,
+  };
+}
+
+function speciesDetailsDto(details: SpeciesDetails): SpeciesDetailsDto {
+  return {
+    ...speciesSummaryDto(details),
+    founderEntityId: details.founderEntityId,
+    generationAtOrigin: details.generationAtOrigin,
+    totalBirths: details.totalBirths,
+    totalDeaths: details.totalDeaths,
+    totalKills: details.totalKills,
+    centroidTraits: details.centroidTraits.map((value) => value / Q),
+    originCentroid: details.originCentroid.map((value) => value / Q),
+    candidatePasses: details.candidatePasses,
+    stabilityIntervalsRequired: details.stabilityIntervalsRequired,
+    childIds: details.childIds,
+    meanAgeTicks: details.meanAgeTicks,
+    meanEnergyFraction: details.meanEnergyRatioQ / Q,
+    series: {
+      ticks: details.series.ticks,
+      population: details.series.population,
+      meanSize: details.series.meanSizeQ.map((value) => value / Q),
+      meanSpeed: details.series.meanSpeedQ.map((value) => value / Q),
+      meanDiet: details.series.meanDietQ.map((value) => value / Q),
+    },
+  };
+}
+
+function historySliceDto(slice: HistorySlice): HistorySliceDto {
+  return {
+    tick: slice.tick,
+    droppedEventCount: slice.droppedEventCount,
+    events: slice.events.map((event) => ({
+      id: event.id,
+      tick: event.tick,
+      type: event.type,
+      severity: event.severity,
+      speciesIds: event.speciesIds,
+      entityIds: event.entityIds,
+      region:
+        event.regionRadiusPos < 0
+          ? null
+          : {
+              xLU: event.regionXPos / POS_SCALE,
+              yLU: event.regionYPos / POS_SCALE,
+              radiusLU: event.regionRadiusPos / POS_SCALE,
+            },
+      payloadVersion: event.payloadVersion,
+      payload: event.payload,
+    })),
+    worldSeries: slice.worldSeries,
+  };
 }

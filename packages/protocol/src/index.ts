@@ -19,18 +19,23 @@ export {
   HostRuntimeConfigValidationError,
 } from "./validateHostRuntimeConfig";
 
-// Data transfer objects (Milestone 6, task G01).
+// Data transfer objects (Milestone 6, task G01; species/history in Milestone 8).
 export {
   SIMULATION_SPEEDS,
   SPEED_MULTIPLIER,
   isSimulationSpeed,
   targetTicksPerSecond,
   type EntityDetailsDto,
+  type HistorySliceDto,
   type SimulationSpeed,
+  type SpeciesDetailsDto,
+  type SpeciesSummaryDto,
   type TelemetryDto,
   type TraitMeansDto,
+  type TreeSnapshotDto,
   type WorkerErrorDto,
   type WorldDisplayDto,
+  type WorldEventDto,
   type WorldSummaryDto,
 } from "./dto";
 
@@ -42,16 +47,21 @@ export {
   requestEnvelope,
   type DecodeResult,
   type EntityDetailsPayload,
+  type HistoryEventsPayload,
   type InitNewWorldPayload,
   type MainToWorkerMessage,
   type MainToWorkerType,
   type QueryEntityPayload,
+  type QuerySpeciesPayload,
   type QueryStateHashPayload,
   type RecycleBufferPayload,
   type RenderSnapshotPayload,
+  type RequestHistoryRangePayload,
   type SetRenderStreamPayload,
   type SetRunStatePayload,
+  type SpeciesDetailsPayload,
   type StateHashPayload,
+  type TreeSnapshotPayload,
   type VegetationSnapshotPayload,
   type WorkerToMainMessage,
   type WorkerToMainType,

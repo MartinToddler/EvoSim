@@ -281,6 +281,77 @@ export {
 } from "./profiling/TickProfiler";
 
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
+export {
+  SpeciesStore,
+  SpeciesEndReason,
+  SPECIES_END_REASON_NAMES,
+  SpeciesSnapshotError,
+  type SpeciesRecord,
+  type SplitCandidateState,
+  type SpeciesSnapshot,
+} from "./evolution/SpeciesStore";
+export {
+  TRAIT_VECTOR_VERSION,
+  TRAIT_DIMENSIONS,
+  TRAIT_DIM_NAMES,
+  TraitDim,
+  buildTraitRanges,
+  writeTraitVector,
+  traitDistanceSumSq,
+  rmsThresholdSumSq,
+  type TraitRanges,
+} from "./evolution/traitVector";
+export { analyzeSpecies } from "./evolution/speciation";
+export {
+  EventStore,
+  WorldEventType,
+  WORLD_EVENT_TYPE_COUNT,
+  WORLD_EVENT_TYPE_NAMES,
+  EventSeverity,
+  EVENT_SEVERITY_NAMES,
+  EventSnapshotError,
+  type WorldEventRecord,
+  type WorldEventInput,
+  type EventStoreSnapshot,
+} from "./history/EventStore";
+export {
+  EventDetectors,
+  EventDetectorsSnapshotError,
+  collectStatisticsAndDetectEvents,
+  reportCombatKill,
+  POPULATION_BASELINE_WINDOW_SAMPLES,
+  POPULATION_EVENT_MIN_ABS_DELTA,
+  MASS_EXTINCTION_WINDOW_SAMPLES,
+  MASS_EXTINCTION_MAX_LISTED_SPECIES,
+  CARNIVORE_PERSIST_SAMPLES,
+  CARNIVORE_MIN_INTERVAL_ENERGY,
+  type EventDetectorsSnapshot,
+} from "./history/eventDetection";
+export {
+  StatisticsStore,
+  StatisticsSnapshotError,
+  WorldStatMetric,
+  WORLD_STAT_METRIC_COUNT,
+  WORLD_STAT_METRIC_NAMES,
+  SpeciesStatMetric,
+  SPECIES_STAT_METRIC_COUNT,
+  SPECIES_STAT_METRIC_NAMES,
+  STATS_TIER_COUNT,
+  STATS_TIER_RATIO,
+  STATS_TIER_CAPACITY,
+  SPECIES_SERIES_CAPACITY,
+  type StatisticsSnapshot,
+  type ExtractedSeries,
+} from "./history/StatisticsStore";
+export {
+  querySpecies,
+  queryTree,
+  queryHistory,
+  type SpeciesSummary,
+  type SpeciesDetails,
+  type TreeSnapshot,
+  type HistorySlice,
+} from "./render/querySpecies";
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG
 // must stay unreachable from outside this package (see internal.ts).
 export { SimulationEngine, type SimulationEngineOptions, MAX_TICK } from "./SimulationEngine";

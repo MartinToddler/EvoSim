@@ -11,14 +11,14 @@ import { formatCompact, formatInt } from "../format";
 /**
  * Milestone 7 top bar (task H01/H02, docs/06 §9).
  *
- * Shows world identity, simulated time, population, run state and measured
- * TPS, and hosts the run controls. Everything numeric comes from the 2 Hz
- * telemetry stream — never from a render snapshot (CLAUDE.md React boundary).
+ * Shows world identity, simulated time, population, species, run state and
+ * measured TPS, and hosts the run controls. Everything numeric comes from the
+ * 2 Hz telemetry stream — never from a render snapshot (CLAUDE.md React
+ * boundary).
  *
- * Two docs/06 §9 items are deliberately placeholders: **species** has no data
- * source until the Milestone 8 registry, so it shows an em dash with an
- * explanation rather than an invented number; **save state** belongs to
- * Milestone 10 persistence and is absent entirely.
+ * One docs/06 §9 item is deliberately a placeholder still: **save state**
+ * belongs to Milestone 10 persistence and is absent entirely. The species
+ * count became real with the Milestone 8 registry.
  */
 
 const SPEED_BUTTONS: readonly { speed: SimulationSpeed; label: string }[] = [
@@ -50,6 +50,9 @@ export interface TopBarProps {
   debugOverlay: boolean;
   statsOpen: boolean;
   layersOpen: boolean;
+  speciesOpen: boolean;
+  treeOpen: boolean;
+  timelineOpen: boolean;
   onSpeedChange: (speed: SimulationSpeed) => void;
   /** Resume from pause at the last running speed. */
   onResume: () => void;
@@ -57,6 +60,9 @@ export interface TopBarProps {
   onFitWorld: () => void;
   onToggleStats: () => void;
   onToggleLayers: () => void;
+  onToggleSpecies: () => void;
+  onToggleTree: () => void;
+  onToggleTimeline: () => void;
 }
 
 /** Run-state label: the honest one, including "behind" (docs/01 §11). */
@@ -158,12 +164,23 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
           </span>
         </div>
         <div className="stat">
-          <span className="stat-label" title="Species detection arrives with Milestone 8">
+          <span className="stat-label" title="Detected evolutionary lineages alive right now">
             Species
           </span>
-          <span className="stat-value" title="Species detection arrives with Milestone 8">
-            —
-          </span>
+          <button
+            type="button"
+            className="stat-value seed-button"
+            title={
+              telemetry === null
+                ? undefined
+                : `${formatInt(telemetry.activeSpeciesCount)} living / ` +
+                  `${formatInt(telemetry.extinctSpeciesCount)} extinct / ` +
+                  `${formatInt(telemetry.totalSpeciesCount)} ever. Click for the species panel.`
+            }
+            onClick={props.onToggleSpecies}
+          >
+            {telemetry === null ? "—" : formatInt(telemetry.activeSpeciesCount)}
+          </button>
         </div>
         <div className="stat">
           <span className="stat-label">Plants</span>
@@ -241,6 +258,30 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
           onClick={props.onToggleStats}
         >
           Stats
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.speciesOpen}
+          title="Living species and the species inspector"
+          onClick={props.onToggleSpecies}
+        >
+          Species
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.treeOpen}
+          title="Tree of Life: every lineage, split and extinction"
+          onClick={props.onToggleTree}
+        >
+          Tree
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.timelineOpen}
+          title="World history: splits, extinctions, booms, crashes"
+          onClick={props.onToggleTimeline}
+        >
+          History
         </button>
         <button
           type="button"

@@ -99,12 +99,15 @@ pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (
 pnpm --filter @eon/web dev   # run the web app locally
 ```
 
-Current status: Milestones 0–7 complete — workspace, determinism skeleton (hardened after
+Current status: Milestones 0–8 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
 combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), the Worker host, render
-transport and PixiJS renderer (ADR 0010), and the observation UI (ADR 0011, reviewed in ADR 0012 —
-four touch/layout defects fixed, no engine or protocol change).
+transport and PixiJS renderer (ADR 0010), the observation UI (ADR 0011, reviewed in ADR 0012),
+and species + history (ADR 0013): a deterministic species registry, seeded 2-means bifurcation
+detection with five-interval stability, extinction and lineage records, a bounded world event
+log with eight deterministic detectors, tiered statistics, and the Tree of Life / species
+inspector / history timeline views (engine 0.6.0, snapshot schema 7, protocol 4).
 
 **The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
@@ -113,9 +116,11 @@ organism for the full inspector (vitals, inherited traits, running costs, the la
 inputs and intents) and follow it as it lives; open the stats panel for bounded-memory charts of
 population, biomass, birth/death rates and trait drift; flip the world through nine data layers
 (biomes, elevation, temperature, moisture, fertility, plant biomass and capacity, organism
-density) without the simulation noticing. The simulation itself runs in a dedicated Worker and is
-unchanged by any of it: `ENGINE_VERSION` stayed at 0.5.0 through Milestone 7 and every golden hash
-is byte-identical, because rendering is a projection and never a decision.
+density) without the simulation noticing; open the species panel, the Tree of Life and the
+history timeline to watch detected lineages, splits, extinctions, booms, crashes and the world's
+first predation appear as events. The simulation itself runs in a dedicated Worker and rendering
+never decides anything — the Milestone 8 hash changes are the species/history state itself
+joining the canonical stream, while the organism trajectory reproduces 0.5.0's exactly.
 
 Everything below is still reproducible headlessly, which is the point — the same world, the same
 hashes, with or without a browser.
@@ -220,6 +225,10 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0013-milestone-8-species-history.md` — species and history: the phenotype-space trait vector,
+  deterministic 2-means with the swap-unambiguity validator rule, extinction at the death tick,
+  one-emission-site-per-fact event detection, the hashed/derived statistics split, protocol 4's
+  pull-based UI, and what 100 000 ticks of real evolution says about splitting clouds.
 - `0012-milestone-7-review.md` — the independent Milestone 7 review: a third finger during a pinch
   that fired a click selection, a pinch that left its surviving finger dead, charts that blocked
   the mobile sheet from scrolling, a one-sheet rule that did not survive rotating to narrow, and

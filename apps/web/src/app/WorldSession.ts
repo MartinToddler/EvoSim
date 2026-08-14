@@ -8,11 +8,15 @@ import {
   type EntityDetailsPayload,
   type HostRuntimeConfig,
   type SimulationSpeed,
+  type SpeciesDetailsDto,
+  type SpeciesDetailsPayload,
   type TelemetryDto,
   type TerrainSnapshotView,
+  type TreeSnapshotDto,
   type VegetationSnapshotView,
   type RenderSnapshotView,
   type WorkerErrorDto,
+  type WorldEventDto,
   type WorldSummaryDto,
 } from "@eon/protocol";
 import { WorkerClient, workerPort, type RawWorker } from "../worker/WorkerClient";
@@ -55,8 +59,24 @@ export interface WorldSessionCallbacks {
   onEntityDetails: (payload: EntityDetailsPayload) => void;
   /** Follow started (entityId) or stopped (null, with the reason why). */
   onFollowChange: (entityId: number | null, reason: FollowEndReason | "started") => void;
+  /** Fresh Tree of Life snapshot (Milestone 8). */
+  onTree?: (tree: TreeSnapshotDto) => void;
+  /** Selected-species inspector refresh (Milestone 8). */
+  onSpeciesDetails?: (payload: SpeciesDetailsPayload) => void;
+  /**
+   * The accumulated event log after new events arrived (Milestone 8). The
+   * array is the session's bounded, frozen accumulation — not just the delta —
+   * so React can render it directly.
+   */
+  onHistoryEvents?: (events: readonly WorldEventDto[], droppedBeforeOldest: number) => void;
   onError: (error: WorkerErrorDto) => void;
 }
+
+/**
+ * Client-side bound on the accumulated event log, mirroring the engine's own
+ * in-memory budget: the UI can never hold more history than the engine would.
+ */
+const MAX_CLIENT_EVENTS = 4096;
 
 /**
  * The slice of `Worker` the session actually uses, so tests can supply a fake
@@ -128,8 +148,46 @@ function freezeWorld(world: WorldSummaryDto): WorldSummaryDto {
   Object.freeze(world.display.brainInputLabels);
   Object.freeze(world.display.brainIntentLabels);
   Object.freeze(world.display.deathCauseLabels);
+  Object.freeze(world.display.eventTypeLabels);
+  Object.freeze(world.display.eventSeverityLabels);
+  Object.freeze(world.display.speciesEndReasonLabels);
+  Object.freeze(world.display.traitDimensionLabels);
   Object.freeze(world.display);
   return Object.freeze(world);
+}
+
+function freezeTree(tree: TreeSnapshotDto): TreeSnapshotDto {
+  for (const species of tree.species) {
+    Object.freeze(species);
+  }
+  Object.freeze(tree.species);
+  return Object.freeze(tree);
+}
+
+function freezeSpeciesDetails(details: SpeciesDetailsDto | null): SpeciesDetailsDto | null {
+  if (details === null) {
+    return null;
+  }
+  Object.freeze(details.centroidTraits);
+  Object.freeze(details.originCentroid);
+  Object.freeze(details.childIds);
+  Object.freeze(details.series.ticks);
+  Object.freeze(details.series.population);
+  Object.freeze(details.series.meanSize);
+  Object.freeze(details.series.meanSpeed);
+  Object.freeze(details.series.meanDiet);
+  Object.freeze(details.series);
+  return Object.freeze(details);
+}
+
+function freezeEvent(event: WorldEventDto): WorldEventDto {
+  Object.freeze(event.speciesIds);
+  Object.freeze(event.entityIds);
+  if (event.region !== null) {
+    Object.freeze(event.region);
+  }
+  Object.freeze(event.payload);
+  return Object.freeze(event);
 }
 
 export class WorldSession {
@@ -156,6 +214,21 @@ export class WorldSession {
   #debugOverlay = false;
   #destroyed = false;
   #world: WorldSummaryDto | null = null;
+
+  // --- Species and history (Milestone 8) --------------------------------------
+  #selectedSpeciesId: number | null = null;
+  /** True while a species/tree panel is open, so populations stay live. */
+  #treeWatching = false;
+  /** Species counts at the last tree fetch; a change forces a refresh. */
+  #treeRevision = "";
+  #treeRequestInFlight = false;
+  /** Highest event ID already accumulated; the pull cursor. */
+  #lastFetchedEventId = 0;
+  #historyRequestInFlight = false;
+  /** Bounded, frozen accumulation of events, oldest first. */
+  #events: WorldEventDto[] = [];
+  /** Events that scrolled out of this accumulation or the engine's log. */
+  #eventsDroppedBeforeOldest = 0;
 
   private constructor(options: WorldSessionOptions) {
     this.#options = options;
@@ -195,6 +268,11 @@ export class WorldSession {
         // organism's energy and age change every tick, but nobody can read a
         // number that updates 60 times a second.
         this.#refreshSelectedEntity();
+        // Species and history piggyback the same cadence: telemetry is the
+        // change signal (protocol 4 has no event push stream by design).
+        this.#refreshSelectedSpecies();
+        this.#refreshTree(telemetry);
+        this.#refreshHistory(telemetry.latestEventId);
       },
       onError: (error) => {
         options.callbacks.onError(error);
@@ -295,6 +373,118 @@ export class WorldSession {
   /** Suspend or resume the render stream, e.g. when the tab is hidden. */
   setRenderStream(enabled: boolean): void {
     this.#client.setRenderStream(enabled);
+  }
+
+  // --- Species and history (Milestone 8) --------------------------------------
+
+  /**
+   * Select a species for the inspector, or clear with null. Details are
+   * fetched immediately and then refreshed at telemetry cadence, exactly like
+   * the organism inspector.
+   */
+  selectSpecies(speciesId: number | null): void {
+    this.#selectedSpeciesId = speciesId;
+    this.#refreshSelectedSpecies();
+  }
+
+  get selectedSpeciesId(): number | null {
+    return this.#selectedSpeciesId;
+  }
+
+  /**
+   * Tell the session whether a species/tree view is open. While watching, the
+   * tree refreshes every telemetry so populations stay live; while not, it
+   * refreshes only when the species set itself changes (a split, an
+   * extinction) so the TopBar count stays honest at near-zero cost.
+   */
+  setTreeWatching(watching: boolean): void {
+    this.#treeWatching = watching;
+  }
+
+  #refreshSelectedSpecies(): void {
+    const speciesId = this.#selectedSpeciesId;
+    if (speciesId === null || this.#destroyed) {
+      return;
+    }
+    this.#client
+      .querySpecies(speciesId)
+      .then((payload) => {
+        if (this.#destroyed || this.#selectedSpeciesId !== payload.speciesId) {
+          return;
+        }
+        this.#options.callbacks.onSpeciesDetails?.(
+          Object.freeze({ ...payload, details: freezeSpeciesDetails(payload.details) }),
+        );
+      })
+      .catch(() => {
+        // The error handler already surfaced the failure; the inspector keeps
+        // its last known values (same policy as the organism inspector).
+      });
+  }
+
+  #refreshTree(telemetry: TelemetryDto): void {
+    const revision = `${telemetry.totalSpeciesCount}:${telemetry.activeSpeciesCount}:${telemetry.extinctSpeciesCount}`;
+    const structureChanged = revision !== this.#treeRevision;
+    if (
+      (!this.#treeWatching && !structureChanged) ||
+      this.#treeRequestInFlight ||
+      this.#destroyed
+    ) {
+      return;
+    }
+    this.#treeRequestInFlight = true;
+    this.#client
+      .requestTree()
+      .then((payload) => {
+        this.#treeRequestInFlight = false;
+        if (this.#destroyed) {
+          return;
+        }
+        this.#treeRevision = revision;
+        this.#options.callbacks.onTree?.(freezeTree(payload.tree));
+      })
+      .catch(() => {
+        this.#treeRequestInFlight = false;
+      });
+  }
+
+  #refreshHistory(latestEventId: number): void {
+    if (
+      latestEventId <= this.#lastFetchedEventId ||
+      this.#historyRequestInFlight ||
+      this.#destroyed
+    ) {
+      return;
+    }
+    this.#historyRequestInFlight = true;
+    this.#client
+      .requestHistory(this.#lastFetchedEventId)
+      .then((payload) => {
+        this.#historyRequestInFlight = false;
+        if (this.#destroyed || payload.history.events.length === 0) {
+          return;
+        }
+        for (const event of payload.history.events) {
+          // Overlap is possible if the engine dropped and re-served nothing new;
+          // IDs are strictly increasing, so a simple guard dedupes.
+          if (event.id > this.#lastFetchedEventId) {
+            this.#events.push(freezeEvent(event));
+            this.#lastFetchedEventId = event.id;
+          }
+        }
+        if (this.#events.length > MAX_CLIENT_EVENTS) {
+          const excess = this.#events.length - MAX_CLIENT_EVENTS;
+          this.#events.splice(0, excess);
+          this.#eventsDroppedBeforeOldest += excess;
+        }
+        this.#options.callbacks.onHistoryEvents?.(
+          Object.freeze([...this.#events]),
+          this.#eventsDroppedBeforeOldest + payload.history.droppedEventCount,
+        );
+      })
+      .catch(() => {
+        this.#historyRequestInFlight = false;
+      });
   }
 
   destroy(): void {

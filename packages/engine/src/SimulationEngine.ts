@@ -12,8 +12,15 @@ import { buildFeedingClaims, resolveFeedingClaims } from "./ecology/feedingClaim
 import { resolveReproduction } from "./ecology/reproduction";
 import type { EngineContext } from "./EngineContext";
 import { EngineScratch } from "./EngineScratch";
+import { SpeciesEndReason, SpeciesStore } from "./evolution/SpeciesStore";
+import { analyzeSpecies } from "./evolution/speciation";
+import { TRAIT_DIMENSIONS, buildTraitRanges, writeTraitVector } from "./evolution/traitVector";
+import { EventSeverity, EventStore, WorldEventType } from "./history/EventStore";
+import { EventDetectors, collectStatisticsAndDetectEvents } from "./history/eventDetection";
+import { StatisticsStore } from "./history/StatisticsStore";
 import { computeStateHash } from "./hashState";
 import { attachEngineInternals } from "./internal";
+import { POS_SCALE } from "./math/fixed";
 import { GenomeStore } from "./organisms/GenomeStore";
 import { OrganismStore } from "./organisms/OrganismStore";
 import { finalizeDeaths } from "./organisms/death";
@@ -88,6 +95,14 @@ export class SimulationEngine {
   readonly genomes: GenomeStore;
   /** Authoritative carrion left by deaths (docs/03 §23). */
   readonly carcasses: CarcassStore;
+  /** Authoritative species registry and split-candidate state (docs/05 §5). */
+  readonly species: SpeciesStore;
+  /** Authoritative timeline event log (docs/05 §12). */
+  readonly events: EventStore;
+  /** Authoritative event-detector state (docs/02 §9). */
+  readonly detectors: EventDetectors;
+  /** Derived statistics time series — serialized, never hashed (docs/05 §11). */
+  readonly stats: StatisticsStore;
   /** Deterministically chosen region where founders spawn (docs/03 §26). */
   readonly founderRegion: FounderRegion;
   /** Which generation attempt produced this world; 0 means the seed worked directly. */
@@ -140,6 +155,10 @@ export class SimulationEngine {
     this.organisms = new OrganismStore(capacity);
     this.genomes = new GenomeStore(capacity);
     this.carcasses = new CarcassStore(carcassCapacity);
+    this.species = new SpeciesStore();
+    this.events = new EventStore(this.config.limits.maxTimelineEventsInMemoryBeforeChunk);
+    this.detectors = new EventDetectors();
+    this.stats = new StatisticsStore();
 
     this.#context = {
       seed: this.seed,
@@ -149,6 +168,11 @@ export class SimulationEngine {
       genomes: this.genomes,
       phenotypes: new PhenotypeStore(capacity),
       carcasses: this.carcasses,
+      species: this.species,
+      events: this.events,
+      detectors: this.detectors,
+      stats: this.stats,
+      traitRanges: buildTraitRanges(this.config),
       spatialPre: new SpatialGrid(
         this.config.world.sizeLU,
         this.config.world.spatialCellSizeLU,
@@ -168,9 +192,49 @@ export class SimulationEngine {
       rng: this.#rng,
     };
 
+    // All founders begin Species 1 (docs/05 §5). The record must exist before
+    // the first founder spawns, because spawning is what counts membership;
+    // its founder is the entity ID the first spawn will be issued.
+    this.species.createSpecies({
+      parentSpeciesId: 0,
+      originTick: 0,
+      centroid: new Int32Array(TRAIT_DIMENSIONS),
+      founderEntityId: this.organisms.nextEntityId,
+      generationAtOrigin: 0,
+    });
+
     // The founder population is part of the world's initial state, so it exists
     // before tick 0 is hashed. It is the only PRNG consumer in Milestone 3.
-    spawnFounderPopulation(this.#context, this.founderRegion);
+    const spawned = spawnFounderPopulation(this.#context, this.founderRegion);
+
+    // Founders share one genome, so the species' representative phenotype is
+    // any founder's trait vector — frozen as the origin centroid too.
+    if (spawned > 0) {
+      const founderSpecies = this.species.get(1);
+      writeTraitVector(
+        founderSpecies.centroidTraits,
+        0,
+        this.#context.phenotypes,
+        0,
+        this.#context.traitRanges,
+      );
+      founderSpecies.originCentroid.set(founderSpecies.centroidTraits);
+    }
+
+    // The world's first timeline entry (docs/05 §13). Emitted before tick 0 is
+    // hashed, exactly like the founders it describes.
+    const cellSizePos = this.environment.cellSizeLU * POS_SCALE;
+    this.events.append({
+      tick: 0,
+      type: WorldEventType.WorldCreated,
+      severity: EventSeverity.Info,
+      speciesIds: [1],
+      regionXPos: this.founderRegion.centerGridX * cellSizePos + (cellSizePos >> 1),
+      regionYPos: this.founderRegion.centerGridY * cellSizePos + (cellSizePos >> 1),
+      regionRadiusPos: this.config.world.founderSpawnRadiusLU * POS_SCALE,
+      payloadVersion: 1,
+      payload: [spawned],
+    });
 
     attachEngineInternals(this, { rng: this.#rng, context: this.#context });
 
@@ -230,11 +294,59 @@ export class SimulationEngine {
       engine.config,
     );
     restoreCarcasses(snapshot.carcasses, engine.carcasses);
+
+    // The species registry, event log, detector state and statistics series
+    // replace the constructor's founder-world versions wholesale. The species
+    // restore happens after the organisms so it can be cross-checked against
+    // the population it claims to describe.
+    engine.species.restore(snapshot.species);
+    engine.events.restore(snapshot.history.events);
+    engine.detectors.restore(snapshot.history.detectors);
+    engine.stats.restore(snapshot.history.stats);
+    engine.#validateSpeciesAssignments();
+
     engine.#context.spatialPre.clear();
     engine.#context.spatialPost.clear();
     engine.#context.carcassIndex.clear();
 
     return engine;
+  }
+
+  /**
+   * Cross-check the restored registry against the restored population: every
+   * live organism must belong to an ACTIVE species record, and every record's
+   * population must equal its live member count (docs/07 §4). A snapshot that
+   * fails this was corrupted or hand-edited, and trusting it would let the
+   * population-matches-members invariant break silently at the next split.
+   */
+  #validateSpeciesAssignments(): void {
+    const organisms = this.organisms;
+    const counts = new Map<number, number>();
+    for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+      if (organisms.alive[slot] !== 1) {
+        continue;
+      }
+      const speciesId = organisms.speciesId[slot] as number;
+      if (speciesId < 1 || speciesId > this.species.count) {
+        throw new SnapshotCompatibilityError(
+          `live organism in slot ${slot} belongs to unknown species ${speciesId}`,
+        );
+      }
+      counts.set(speciesId, (counts.get(speciesId) ?? 0) + 1);
+    }
+    for (const record of this.species.records) {
+      const live = counts.get(record.id) ?? 0;
+      if (record.population !== live) {
+        throw new SnapshotCompatibilityError(
+          `species ${record.id} claims population ${record.population} but ${live} live members exist`,
+        );
+      }
+      if (record.endReason !== SpeciesEndReason.Active && live !== 0) {
+        throw new SnapshotCompatibilityError(
+          `ended species ${record.id} still has ${live} live members`,
+        );
+      }
+    }
   }
 
   /** Copy restored arrays into this engine's store (the store reference is frozen). */
@@ -326,11 +438,11 @@ export class SimulationEngine {
     profiler?.end(TickPhase.Feeding);
     profiler?.begin(TickPhase.Combat);
     buildCombatClaims(ctx); //                         10 buildCombatClaims
-    resolveCombatSimultaneously(ctx); //               11 resolveCombatSimultaneously
+    resolveCombatSimultaneously(ctx, this.#tick); //   11 resolveCombatSimultaneously
     profiler?.end(TickPhase.Combat);
     profiler?.begin(TickPhase.MetabolismDeath);
     applyMetabolismGrowthThermalAging(ctx); //         12 applyMetabolismGrowthThermalAging
-    finalizeDeaths(ctx); //                            13 finalizeDeathsAndCreateCarcasses
+    finalizeDeaths(ctx, this.#tick); //                13 finalizeDeathsAndCreateCarcasses
     profiler?.end(TickPhase.MetabolismDeath);
     profiler?.begin(TickPhase.Reproduction);
     resolveReproduction(ctx); //                       14 resolveReproduction
@@ -340,8 +452,16 @@ export class SimulationEngine {
       decayCarcasses(ctx); //                          15 scheduledCarcassDecay
       profiler?.end(TickPhase.Carcasses);
     }
-    //   16 scheduledSpeciesAnalysis         — Milestone 8
-    //   17 scheduledStatisticsAndEvents     — Milestone 8
+    if (this.#tick % this.config.time.speciesAnalysisInterval === 0) {
+      profiler?.begin(TickPhase.SpeciesAnalysis);
+      analyzeSpecies(ctx, this.#tick); //              16 scheduledSpeciesAnalysis
+      profiler?.end(TickPhase.SpeciesAnalysis);
+    }
+    if (this.#tick % this.config.time.statisticsInterval === 0) {
+      profiler?.begin(TickPhase.Statistics);
+      collectStatisticsAndDetectEvents(ctx, this.#tick); // 17 scheduledStatisticsAndEventDetection
+      profiler?.end(TickPhase.Statistics);
+    }
     //   18 optionalRenderSnapshot           — produced on the host's cadence by
     //      render/renderSnapshot.ts, deliberately NOT inside the tick: a
     //      picture is taken between ticks, never as part of one.
@@ -384,6 +504,12 @@ export class SimulationEngine {
       environment: captureEnvironment(this.environment, this.founderRegion),
       organisms: captureOrganisms(this.organisms, this.genomes),
       carcasses: captureCarcasses(this.carcasses),
+      species: this.species.capture(),
+      history: {
+        events: this.events.capture(),
+        detectors: this.detectors.capture(),
+        stats: this.stats.capture(),
+      },
     };
   }
 }

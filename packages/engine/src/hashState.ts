@@ -10,7 +10,7 @@ import type { SimulationEngine } from "./SimulationEngine";
  * changes hashes and therefore requires an ENGINE_VERSION bump, regenerated
  * goldens and a changelog entry (CLAUDE.md).
  *
- * Canonical sequence (engine 0.5.0):
+ * Canonical sequence (engine 0.6.0):
  *   1. magic word 0x454f4e48 ("EONH")
  *   2. tick as TWO words: low 32 bits, then high bits
  *   3. seed
@@ -20,10 +20,18 @@ import type { SimulationEngine } from "./SimulationEngine";
  *   7. organism slot state and per-slot arrays (OrganismStore.hashInto)
  *   8. genomes and brain weights for the used slot prefix (GenomeStore.hashInto)
  *   9. carcass slot state and per-slot arrays (CarcassStore.hashInto)
+ *  10. species registry and split-candidate state (SpeciesStore.hashInto)
+ *  11. world event log (EventStore.hashInto)
+ *  12. event-detector state (EventDetectors.hashInto)
  *
- * Derived state is deliberately absent: the spatial index, the phenotype cache
- * and every scratch buffer are pure functions of what is hashed above, and are
- * rebuilt at fixed points in the tick order.
+ * Derived state is deliberately absent: the spatial index, the phenotype cache,
+ * the trait normalization table and every scratch buffer are pure functions of
+ * what is hashed above, and are rebuilt at fixed points in the tick order. The
+ * statistics time series is also absent, and for a different reason: it is
+ * derived HISTORY — a pure record of past authoritative states that nothing
+ * ever reads back into simulation or event detection — and its retention shape
+ * is presentation capacity, which must never move a world hash. It is
+ * serialized, and a round-trip test pins that serialization exactly.
  *
  * The tick is hashed as a safe integer rather than a single word because a
  * uint32 tick would make states exactly 2^32 ticks apart hash identically
@@ -60,6 +68,9 @@ export function computeStateHash(engine: SimulationEngine): string {
   engine.organisms.hashInto(hasher);
   engine.genomes.hashInto(hasher, engine.organisms.slotHighWater);
   engine.carcasses.hashInto(hasher);
+  engine.species.hashInto(hasher);
+  engine.events.hashInto(hasher);
+  engine.detectors.hashInto(hasher);
 
   return hasher.digest();
 }

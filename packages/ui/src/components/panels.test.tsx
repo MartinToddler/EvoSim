@@ -31,6 +31,37 @@ const display: WorldDisplayDto = {
   brainInputLabels: ["bias", "energy", "health"],
   brainIntentLabels: ["throttle", "turn", "eat", "attack", "reproduce"],
   deathCauseLabels: ["none", "starvation", "oldAge"],
+  eventTypeLabels: [
+    "worldCreated",
+    "speciesSplit",
+    "speciesExtinct",
+    "populationBoom",
+    "populationCrash",
+    "firstPredation",
+    "carnivoreLineageDetected",
+    "massExtinction",
+    "populationCapReached",
+    "playerIntervention",
+  ],
+  eventSeverityLabels: ["info", "notable", "major"],
+  speciesEndReasonLabels: ["active", "split", "extinct"],
+  traitDimensionLabels: [
+    "adultSize",
+    "effectiveMaxSpeed",
+    "acceleration",
+    "turn",
+    "visionRange",
+    "visionFov",
+    "diet",
+    "attack",
+    "armor",
+    "metabolicPace",
+    "thermalOptimum",
+    "thermalTolerance",
+    "maturity",
+    "maxAge",
+    "offspringInvestment",
+  ],
   temperatureDisplayMinC: -25,
   temperatureDisplayMaxC: 35,
   capacityDisplayReference: 4000,
@@ -81,6 +112,10 @@ function telemetryFixture(overrides: Partial<TelemetryDto> = {}): TelemetryDto {
       metabolicPace: 0.5,
       thermalOptimumC: 17.5,
     },
+    activeSpeciesCount: 3,
+    totalSpeciesCount: 5,
+    extinctSpeciesCount: 1,
+    latestEventId: 4,
     speed: "x1",
     achievedTicksPerSecond: 19.9,
     targetTicksPerSecond: 20,
@@ -150,12 +185,18 @@ describe("TopBar", () => {
         debugOverlay={false}
         statsOpen={false}
         layersOpen={false}
+        speciesOpen={false}
+        treeOpen={false}
+        timelineOpen={false}
         onSpeedChange={noop}
         onResume={noop}
         onToggleDebug={noop}
         onFitWorld={noop}
         onToggleStats={noop}
         onToggleLayers={noop}
+        onToggleSpecies={noop}
+        onToggleTree={noop}
+        onToggleTimeline={noop}
         {...overrides}
       />,
     );
@@ -170,10 +211,10 @@ describe("TopBar", () => {
     expect(html).toContain("1,234");
   });
 
-  it("shows a species placeholder, not an invented number", () => {
+  it("shows the live species count from the Milestone 8 registry", () => {
     const html = render();
-    expect(html).toContain("Species detection arrives with Milestone 8");
-    expect(html).toContain("—");
+    expect(html).not.toContain("Species detection arrives with Milestone 8");
+    expect(html).toContain("3 living / 1 extinct / 5 ever");
   });
 
   it("marks the active speed and pause state accessibly", () => {
@@ -223,6 +264,7 @@ describe("InspectorPanel", () => {
         onClear={noop}
         onFocus={noop}
         onToggleFollow={noop}
+        onSelectSpecies={noop}
         {...overrides}
       />,
     );

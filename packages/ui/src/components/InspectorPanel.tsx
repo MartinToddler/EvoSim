@@ -28,6 +28,8 @@ export interface InspectorPanelProps {
   onClear: () => void;
   onFocus: () => void;
   onToggleFollow: () => void;
+  /** Open the species inspector for this organism's species (Milestone 8). */
+  onSelectSpecies: (speciesId: number) => void;
 }
 
 function ratio(value: number): string {
@@ -139,7 +141,18 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element {
 
           <dl>
             <dt>Species</dt>
-            <dd title="Species detection arrives with Milestone 8">{details.speciesId}</dd>
+            <dd>
+              <button
+                type="button"
+                className="link-button"
+                title="Open this species in the species inspector"
+                onClick={() => {
+                  props.onSelectSpecies(details.speciesId);
+                }}
+              >
+                Species {String(details.speciesId).padStart(4, "0")}
+              </button>
+            </dd>
             <dt>Generation</dt>
             <dd>{formatInt(details.generation)}</dd>
             <dt>Parent</dt>

@@ -818,10 +818,15 @@ function validateSpecies(config: DeepReadonly<SimulationConfig>): void {
     "species.candidateCentroidContinuityThresholdQ",
   );
   // A candidate must be able to look "the same as last time" more easily than
-  // its two clusters look "far apart", or a split could never stabilize.
+  // its two clusters look "far apart", or a split could never stabilize. The
+  // factor of two is what makes the docs/05 §7 A/B-swap comparison unambiguous:
+  // qualifying centroids are at least splitDistanceThresholdQ apart, so with
+  // the continuity radius below half of that, a new centroid can never sit
+  // within continuity range of BOTH stored centroids at once.
   check(
-    species.candidateCentroidContinuityThresholdQ < species.splitDistanceThresholdQ,
-    "species: centroid continuity threshold must be below the split distance threshold",
+    2 * species.candidateCentroidContinuityThresholdQ < species.splitDistanceThresholdQ,
+    "species: the split distance threshold must exceed twice the centroid continuity " +
+      "threshold, or candidate A/B matching could become ambiguous",
   );
   // docs/05 §6: only species with at least 2 * minDaughterPopulation members are
   // analyzed, so that eligibility must be reachable at all.

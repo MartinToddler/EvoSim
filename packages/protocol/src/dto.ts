@@ -69,6 +69,14 @@ export interface WorldDisplayDto {
   brainIntentLabels: readonly string[];
   /** Death cause names, indexed like `TelemetryDto.deathsByCause`. */
   deathCauseLabels: readonly string[];
+  /** World event type names, indexed like `WorldEventDto.type` (Milestone 8). */
+  eventTypeLabels: readonly string[];
+  /** Event severity names, indexed like `WorldEventDto.severity` (Milestone 8). */
+  eventSeverityLabels: readonly string[];
+  /** Species end-reason names, indexed like `SpeciesSummaryDto.endReason` (Milestone 8). */
+  speciesEndReasonLabels: readonly string[];
+  /** Trait dimension names, indexed like `SpeciesDetailsDto.centroidTraits` (Milestone 8). */
+  traitDimensionLabels: readonly string[];
   /** Temperature that byte 0 of the terrain temperature plane represents. */
   temperatureDisplayMinC: number;
   /** Temperature that byte 255 of the terrain temperature plane represents. */
@@ -162,6 +170,21 @@ export interface TelemetryDto {
   meanEnergyFraction: number;
   /** Mean trait values over the alive population; see {@link TraitMeansDto}. */
   traitMeans: TraitMeansDto;
+
+  // --- Species and history (Milestone 8) --------------------------------------
+  /** Species with living members right now. */
+  activeSpeciesCount: number;
+  /** Species ever recorded, including split and extinct ones. */
+  totalSpeciesCount: number;
+  /** Species that ended by extinction (a split parent is not extinct). */
+  extinctSpeciesCount: number;
+  /**
+   * ID of the newest world event, 0 before any event. The UI compares this
+   * against the newest event it has and pulls the difference with
+   * REQUEST_HISTORY_RANGE — telemetry is the change signal, so no separate
+   * event push stream exists.
+   */
+  latestEventId: number;
 
   // --- Host pacing, measured on the wall clock outside the engine -----------
   speed: SimulationSpeed;
@@ -281,4 +304,107 @@ export interface WorkerErrorDto {
   engineVersion: string;
   /** Message type being handled when it failed, when known. */
   whileHandling: string | null;
+}
+
+// --- Species and history (Milestone 8, protocol 4) ---------------------------
+
+/**
+ * One species row for the Tree of Life and species lists (docs/06 §§12, 14,
+ * docs/05 §19). Sent inside {@link TreeSnapshotDto}; the inspector's fuller
+ * view is {@link SpeciesDetailsDto}.
+ */
+export interface SpeciesSummaryDto {
+  id: number;
+  /** 0 for the founder species; always smaller than `id` (the tree is acyclic). */
+  parentSpeciesId: number;
+  originTick: number;
+  /** 0 while the species is active. */
+  endTick: number;
+  /** Index into `WorldDisplayDto.speciesEndReasonLabels`. */
+  endReason: number;
+  population: number;
+  /** Lifetime observed intake, for the dominant-diet display (docs/06 §19). */
+  plantEnergyConsumed: number;
+  meatEnergyConsumed: number;
+  /** Permanent badge: this lineage was detected living on meat (docs/05 §15). */
+  carnivoreDetected: boolean;
+  /** Signed diet position of the current centroid, in [-1, 1]. */
+  centroidDiet: number;
+}
+
+/** Everything the species inspector shows (docs/06 §12). */
+export interface SpeciesDetailsDto extends SpeciesSummaryDto {
+  founderEntityId: number;
+  generationAtOrigin: number;
+  totalBirths: number;
+  totalDeaths: number;
+  totalKills: number;
+  /**
+   * Current mean member phenotype, one normalized [0, 1] value per trait
+   * dimension, indexed like `WorldDisplayDto.traitDimensionLabels`.
+   */
+  centroidTraits: readonly number[];
+  /** The same vector frozen at the species' origin, for drift display. */
+  originCentroid: readonly number[];
+  /** Split-candidate progress: consecutive qualifying analyses so far. */
+  candidatePasses: number;
+  /** Analyses a candidate must survive before a split executes. */
+  stabilityIntervalsRequired: number;
+  /** Daughter species IDs, ascending; empty unless this species split. */
+  childIds: readonly number[];
+  /** Mean age of living members in ticks; 0 when extinct. */
+  meanAgeTicks: number;
+  /** Mean energy as a fraction of body capacity, in [0, 1]; 0 when extinct. */
+  meanEnergyFraction: number;
+  /** Recent engine-side samples (docs/06 §15), oldest first, aligned by index. */
+  series: {
+    ticks: readonly number[];
+    population: readonly number[];
+    /** Mean normalized adult size, [0, 1]. */
+    meanSize: readonly number[];
+    /** Mean normalized effective speed, [0, 1]. */
+    meanSpeed: readonly number[];
+    /** Mean signed diet, [-1, 1]. */
+    meanDiet: readonly number[];
+  };
+}
+
+/** The whole registry at one tick, for the Tree of Life (docs/05 §19). */
+export interface TreeSnapshotDto {
+  tick: number;
+  /** Every species ever, ascending ID — parents always precede children. */
+  species: readonly SpeciesSummaryDto[];
+}
+
+/** One timeline event (docs/05 §12), numeric payload documented per type. */
+export interface WorldEventDto {
+  id: number;
+  tick: number;
+  /** Index into `WorldDisplayDto.eventTypeLabels`. */
+  type: number;
+  /** Index into `WorldDisplayDto.eventSeverityLabels`. */
+  severity: number;
+  speciesIds: readonly number[];
+  entityIds: readonly number[];
+  /** Event location in location units, or `null` for world-wide events. */
+  region: { xLU: number; yLU: number; radiusLU: number } | null;
+  payloadVersion: number;
+  payload: readonly number[];
+}
+
+/**
+ * Timeline backfill (docs/06 §13): every retained event newer than the
+ * caller's `sinceEventId`, plus the long-horizon world series that backs the
+ * timeline. `droppedEventCount` > 0 means the far past scrolled out of the
+ * engine's bounded log (persistence will chunk it out in Milestone 10).
+ */
+export interface HistorySliceDto {
+  tick: number;
+  droppedEventCount: number;
+  events: readonly WorldEventDto[];
+  worldSeries: {
+    ticks: readonly number[];
+    population: readonly number[];
+    activeSpecies: readonly number[];
+  };
 }

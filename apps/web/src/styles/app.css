@@ -575,7 +575,10 @@ details.brain summary {
 
   .inspector,
   .stats-panel,
-  .layers-panel {
+  .layers-panel,
+  .species-panel,
+  .tree-panel,
+  .timeline-panel {
     position: absolute;
     left: 0;
     right: 0;
@@ -592,5 +595,416 @@ details.brain summary {
 
   .chart-grid {
     grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  }
+}
+
+/* --- Species panel (Milestone 8, docs/06 §12) -------------------------------- */
+
+.species-panel {
+  position: absolute;
+  right: 0.75rem;
+  top: 6.75rem;
+  width: min(24rem, calc(100vw - 1.5rem));
+  max-height: min(74vh, 46rem);
+  overflow: auto;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel-title-row h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.panel-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.species-list {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  max-height: 11rem;
+  overflow: auto;
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+}
+
+.species-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--eon-panel-border);
+  color: var(--eon-text);
+  padding: 0.3rem 0.55rem;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.species-list li:last-child .species-row {
+  border-bottom: none;
+}
+
+.species-row:hover {
+  background: var(--eon-panel-hover, rgba(255, 255, 255, 0.06));
+}
+
+.species-row.is-selected {
+  background: var(--eon-accent-dim, rgba(64, 140, 255, 0.18));
+}
+
+.species-row-population {
+  color: var(--eon-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.species-badge {
+  margin-left: 0.3rem;
+  font-size: 0.8em;
+}
+
+.species-detail dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0 0 0.5rem;
+}
+
+.species-detail dt {
+  color: var(--eon-text-dim);
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.species-charts {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--eon-accent, #5ea0ef);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.trait-bar-row {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.12rem 0;
+  font-size: 0.8rem;
+}
+
+.trait-bar-label {
+  color: var(--eon-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trait-bar {
+  position: relative;
+  display: block;
+  height: 0.5rem;
+  background: var(--eon-meter-track, rgba(255, 255, 255, 0.08));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.trait-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--eon-accent, #5ea0ef);
+  border-radius: 4px;
+}
+
+.trait-bar-origin {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  background: var(--eon-text-dim);
+  opacity: 0.9;
+}
+
+.trait-bar-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--eon-text-dim);
+}
+
+/* --- Tree of Life (Milestone 8, docs/06 §14) --------------------------------- */
+
+.tree-panel {
+  position: absolute;
+  left: 0.75rem;
+  top: 6.75rem;
+  width: min(46rem, calc(100vw - 27rem));
+  max-height: min(74vh, 44rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+}
+
+.tree-scroll {
+  overflow: auto;
+  flex: 1 1 auto;
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+  /* Native scrolling IS the pan gesture, mouse and touch alike. */
+  touch-action: pan-x pan-y;
+}
+
+.tree-svg {
+  display: block;
+}
+
+.tree-grid {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 1;
+}
+
+.tree-axis-label {
+  fill: var(--eon-text-dim);
+  font-size: 10px;
+}
+
+.tree-species {
+  cursor: pointer;
+}
+
+.tree-hit {
+  fill: transparent;
+}
+
+.tree-species:hover .tree-life {
+  stroke-width: 4;
+}
+
+.tree-life {
+  stroke: var(--eon-text-dim);
+  stroke-width: 2.5;
+}
+
+.tree-species.is-active .tree-life {
+  stroke: var(--eon-accent, #5ea0ef);
+}
+
+.tree-species.is-extinct .tree-life {
+  stroke-dasharray: none;
+  opacity: 0.75;
+}
+
+.tree-species.is-split .tree-life {
+  opacity: 0.9;
+}
+
+.tree-species.is-selected .tree-life {
+  stroke: #f0c24b;
+  stroke-width: 4;
+}
+
+.tree-connector {
+  stroke: var(--eon-text-dim);
+  stroke-width: 1.5;
+}
+
+.tree-cap-active {
+  fill: var(--eon-accent, #5ea0ef);
+}
+
+.tree-species.is-selected .tree-cap-active {
+  fill: #f0c24b;
+}
+
+.tree-cap-extinct line {
+  stroke: var(--eon-danger, #e06c60);
+  stroke-width: 2;
+}
+
+.tree-origin {
+  fill: var(--eon-panel);
+  stroke: var(--eon-text-dim);
+  stroke-width: 1.5;
+}
+
+.tree-label {
+  fill: var(--eon-text);
+  font-size: 11px;
+  user-select: none;
+}
+
+.tree-legend {
+  margin: 0.4rem 0 0;
+}
+
+/* --- History timeline (Milestone 8, docs/06 §13) ------------------------------ */
+
+.timeline-panel {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  width: min(38rem, calc(100vw - 26rem));
+  max-height: min(60vh, 34rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+}
+
+.timeline-filter {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.timeline-filter button {
+  font-size: 0.75rem;
+}
+
+.timeline-filter button.is-selected {
+  outline: 1px solid var(--eon-accent, #5ea0ef);
+}
+
+.timeline-strip {
+  flex: 0 0 auto;
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+  margin-bottom: 0.5rem;
+}
+
+.timeline-axis {
+  stroke: var(--eon-text-dim);
+  stroke-width: 1;
+}
+
+.timeline-marker {
+  stroke: var(--eon-text-dim);
+  stroke-width: 1.5;
+}
+
+.timeline-marker.severity-1 {
+  stroke: var(--eon-accent, #5ea0ef);
+  stroke-width: 2;
+}
+
+.timeline-marker.severity-2 {
+  stroke: var(--eon-danger, #e06c60);
+  stroke-width: 2.5;
+}
+
+.timeline-marker.is-selected {
+  stroke: #f0c24b;
+  stroke-width: 3;
+}
+
+.timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+
+.timeline-event {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--eon-panel-border);
+  color: var(--eon-text);
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.timeline-event:hover {
+  background: var(--eon-panel-hover, rgba(255, 255, 255, 0.06));
+}
+
+.timeline-event.is-selected {
+  background: var(--eon-accent-dim, rgba(64, 140, 255, 0.18));
+}
+
+.timeline-event.severity-2 .timeline-event-name {
+  color: var(--eon-danger, #e06c60);
+  font-weight: 600;
+}
+
+.timeline-event-name {
+  flex: 1 1 auto;
+}
+
+.timeline-event-time {
+  color: var(--eon-text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timeline-event-detail {
+  padding: 0.2rem 0.6rem 0.5rem 2rem;
+  border-bottom: 1px solid var(--eon-panel-border);
+}
+
+.timeline-event-detail dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.75rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.timeline-event-detail dt {
+  color: var(--eon-text-dim);
+}
+
+@media (max-width: 760px) {
+  .tree-panel,
+  .timeline-panel,
+  .species-panel {
+    width: 100%;
   }
 }

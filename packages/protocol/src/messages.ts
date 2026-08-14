@@ -21,19 +21,22 @@
  *
  * ## What is NOT here yet
  *
- * docs/02 §13 also lists LOAD_WORLD, QUEUE_COMMAND, QUERY_SPECIES,
- * REQUEST_TREE, REQUEST_HISTORY_RANGE, REQUEST_SAVE, REQUEST_REWIND and
- * CREATE_BRANCH. Those address engine features that do not exist yet —
- * player commands (Milestone 9), species (Milestone 8) and persistence
- * (Milestone 10). Declaring their wire shapes now would mean inventing
- * payloads for rules nobody has written, so they arrive with their milestones
- * and bump PROTOCOL_VERSION then.
+ * docs/02 §13 also lists LOAD_WORLD, QUEUE_COMMAND, REQUEST_SAVE,
+ * REQUEST_REWIND and CREATE_BRANCH. Those address engine features that do not
+ * exist yet — player commands (Milestone 9) and persistence (Milestone 10).
+ * Declaring their wire shapes now would mean inventing payloads for rules
+ * nobody has written, so they arrive with their milestones and bump
+ * PROTOCOL_VERSION then. QUERY_SPECIES, REQUEST_TREE and REQUEST_HISTORY_RANGE
+ * arrived with Milestone 8 (protocol 4).
  */
 
 import type {
   EntityDetailsDto,
+  HistorySliceDto,
   SimulationSpeed,
+  SpeciesDetailsDto,
   TelemetryDto,
+  TreeSnapshotDto,
   WorldSummaryDto,
   WorkerErrorDto,
 } from "./dto";
@@ -68,6 +71,19 @@ export interface QueryEntityPayload {
   entityId: number;
 }
 
+export interface QuerySpeciesPayload {
+  speciesId: number;
+}
+
+export interface RequestHistoryRangePayload {
+  /**
+   * Return only events with `id > sinceEventId`; 0 fetches everything the
+   * engine still retains. The UI passes the highest ID it has seen, so a
+   * telemetry-triggered refresh ships only what is new.
+   */
+  sinceEventId: number;
+}
+
 export interface QueryStateHashPayload {
   /**
    * Run to exactly this tick before hashing, or `null` to hash the current
@@ -100,6 +116,9 @@ export type MainToWorkerMessage =
   | Envelope<"INIT_NEW_WORLD", InitNewWorldPayload>
   | Envelope<"SET_RUN_STATE", SetRunStatePayload>
   | Envelope<"QUERY_ENTITY", QueryEntityPayload>
+  | Envelope<"QUERY_SPECIES", QuerySpeciesPayload>
+  | Envelope<"REQUEST_TREE", Record<string, never>>
+  | Envelope<"REQUEST_HISTORY_RANGE", RequestHistoryRangePayload>
   | Envelope<"QUERY_STATE_HASH", QueryStateHashPayload>
   | Envelope<"RECYCLE_RENDER_BUFFER", RecycleBufferPayload>
   | Envelope<"RECYCLE_VEGETATION_BUFFER", RecycleBufferPayload>
@@ -112,6 +131,9 @@ const MAIN_TO_WORKER_TYPES: readonly MainToWorkerType[] = [
   "INIT_NEW_WORLD",
   "SET_RUN_STATE",
   "QUERY_ENTITY",
+  "QUERY_SPECIES",
+  "REQUEST_TREE",
+  "REQUEST_HISTORY_RANGE",
   "QUERY_STATE_HASH",
   "RECYCLE_RENDER_BUFFER",
   "RECYCLE_VEGETATION_BUFFER",
@@ -162,12 +184,31 @@ export interface StateHashPayload {
   engineVersion: string;
 }
 
+export interface SpeciesDetailsPayload {
+  speciesId: number;
+  /** `null` when the species ID was never issued. */
+  details: SpeciesDetailsDto | null;
+  /** Tick at which the answer was read. */
+  tick: number;
+}
+
+export interface TreeSnapshotPayload {
+  tree: TreeSnapshotDto;
+}
+
+export interface HistoryEventsPayload {
+  history: HistorySliceDto;
+}
+
 export type WorkerToMainMessage =
   | Envelope<"WORLD_READY", WorldReadyPayload>
   | Envelope<"RENDER_SNAPSHOT", RenderSnapshotPayload>
   | Envelope<"VEGETATION_SNAPSHOT", VegetationSnapshotPayload>
   | Envelope<"TELEMETRY", TelemetryDto>
   | Envelope<"ENTITY_DETAILS", EntityDetailsPayload>
+  | Envelope<"SPECIES_DETAILS", SpeciesDetailsPayload>
+  | Envelope<"TREE_SNAPSHOT", TreeSnapshotPayload>
+  | Envelope<"HISTORY_EVENTS", HistoryEventsPayload>
   | Envelope<"STATE_HASH", StateHashPayload>
   | Envelope<"ERROR", WorkerErrorDto>;
 
@@ -314,6 +355,56 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
         },
       };
     }
+    case "QUERY_SPECIES": {
+      const speciesId = payload["speciesId"];
+      if (!isSafeIndex(speciesId)) {
+        return bad("QUERY_SPECIES speciesId must be a non-negative safe integer");
+      }
+      if (requestId === undefined) {
+        return bad("QUERY_SPECIES requires a requestId so the answer can be correlated");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "QUERY_SPECIES",
+          payload: { speciesId },
+        },
+      };
+    }
+    case "REQUEST_TREE": {
+      if (requestId === undefined) {
+        return bad("REQUEST_TREE requires a requestId so the answer can be correlated");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_TREE",
+          payload: {},
+        },
+      };
+    }
+    case "REQUEST_HISTORY_RANGE": {
+      const sinceEventId = payload["sinceEventId"];
+      if (!isSafeIndex(sinceEventId)) {
+        return bad("REQUEST_HISTORY_RANGE sinceEventId must be a non-negative safe integer");
+      }
+      if (requestId === undefined) {
+        return bad("REQUEST_HISTORY_RANGE requires a requestId so the answer can be correlated");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_HISTORY_RANGE",
+          payload: { sinceEventId },
+        },
+      };
+    }
     case "QUERY_STATE_HASH": {
       const targetTick = payload["targetTick"];
       if (targetTick !== null && !isSafeIndex(targetTick)) {
@@ -399,6 +490,9 @@ export function decodeWorkerToMainMessage(data: unknown): DecodeResult<WorkerToM
     case "VEGETATION_SNAPSHOT":
     case "TELEMETRY":
     case "ENTITY_DETAILS":
+    case "SPECIES_DETAILS":
+    case "TREE_SNAPSHOT":
+    case "HISTORY_EVENTS":
     case "STATE_HASH":
     case "ERROR":
       return { ok: true, message: data as unknown as WorkerToMainMessage };

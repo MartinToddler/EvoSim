@@ -1,16 +1,16 @@
 {
-  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. Engine 0.5.0 regenerated every hash for two independent reasons: the carcass store joined the canonical stream, and three new config fields moved the config digest. The reference world also behaves differently from tick 1 onward — the carcass sensors report real carrion instead of a pinned absence, which changes the founder's eat output whenever a body is nearby (ADR 0008 §5).",
-  "engineVersion": "0.5.0",
+  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. Engine 0.6.0 regenerated every hash because Milestone 8 extended the canonical stream with the species registry, the world event log and the event-detector state, and because the initial world now carries a founder species record and a WorldCreated event. The organisms' trajectory is UNCHANGED from 0.5.0 — phases 16 and 17 observe the world and write registry/event state; they never touch an organism, a plant or the PRNG — and the tick-10000 population, generation and diet statistics reproduce 0.5.0's exactly.",
+  "engineVersion": "0.6.0",
   "configSchemaVersion": 6,
   "seedHex": "0xE0A12026",
   "configHash": "2d2712ccf817a700",
   "commands": [],
   "checkpoints": {
-    "0": "07ab4c7d408f0df1",
-    "1": "820a50fb17e1969b",
-    "10": "efbe526fc1eae6ab",
-    "100": "0e618816d8e66c62",
-    "1000": "f21e8203dbcaf2b7",
-    "10000": "f58bac3bde3256f3"
+    "0": "424560d50e9d5ab5",
+    "1": "10188977f269af37",
+    "10": "423ccb7c394579d8",
+    "100": "7cc761593f8314f9",
+    "1000": "409e77ed46acff61",
+    "10000": "c438dcb79e8aa2a7"
   }
 }

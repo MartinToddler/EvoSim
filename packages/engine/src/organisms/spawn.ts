@@ -127,6 +127,9 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   organisms.generation[slot] = request.generation;
   organisms.parentEntityId[slot] = request.parentEntityId;
   organisms.speciesId[slot] = request.speciesId;
+  // Membership is counted where it is created, so the registry's population
+  // can never drift from the live rows (docs/05 §5, docs/07 §4).
+  ctx.species.recordBirth(request.speciesId);
 
   // Energy is capped by the NEWBORN's body, not by its adult potential. A parent
   // that over-invests loses the surplus (see ecology/reproduction.ts); energy is

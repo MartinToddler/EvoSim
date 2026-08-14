@@ -1,5 +1,6 @@
 import { Q, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
+import { reportCombatKill } from "../history/eventDetection";
 import { DeathCause, markDeath } from "../organisms/death";
 import { currentRadiusPos, massFromRadiusPos } from "../organisms/phenotype";
 import { type NearestTarget, findContactTarget } from "../spatial/queries";
@@ -202,8 +203,8 @@ export function buildCombatClaims(ctx: EngineContext): void {
  * Mutual kills fall out of this for free: both organisms filed their claims in
  * phase 10 while both were alive and unharmed, and both totals are applied here.
  */
-export function resolveCombatSimultaneously(ctx: EngineContext): void {
-  const { organisms, scratch } = ctx;
+export function resolveCombatSimultaneously(ctx: EngineContext, tick: number): void {
+  const { organisms, scratch, species } = ctx;
 
   for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
     const damage = scratch.damageAccumQ[slot] as number;
@@ -230,12 +231,18 @@ export function resolveCombatSimultaneously(ctx: EngineContext): void {
 
     // Credit the kill. The killer may be dying this same tick — that is what a
     // mutual kill is — and its counter is released with its slot in phase 13,
-    // which is what a per-organism lifetime counter means.
+    // which is what a per-organism lifetime counter means. The species credit
+    // and the first-predation report use the attribution directly: both bodies
+    // still have live rows here, whatever order phase 13 will release them in.
     const killerSlot = scratch.bestAttackerSlot[slot] as number;
-    if (killerSlot >= 0 && organisms.alive[killerSlot] === 1) {
-      const kills = organisms.kills[killerSlot] as number;
-      if (kills < 65535) {
-        organisms.kills[killerSlot] = kills + 1;
+    if (killerSlot >= 0) {
+      species.recordKill(organisms.speciesId[killerSlot] as number);
+      reportCombatKill(ctx, tick, slot, killerSlot, scratch.bestAttackerId[slot] as number);
+      if (organisms.alive[killerSlot] === 1) {
+        const kills = organisms.kills[killerSlot] as number;
+        if (kills < 65535) {
+          organisms.kills[killerSlot] = kills + 1;
+        }
       }
     }
   }

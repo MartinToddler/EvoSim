@@ -3,12 +3,24 @@ import type {
   EntityDetailsDto,
   HostRuntimeConfig,
   SimulationSpeed,
+  SpeciesDetailsDto,
   TelemetryDto,
+  TreeSnapshotDto,
   WorkerErrorDto,
+  WorldEventDto,
   WorldSummaryDto,
 } from "@eon/protocol";
 import type { WorldLayerId } from "@eon/renderer/palette";
-import { InspectorPanel, LayersPanel, StatsHistory, StatsPanel, TopBar } from "@eon/ui";
+import {
+  InspectorPanel,
+  LayersPanel,
+  SpeciesPanel,
+  StatsHistory,
+  StatsPanel,
+  TimelinePanel,
+  TopBar,
+  TreePanel,
+} from "@eon/ui";
 import { WorldSession } from "./app/WorldSession";
 import { readSeedFromLocation } from "./app/seed";
 import "./styles/app.css";
@@ -37,17 +49,43 @@ import "./styles/app.css";
  */
 
 /** Panels that compete for the single mobile sheet slot. */
-type PanelId = "stats" | "layers";
+type PanelId = "stats" | "layers" | "species" | "tree" | "timeline";
 
-interface PanelsOpen {
-  stats: boolean;
-  layers: boolean;
+type PanelsOpen = Readonly<Record<PanelId, boolean>>;
+
+const NO_PANELS: PanelsOpen = {
+  stats: false,
+  layers: false,
+  species: false,
+  tree: false,
+  timeline: false,
+};
+
+/**
+ * Which panel survives entering a narrow viewport with several open. Charts
+ * and running context (stats) first, then the M8 views, layers last — a
+ * deterministic rule, applied without any click involved.
+ */
+const NARROW_KEEP_PRIORITY: readonly PanelId[] = ["stats", "species", "tree", "timeline", "layers"];
+
+/** Close every panel except `keep`; identity-stable when nothing changes. */
+function keepOnly(previous: PanelsOpen, keep: PanelId | null): PanelsOpen {
+  let changed = false;
+  const next = { ...NO_PANELS } as Record<PanelId, boolean>;
+  for (const id of NARROW_KEEP_PRIORITY) {
+    const want = id === keep && previous[id];
+    next[id] = want;
+    if (want !== previous[id]) {
+      changed = true;
+    }
+  }
+  return changed ? next : previous;
 }
 
 /**
  * Track the narrow-viewport media query and enforce the one-sheet rule
- * (docs/06 §16) on the way *into* narrow: a tablet rotating with both panels
- * open must end up with one sheet, not two stacked ones. Toggle-time
+ * (docs/06 §16) on the way *into* narrow: a tablet rotating with several
+ * panels open must end up with one sheet, not a stack. Toggle-time
  * exclusivity alone misses that path, because no click is involved.
  */
 function useNarrowViewport(setPanels: React.Dispatch<React.SetStateAction<PanelsOpen>>): boolean {
@@ -60,11 +98,10 @@ function useNarrowViewport(setPanels: React.Dispatch<React.SetStateAction<Panels
     const update = (): void => {
       setNarrow(query.matches);
       if (query.matches) {
-        // Keep the stats sheet, close layers: deterministic, and stats is the
-        // sheet whose content (running charts) loses context when dismissed.
-        setPanels((previous) =>
-          previous.stats && previous.layers ? { stats: true, layers: false } : previous,
-        );
+        setPanels((previous) => {
+          const keep = NARROW_KEEP_PRIORITY.find((id) => previous[id]) ?? null;
+          return keepOnly(previous, keep);
+        });
       }
     };
     update();
@@ -99,12 +136,22 @@ export function App(): React.JSX.Element {
   const [debugOverlay, setDebugOverlay] = useState(false);
   const [worldLayer, setWorldLayer] = useState<WorldLayerId>("terrain");
   const [layerOpacity, setLayerOpacity] = useState(0.85);
-  // One state object for both panels, because the one-sheet rule is a joint
+  // One state object for every panel, because the one-sheet rule is a joint
   // constraint: updating them together can never leave two sheets open.
-  const [panels, setPanels] = useState<PanelsOpen>({ stats: false, layers: false });
+  const [panels, setPanels] = useState<PanelsOpen>(NO_PANELS);
   const narrow = useNarrowViewport(setPanels);
   const statsOpen = panels.stats;
   const layersOpen = panels.layers;
+  const speciesOpen = panels.species;
+  const treeOpen = panels.tree;
+  const timelineOpen = panels.timeline;
+
+  // --- Species and history state (Milestone 8) --------------------------------
+  const [tree, setTree] = useState<TreeSnapshotDto | null>(null);
+  const [selectedSpeciesId, setSelectedSpeciesId] = useState<number | null>(null);
+  const [speciesDetails, setSpeciesDetails] = useState<SpeciesDetailsDto | null>(null);
+  const [events, setEvents] = useState<readonly WorldEventDto[]>([]);
+  const [eventsDropped, setEventsDropped] = useState(0);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -152,6 +199,16 @@ export function App(): React.JSX.Element {
         },
         onFollowChange: (entityId) => {
           setFollowing(entityId !== null);
+        },
+        onTree: (nextTree) => {
+          setTree(nextTree);
+        },
+        onSpeciesDetails: (payload) => {
+          setSpeciesDetails(payload.details);
+        },
+        onHistoryEvents: (nextEvents, droppedBeforeOldest) => {
+          setEvents(nextEvents);
+          setEventsDropped(droppedBeforeOldest);
         },
         onError: (workerError) => {
           setError(workerError);
@@ -243,12 +300,13 @@ export function App(): React.JSX.Element {
   const togglePanel = useCallback(
     (panel: PanelId) => {
       setPanels((previous) => {
-        if (panel === "stats") {
-          const stats = !previous.stats;
-          return { stats, layers: stats && narrow ? false : previous.layers };
+        const opening = !previous[panel];
+        if (opening && narrow) {
+          const next = { ...NO_PANELS } as Record<PanelId, boolean>;
+          next[panel] = true;
+          return next;
         }
-        const layers = !previous.layers;
-        return { stats: layers && narrow ? false : previous.stats, layers };
+        return { ...previous, [panel]: opening };
       });
     },
     [narrow],
@@ -259,10 +317,53 @@ export function App(): React.JSX.Element {
   const toggleLayers = useCallback(() => {
     togglePanel("layers");
   }, [togglePanel]);
+  const toggleSpecies = useCallback(() => {
+    togglePanel("species");
+  }, [togglePanel]);
+  const toggleTree = useCallback(() => {
+    togglePanel("tree");
+  }, [togglePanel]);
+  const toggleTimeline = useCallback(() => {
+    togglePanel("timeline");
+  }, [togglePanel]);
+
+  // Live tree refresh only while someone is looking at species data; otherwise
+  // the session refreshes it only when the species set itself changes.
+  useEffect(() => {
+    sessionRef.current?.setTreeWatching(speciesOpen || treeOpen);
+  }, [speciesOpen, treeOpen]);
+
+  // Selecting a species (from any panel or the organism inspector) opens the
+  // species panel so the selection is immediately visible somewhere.
+  const selectSpecies = useCallback(
+    (speciesId: number | null) => {
+      setSelectedSpeciesId(speciesId);
+      if (speciesId === null) {
+        setSpeciesDetails(null);
+        sessionRef.current?.selectSpecies(null);
+        return;
+      }
+      setSpeciesDetails(null);
+      sessionRef.current?.selectSpecies(speciesId);
+      setPanels((previous) => {
+        if (previous.species) {
+          return previous;
+        }
+        if (narrow) {
+          const next = { ...NO_PANELS } as Record<PanelId, boolean>;
+          next.species = true;
+          return next;
+        }
+        return { ...previous, species: true };
+      });
+    },
+    [narrow],
+  );
 
   // On narrow viewports an open sheet takes the inspector's slot; selection
   // survives underneath and the inspector returns when the sheet closes.
-  const inspectorVisible = !narrow || (!statsOpen && !layersOpen);
+  const anySheetOpen = statsOpen || layersOpen || speciesOpen || treeOpen || timelineOpen;
+  const inspectorVisible = !narrow || !anySheetOpen;
 
   return (
     <div className="app">
@@ -276,12 +377,18 @@ export function App(): React.JSX.Element {
         debugOverlay={debugOverlay}
         statsOpen={statsOpen}
         layersOpen={layersOpen}
+        speciesOpen={speciesOpen}
+        treeOpen={treeOpen}
+        timelineOpen={timelineOpen}
         onSpeedChange={changeSpeed}
         onResume={resume}
         onToggleDebug={toggleDebug}
         onFitWorld={fitWorld}
         onToggleStats={toggleStats}
         onToggleLayers={toggleLayers}
+        onToggleSpecies={toggleSpecies}
+        onToggleTree={toggleTree}
+        onToggleTimeline={toggleTimeline}
       />
 
       {world === null && error === null ? (
@@ -313,6 +420,43 @@ export function App(): React.JSX.Element {
         />
       ) : null}
 
+      {speciesOpen ? (
+        <SpeciesPanel
+          tree={tree}
+          selectedSpeciesId={selectedSpeciesId}
+          details={speciesDetails}
+          display={world?.display ?? null}
+          ticksPerSimYear={hostRuntime?.ticksPerSimYear ?? 2000}
+          onSelectSpecies={selectSpecies}
+          onOpenTree={toggleTree}
+          onClose={toggleSpecies}
+        />
+      ) : null}
+
+      {treeOpen ? (
+        <TreePanel
+          tree={tree}
+          currentTick={telemetry?.tick ?? 0}
+          ticksPerSimYear={hostRuntime?.ticksPerSimYear ?? 2000}
+          selectedSpeciesId={selectedSpeciesId}
+          display={world?.display ?? null}
+          onSelectSpecies={selectSpecies}
+          onClose={toggleTree}
+        />
+      ) : null}
+
+      {timelineOpen ? (
+        <TimelinePanel
+          events={events}
+          droppedBeforeOldest={eventsDropped}
+          currentTick={telemetry?.tick ?? 0}
+          ticksPerSimYear={hostRuntime?.ticksPerSimYear ?? 2000}
+          display={world?.display ?? null}
+          onSelectSpecies={selectSpecies}
+          onClose={toggleTimeline}
+        />
+      ) : null}
+
       {inspectorVisible ? (
         <InspectorPanel
           selectedEntityId={selectedEntityId}
@@ -323,6 +467,7 @@ export function App(): React.JSX.Element {
           onClear={clearSelection}
           onFocus={focusSelection}
           onToggleFollow={toggleFollow}
+          onSelectSpecies={selectSpecies}
         />
       ) : null}
 

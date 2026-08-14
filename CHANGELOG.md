@@ -6,6 +6,75 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 8: species and history
+
+Engine **0.5.0 → 0.6.0**, snapshot schema **6 → 7**, protocol **3 → 4**, config schema unchanged
+(6). **Every golden hash regenerated** (10k fixture, both 100k soaks): the canonical stream gained
+the species registry, the world event log and the event-detector state, and a new world now
+carries a founder species record plus a `WorldCreated` event. The organism trajectory itself is
+**unchanged from 0.5.0** — the fixture reproduces 0.5.0's population/generation/diet numbers
+exactly (ADR 0013).
+
+### Added
+
+- **Species registry** (`evolution/SpeciesStore.ts`, docs/05 §5): permanent records with parent,
+  origin/end ticks, end reason (active/split/extinct), live population maintained at every birth,
+  death and split, lifetime birth/death/kill/intake accumulators, current + origin centroids and
+  split-candidate state. IDs are dense, monotonic and never reused; parents always precede
+  children, so the Tree of Life is acyclic by construction.
+- **Deterministic speciation** (`evolution/speciation.ts`, phase 16, docs/05 §§6–7): a versioned
+  fifteen-dimension normalized phenotype trait vector (hue and brain weights excluded), seeded
+  deterministic 2-means with entity-ID tie-breaks, minimum daughter population, an RMS split
+  threshold compared without division, and a five-interval stability requirement with A/B-swap
+  centroid continuity and a reset-on-failure policy. One outlier cannot split; a temporary
+  separation cannot accumulate. New validator rule: the split threshold must exceed twice the
+  continuity threshold, or swap-matching could be ambiguous.
+- **Extinction** (docs/05 §8): marked by death finalization at the exact tick a species empties,
+  with the event emitted there; split parents are not extinct; records are permanent.
+- **World event log** (`history/EventStore.ts`, docs/05 §§12–13): numeric-only records bounded by
+  `limits.maxTimelineEventsInMemoryBeforeChunk` (oldest dropped and counted — detection never
+  reads the log, so dropping cannot change future events). Event types: WorldCreated,
+  SpeciesSplit, SpeciesExtinct, PopulationBoom/Crash, FirstPredation, CarnivoreLineageDetected,
+  MassExtinction, PopulationCapReached (closing task E06), PlayerIntervention reserved for M9.
+- **Deterministic event detection** (`history/eventDetection.ts`, phase 17, docs/05 §§14–17):
+  first predation latched at the kill with attacker/victim/species/position; carnivore lineages
+  from observed intake with a persistence streak and an adequate-observation floor; boom/crash
+  against a rolling baseline with relative + absolute thresholds and a shared debounce; mass
+  extinction over a non-overlapping window; population-cap events once per pressure episode.
+  Detector state is authoritative: hashed, serialized, restored exactly.
+- **Statistics store** (`history/StatisticsStore.ts`, docs/05 §§10–11): world samples every
+  `statisticsInterval` ticks in three 10:1 tiers of 240 buckets (mean/sum/last per metric kind)
+  and a frozen-on-end 120-sample ring per species — bounded memory forever. Serialized for
+  reload continuity, deliberately NOT hashed (derived history; retention is presentation
+  capacity), with byte-exact round-trip and continuous-vs-restored equality tests instead.
+- **Protocol 4**: `QUERY_SPECIES` → `SPECIES_DETAILS`, `REQUEST_TREE` → `TREE_SNAPSHOT`,
+  `REQUEST_HISTORY_RANGE` → `HISTORY_EVENTS`; telemetry gains species counts and
+  `latestEventId` (the pull signal — no event push stream); display labels for event types,
+  severities, end reasons and trait dimensions.
+- **UI** (docs/06 §§12–14): species panel with living/ended list and a full inspector
+  (status, lineage links, observed diet fractions, pending-split progress, population and trait
+  charts, centroid bars with origin notches); Tree of Life as plain SVG with a year axis, zoom,
+  native-scroll pan, status distinction beyond colour and click-to-inspect; history timeline
+  with a severity-coded marker strip, filtering and expandable events. The top-bar species
+  placeholder is now the live count; the organism inspector links to its species. Panel state
+  generalized to five panels under the one-sheet mobile rule.
+- **Tests**: 61 new across engine fixtures (single cloud never splits; two clouds split at
+  exactly the fifth analysis; an outlier never splits; temporary separation resets; minimum
+  daughter population; parent/daughter records; extinction; stable IDs across save/load;
+  deterministic ties incl. a hand-built exact tie; pending-split snapshot/restore to an
+  identical future; no duplicate events per detector; acyclic tree; species invariants swept
+  through the 100k soak), statistics tiering/serialization, host round-trips and UI panels.
+  Browser-verified end to end (15/15 headless-Chromium checks, zero console/page errors).
+
+### Changed
+
+- `finalizeDeaths` and `resolveCombatSimultaneously` take the current tick (extinction marking
+  and first-predation capture need it).
+- `TickPhase` gains `Statistics` (13); the species-analysis slot reserved since M6 is live.
+- Golden hashes: fixture checkpoints, populated soak (`0c68f8d29c69c142`, ends with one species —
+  evolved diversity is a continuous cloud, and the detector correctly refuses to split clouds)
+  and lifeless environment soak (`3ec8fef25a0a3e86`).
+
 ## [Unreleased] — 2026-08-14 — Milestone 7 review: observation UI
 
 Independent review of the observation UI (ADR 0012). All versions unchanged — engine 0.5.0,

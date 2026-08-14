@@ -17,10 +17,16 @@
  *   `EntityDetailsDto` gains the cost breakdown and last-tick brain
  *   inputs/intents for the inspector, and `WorldSummaryDto` gains a
  *   non-authoritative `display` block (labels and legend ranges).
+ * - **4** — Milestone 8. Species and history. New request/response pairs
+ *   `QUERY_SPECIES` → `SPECIES_DETAILS`, `REQUEST_TREE` → `TREE_SNAPSHOT` and
+ *   `REQUEST_HISTORY_RANGE` → `HISTORY_EVENTS`; `TelemetryDto` gains species
+ *   counts and `latestEventId` (the pull signal — there is no event push
+ *   stream); `WorldDisplayDto` gains event/severity/end-reason/trait label
+ *   arrays.
  *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;

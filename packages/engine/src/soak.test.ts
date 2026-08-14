@@ -79,11 +79,16 @@ const SOAK_TICKS = 100_000;
  * State hash after 100 000 ticks of the soak world. Regenerate together with the
  * golden fixture whenever ENGINE_VERSION changes.
  *
- * Engine 0.5.0 moved it for the same two reasons the fixture moved: the carcass
- * store joined the hash stream, and carrion changes what organisms sense and
- * therefore do (ADR 0008 §5).
+ * Engine 0.6.0 moved it because Milestone 8 extended the canonical stream with
+ * the species registry, event log and detector state, and the initial world now
+ * carries a founder species record and a WorldCreated event. The population
+ * trajectory itself is unchanged from 0.5.0 — the new phases observe, they do
+ * not act. Notable: 100 000 ticks of real evolution end with ONE species — the
+ * evolved diversity is a continuous cloud, and the detector correctly refuses
+ * to split a cloud (docs/05 §7); the synthetic split fixtures prove the other
+ * direction.
  */
-const GOLDEN_SOAK_HASH = "84ee01707a012488";
+const GOLDEN_SOAK_HASH = "0c68f8d29c69c142";
 
 interface Violations {
   /** A live slot with the invalid entity ID 0, or an ID seen twice. */
@@ -108,6 +113,13 @@ interface Violations {
    * different phases, so it gets the same per-sweep audit the organisms get.
    */
   carcass: number;
+  /**
+   * A live organism assigned to a missing or ended species, a registry
+   * population that does not match its live members (docs/07 §4 "species
+   * population matches members"), or a parent link that does not point at an
+   * older species (the acyclicity invariant, docs/05 §19). Milestone 8.
+   */
+  species: number;
 }
 
 /** Full organism invariant sweep (docs/07 §4 development invariants). */
@@ -125,10 +137,11 @@ function checkOrganisms(engine: SimulationEngine, seenIds: Set<number>): Violati
     body: 0,
     bookkeeping: 0,
     lineage: 0,
-    // Filled by countCarcassViolations at the call site: carcasses are a separate
-    // store, and mixing their sweep into the organism loop would hide which of
-    // the two actually broke.
+    // Filled by countCarcassViolations / countSpeciesViolations at the call
+    // site: those are separate stores, and mixing their sweeps into the
+    // organism loop would hide which of them actually broke.
     carcass: 0,
+    species: 0,
   };
 
   seenIds.clear();
@@ -212,7 +225,49 @@ const NO_VIOLATIONS: Violations = {
   bookkeeping: 0,
   lineage: 0,
   carcass: 0,
+  species: 0,
 };
+
+/** Species registry invariant sweep (docs/07 §4, Milestone 8). */
+function countSpeciesViolations(engine: SimulationEngine): number {
+  const { organisms, species } = engine;
+  let violations = 0;
+
+  // Live member count per species, from the population itself.
+  const liveMembers = new Map<number, number>();
+  for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+    if (organisms.alive[slot] !== 1) {
+      continue;
+    }
+    const id = organisms.speciesId[slot] as number;
+    if (id < 1 || id > species.count) {
+      violations += 1;
+      continue;
+    }
+    liveMembers.set(id, (liveMembers.get(id) ?? 0) + 1);
+  }
+
+  let activeSeen = 0;
+  for (const record of species.records) {
+    const live = liveMembers.get(record.id) ?? 0;
+    // docs/07 §4: species population matches members, live or ended.
+    if (record.population !== live) violations += 1;
+    if (record.endReason === 0) {
+      activeSeen += 1;
+    } else if (live !== 0 || record.endTick === 0) {
+      // An ended species may not have members, and must know when it ended.
+      violations += 1;
+    }
+    // Parents strictly precede children: the Tree of Life stays acyclic.
+    if (record.id === 1 ? record.parentSpeciesId !== 0 : record.parentSpeciesId >= record.id) {
+      violations += 1;
+    }
+    if (record.parentSpeciesId < 0 || record.parentSpeciesId > species.count) violations += 1;
+  }
+  if (activeSeen !== species.activeCount) violations += 1;
+
+  return violations;
+}
 
 /** Carcass invariant sweep (docs/07 §4, Milestone 5). */
 function countCarcassViolations(engine: SimulationEngine): number {
@@ -291,6 +346,7 @@ describe("100k tick evolutionary soak (task E07)", () => {
 
         const violations = checkOrganisms(engine, seenIds);
         violations.carcass = countCarcassViolations(engine);
+        violations.species = countSpeciesViolations(engine);
         expect(`tick ${engine.tick}: ${JSON.stringify(violations)}`).toBe(
           `tick ${engine.tick}: ${JSON.stringify(NO_VIOLATIONS)}`,
         );

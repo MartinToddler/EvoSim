@@ -34,7 +34,7 @@ describe("carcass creation", () => {
     const id = world.organisms.entityId[slot] as number;
 
     markDeath(world.ctx, slot, DeathCause.Starvation);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
 
     expect(world.carcasses.liveCount).toBe(1);
     expect(world.carcasses.active[0]).toBe(1);
@@ -126,7 +126,7 @@ describe("carcass creation", () => {
     for (const slot of slots) {
       markDeath(world.ctx, slot, DeathCause.OldAge);
     }
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
 
     expect(world.carcasses.liveCount).toBe(2);
     expect(world.carcasses.skippedAtCap).toBe(1);
@@ -164,7 +164,7 @@ describe("carcass decay", () => {
     const world = createTestWorld({ temperatureCentiC: 1800 });
     const slot = spawnTestOrganism(world, world.cellCenter(10, 10));
     markDeath(world.ctx, slot, DeathCause.OldAge);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
 
     const created = world.carcasses.totalMeatCreated;
     let previous = world.carcasses.remainingMeat[0] as number;

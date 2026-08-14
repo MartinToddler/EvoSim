@@ -4,6 +4,7 @@ import {
   BRAIN_OUTPUT_COUNT,
   BRAIN_WEIGHT_COUNT,
 } from "./brain/BrainLayout";
+import { TRAIT_DIMENSIONS } from "./evolution/traitVector";
 import { GENE_COUNT } from "./genetics/genes";
 
 /**
@@ -136,6 +137,32 @@ export class EngineScratch {
   readonly childGenes: Uint16Array;
   readonly childBrainWeights: Int16Array;
 
+  // --- Species analysis (docs/05 §7, phase 16) --------------------------------
+  /** Slots of the species currently being analyzed, ascending. */
+  readonly speciesMemberSlots: Int32Array;
+  /** Trait vectors of those members, TRAIT_DIMENSIONS values each. */
+  readonly speciesMemberTraits: Int32Array;
+  /** 2-means cluster per member: 0 = cluster A, 1 = cluster B. */
+  readonly speciesAssignment: Uint8Array;
+  /** Working centroids and their per-dimension sums. */
+  readonly speciesCentroidA: Int32Array;
+  readonly speciesCentroidB: Int32Array;
+  readonly speciesCentroidSumA: Int32Array;
+  readonly speciesCentroidSumB: Int32Array;
+
+  // --- Statistics sampling (docs/05 §10, phase 17) -----------------------------
+  /**
+   * Per-species accumulators, indexed by `speciesId - 1`. Species counts grow
+   * without bound (records are permanent), so unlike every other scratch array
+   * these are regrown on demand by {@link ensureSpeciesAccumulators} —
+   * amortized, and only at the 100-tick statistics cadence, never in a per-tick
+   * loop.
+   */
+  speciesPopulation: Float64Array;
+  speciesSizeSum: Float64Array;
+  speciesSpeedSum: Float64Array;
+  speciesDietSum: Float64Array;
+
   #demandedCellCount = 0;
   #demandedCarcassCount = 0;
   #reproducerCount = 0;
@@ -188,6 +215,38 @@ export class EngineScratch {
     this.reproducers = new Int32Array(capacity);
     this.childGenes = new Uint16Array(GENE_COUNT);
     this.childBrainWeights = new Int16Array(BRAIN_WEIGHT_COUNT);
+
+    this.speciesMemberSlots = new Int32Array(capacity);
+    this.speciesMemberTraits = new Int32Array(capacity * TRAIT_DIMENSIONS);
+    this.speciesAssignment = new Uint8Array(capacity);
+    this.speciesCentroidA = new Int32Array(TRAIT_DIMENSIONS);
+    this.speciesCentroidB = new Int32Array(TRAIT_DIMENSIONS);
+    this.speciesCentroidSumA = new Int32Array(TRAIT_DIMENSIONS);
+    this.speciesCentroidSumB = new Int32Array(TRAIT_DIMENSIONS);
+
+    this.speciesPopulation = new Float64Array(0);
+    this.speciesSizeSum = new Float64Array(0);
+    this.speciesSpeedSum = new Float64Array(0);
+    this.speciesDietSum = new Float64Array(0);
+  }
+
+  /**
+   * Make the per-species statistics accumulators hold at least `count` rows
+   * and zero the used prefix. Growth doubles to keep reallocation amortized.
+   */
+  ensureSpeciesAccumulators(count: number): void {
+    if (this.speciesPopulation.length < count) {
+      const size = Math.max(count, this.speciesPopulation.length * 2, 16);
+      this.speciesPopulation = new Float64Array(size);
+      this.speciesSizeSum = new Float64Array(size);
+      this.speciesSpeedSum = new Float64Array(size);
+      this.speciesDietSum = new Float64Array(size);
+    } else {
+      this.speciesPopulation.fill(0, 0, count);
+      this.speciesSizeSum.fill(0, 0, count);
+      this.speciesSpeedSum.fill(0, 0, count);
+      this.speciesDietSum.fill(0, 0, count);
+    }
   }
 
   /** Number of eligible parents collected this tick. */

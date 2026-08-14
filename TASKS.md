@@ -59,8 +59,9 @@ and snapshot restore trusting a malformed free list. Golden hashes unchanged.
 - [x] E03 ecological mutation.
 - [x] E04 brain mutation.
 - [x] E05 generation/parent IDs.
-- [ ] E06 population cap event — deterministic rejection and diagnostics counters done; the
-      `PopulationCapReached` timeline event needs the Milestone 8 `EventStore`.
+- [x] E06 population cap event — deterministic rejection and diagnostics counters since M4; the
+      `PopulationCapReached` timeline event landed with the Milestone 8 `EventStore` (one event
+      per pressure episode, ADR 0013 §4).
 - [x] E07 100k deterministic soak.
 - [x] E08 parameter sweep harness.
 
@@ -296,14 +297,36 @@ Four P2 defects found and fixed, plus three P3 polish items:
    radio role); the seed-copy confirmation timer is cleared on re-click and unmount.
 
 ## I Species/history
-- [ ] I01 species registry.
-- [ ] I02 trait vector/distance.
-- [ ] I03 deterministic 2-means.
-- [ ] I04 stability candidate.
-- [ ] I05 split/extinction.
-- [ ] I06 events.
-- [ ] I07 tree UI.
-- [ ] I08 species inspector.
+- [x] I01 species registry.
+- [x] I02 trait vector/distance.
+- [x] I03 deterministic 2-means.
+- [x] I04 stability candidate.
+- [x] I05 split/extinction.
+- [x] I06 events.
+- [x] I07 tree UI.
+- [x] I08 species inspector.
+
+Milestone 8 gate: **PASS** (engine 0.5.0 → 0.6.0, snapshot schema 7, protocol 4, ADR 0013).
+Phases 16 (species analysis) and 17 (statistics/event detection) now run. The registry, the
+versioned fifteen-dimension trait vector, deterministic seeded 2-means with five-interval
+stability, extinction-at-the-death-tick, the bounded event log with eight live detectors, the
+tiered statistics store, protocol 4 and the species panel / Tree of Life / history timeline are
+implemented and tested (61 new tests; 13 mandated fixtures all present). **Every golden hash
+regenerated** — the canonical stream gained the species registry, event log and detector state —
+while the organism trajectory reproduces 0.5.0 exactly (same 10k population/generation/diet).
+Snapshot schema 7 restores a mid-candidate world to an identical future: split on the same tick,
+event log equal entry for entry, statistics byte-identical.
+
+Two notes carried forward:
+
+1. **100 000 ticks of real evolution end with ONE species** (ADR 0013 §9). The founder lineage's
+   evolved diversity is a continuous cloud, and the docs/05 §7 detector exists precisely to
+   refuse to split clouds — the synthetic fixtures prove real bimodality splits after exactly
+   five stable analyses. Whether default constants let bimodality EMERGE at realistic horizons
+   joins the L07 calibration questions (docs/07 §12 lists "species never splitting" as a failure
+   mode to monitor there).
+2. **"Focus members" from the docs/06 §12 species-inspector list is deferred** — it needs a
+   member-position query the protocol does not carry; every other listed field shipped.
 
 ## J Player tools
 - [ ] J01 immutable command log.
