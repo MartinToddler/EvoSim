@@ -1,16 +1,82 @@
 {
-  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + empty command log. Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000) and a CHANGELOG entry. Engine 0.6.0 regenerated every hash because Milestone 8 extended the canonical stream with the species registry, the world event log and the event-detector state, and because the initial world now carries a founder species record and a WorldCreated event. The organisms' trajectory is UNCHANGED from 0.5.0 — phases 16 and 17 observe the world and write registry/event state; they never touch an organism, a plant or the PRNG — and the tick-10000 population, generation and diet statistics reproduce 0.5.0's exactly.",
-  "engineVersion": "0.6.0",
-  "configSchemaVersion": 6,
+  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + the fixed command log below (one command of every intervention kind, Milestone 9). Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000 --fixture-commands) and a CHANGELOG entry. Engine 0.7.0 regenerated every hash: the canonical stream gained the founder region and the command log, event payloads became signed 32-bit words, the config gained the interventions section, and the fixture now RUNS the command log — the trajectory legitimately diverges from 0.6.0 once the first command applies at tick 50 (by tick 10000: population 4381 vs 4364, 26 drowning deaths from the flooded LOWER_TERRAIN stroke, a meteor crater at the founder centre). Tick 0 and 1 differ from 0.6.0 only through the hash-stream and config changes; the organism trajectory is identical until the first command applies.",
+  "engineVersion": "0.7.0",
+  "configSchemaVersion": 7,
   "seedHex": "0xE0A12026",
-  "configHash": "2d2712ccf817a700",
-  "commands": [],
+  "configHash": "a1157fd0201ed348",
+  "commands": [
+    { "kind": 0, "offsetCentiC": 300, "targetTick": 50 },
+    {
+      "kind": 1,
+      "radiusLU": 48,
+      "strength": 200,
+      "falloff": 0,
+      "samplesXLU": [3700, 3740, 3780],
+      "samplesYLU": [2480, 2500, 2520],
+      "targetTick": 200
+    },
+    {
+      "kind": 2,
+      "radiusLU": 48,
+      "strength": 384,
+      "falloff": 0,
+      "samplesXLU": [3720, 3760, 3800],
+      "samplesYLU": [2560, 2560, 2560],
+      "targetTick": 500
+    },
+    {
+      "kind": 3,
+      "radiusLU": 48,
+      "strength": 256,
+      "falloff": 0,
+      "samplesXLU": [3680, 3720],
+      "samplesYLU": [2440, 2440],
+      "targetTick": 800
+    },
+    {
+      "kind": 4,
+      "radiusLU": 32,
+      "strength": 192,
+      "falloff": 1,
+      "samplesXLU": [3600, 3632],
+      "samplesYLU": [2400, 2400],
+      "targetTick": 1200
+    },
+    {
+      "kind": 5,
+      "radiusLU": 32,
+      "strength": 192,
+      "falloff": 0,
+      "samplesXLU": [3856, 3888],
+      "samplesYLU": [2600, 2600],
+      "targetTick": 1500
+    },
+    {
+      "kind": 6,
+      "radiusLU": 24,
+      "strength": 2000,
+      "falloff": 1,
+      "samplesXLU": [3752],
+      "samplesYLU": [2520],
+      "targetTick": 2000
+    },
+    {
+      "kind": 7,
+      "radiusLU": 24,
+      "strength": 2000,
+      "falloff": 0,
+      "samplesXLU": [3752],
+      "samplesYLU": [2520],
+      "targetTick": 2500
+    },
+    { "kind": 8, "centerXLU": 3752, "centerYLU": 2520, "radiusLU": 128, "targetTick": 5000 }
+  ],
   "checkpoints": {
-    "0": "424560d50e9d5ab5",
-    "1": "10188977f269af37",
-    "10": "423ccb7c394579d8",
-    "100": "7cc761593f8314f9",
-    "1000": "409e77ed46acff61",
-    "10000": "c438dcb79e8aa2a7"
+    "0": "b23df0e3e21a2e63",
+    "1": "9811b3459a2708a5",
+    "10": "ea766aca0000c592",
+    "100": "40ab509570db71d9",
+    "1000": "ee04bc0729533257",
+    "10000": "a55b02d3da4564a3"
   }
 }

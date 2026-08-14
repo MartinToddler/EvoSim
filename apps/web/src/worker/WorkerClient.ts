@@ -1,6 +1,8 @@
 import {
   PROTOCOL_VERSION,
   decodeWorkerToMainMessage,
+  type CommandRequestDto,
+  type CommandResultPayload,
   type EntityDetailsPayload,
   type HistoryEventsPayload,
   type HostRuntimeConfig,
@@ -10,6 +12,7 @@ import {
   type SpeciesDetailsPayload,
   type StateHashPayload,
   type TelemetryDto,
+  type TerrainSnapshotPayload,
   type TreeSnapshotPayload,
   type VegetationSnapshotPayload,
   type WorkerErrorDto,
@@ -54,6 +57,8 @@ export interface WorkerClientHandlers {
   onWorldReady?: (payload: WorldReadyPayload) => void;
   onRenderSnapshot?: (payload: RenderSnapshotPayload) => void;
   onVegetationSnapshot?: (payload: VegetationSnapshotPayload) => void;
+  /** Terrain re-shipped after a player command edited the world (Milestone 9). */
+  onTerrainSnapshot?: (payload: TerrainSnapshotPayload) => void;
   onTelemetry?: (payload: TelemetryDto) => void;
   onError?: (payload: WorkerErrorDto) => void;
   /** Reported when a message could not be decoded — a protocol-level fault. */
@@ -63,7 +68,13 @@ export interface WorkerClientHandlers {
 interface PendingRequest {
   resolve: (value: never) => void;
   reject: (error: Error) => void;
-  kind: "ENTITY_DETAILS" | "SPECIES_DETAILS" | "TREE_SNAPSHOT" | "HISTORY_EVENTS" | "STATE_HASH";
+  kind:
+    | "ENTITY_DETAILS"
+    | "SPECIES_DETAILS"
+    | "TREE_SNAPSHOT"
+    | "HISTORY_EVENTS"
+    | "STATE_HASH"
+    | "COMMAND_RESULT";
 }
 
 export class WorkerClient {
@@ -161,6 +172,21 @@ export class WorkerClient {
   }
 
   // --- Requests --------------------------------------------------------------
+
+  /**
+   * Queue one player command (Milestone 9). Resolves with the engine's
+   * verdict — acceptance carries the stamped (id, tick, sequence) identity,
+   * rejection a deterministic reason — and never rejects for a mere refusal:
+   * a promise rejection here means the Worker itself failed.
+   */
+  queueCommand(command: CommandRequestDto): Promise<CommandResultPayload> {
+    return this.#request<CommandResultPayload>("COMMAND_RESULT", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "QUEUE_COMMAND",
+      payload: { command },
+    }));
+  }
 
   queryEntity(entityId: number): Promise<EntityDetailsPayload> {
     return this.#request<EntityDetailsPayload>("ENTITY_DETAILS", (requestId) => ({
@@ -306,6 +332,9 @@ export class WorkerClient {
         return;
       case "VEGETATION_SNAPSHOT":
         this.#handlers.onVegetationSnapshot?.(message.payload);
+        return;
+      case "TERRAIN_SNAPSHOT":
+        this.#handlers.onTerrainSnapshot?.(message.payload);
         return;
       case "TELEMETRY":
         this.#handlers.onTelemetry?.(message.payload);

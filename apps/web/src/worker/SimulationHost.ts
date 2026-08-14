@@ -1,12 +1,16 @@
 import {
   BRAIN_INPUT_NAMES,
   BRAIN_OUTPUT_NAMES,
+  BrushFalloff,
+  COMMAND_REJECT_REASON_NAMES,
   CONFIG_SCHEMA_VERSION,
   DEATH_CAUSE_COUNT,
   DEATH_CAUSE_NAMES,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
   EVENT_SEVERITY_NAMES,
+  INTERVENTION_KIND_NAMES,
+  InterventionKind,
   POS_SCALE,
   Q,
   SNAPSHOT_SCHEMA_VERSION,
@@ -26,6 +30,7 @@ import {
   writeRenderSnapshot,
   writeTerrainFields,
   writeVegetationField,
+  type CommandInput,
   type HistorySlice,
   type SimulationConfig,
   type SpeciesDetails,
@@ -47,6 +52,8 @@ import {
   viewRenderSnapshot,
   viewTerrainSnapshot,
   viewVegetationSnapshot,
+  type CommandRequestDto,
+  type CommandResultDto,
   type HistorySliceDto,
   type HostRuntimeConfig,
   type MainToWorkerMessage,
@@ -174,6 +181,8 @@ export class SimulationHost {
   #telemetryWindowTicks = 0;
   #lastTelemetryAt = Number.NEGATIVE_INFINITY;
   #behindTarget = false;
+  /** Command-log cursor at the last terrain check; a move means terrain may have changed. */
+  #lastAppliedCommandCursor = 0;
 
   #disposed = false;
   #fatal = false;
@@ -264,6 +273,9 @@ export class SimulationHost {
       case "SET_RUN_STATE":
         this.#setSpeed(message.payload.speed);
         return;
+      case "QUEUE_COMMAND":
+        this.#queueCommand(message.payload.command, message.requestId ?? 0);
+        return;
       case "QUERY_ENTITY":
         this.#answerEntityQuery(message.payload.entityId, message.requestId ?? 0);
         return;
@@ -350,9 +362,28 @@ export class SimulationHost {
         eventSeverityLabels: [...EVENT_SEVERITY_NAMES],
         speciesEndReasonLabels: [...SPECIES_END_REASON_NAMES],
         traitDimensionLabels: [...TRAIT_DIM_NAMES],
+        interventionKindLabels: [...INTERVENTION_KIND_NAMES],
         temperatureDisplayMinC: TEMPERATURE_DISPLAY_MIN_CENTI_C / 100,
         temperatureDisplayMaxC: TEMPERATURE_DISPLAY_MAX_CENTI_C / 100,
         capacityDisplayReference: capacityDisplayReference(engine.config),
+        // Tool bounds verbatim from the authoritative config (Milestone 9), so
+        // the UI's sliders can never promise a value the engine would reject.
+        interventions: {
+          brushSampleSpacingLU: engine.config.interventions.brushSampleSpacingLU,
+          maxBrushSamplesPerCommand: engine.config.interventions.maxBrushSamplesPerCommand,
+          minBrushRadiusLU: engine.config.interventions.minBrushRadiusLU,
+          maxBrushRadiusLU: engine.config.interventions.maxBrushRadiusLU,
+          maxTemperatureBrushStrengthCentiC:
+            engine.config.interventions.maxTemperatureBrushStrengthCentiC,
+          maxMoistureBrushStrengthQ: engine.config.interventions.maxMoistureBrushStrengthQ,
+          maxFertilityBrushStrengthQ: engine.config.interventions.maxFertilityBrushStrengthQ,
+          maxTerrainBrushStrengthQ: engine.config.interventions.maxTerrainBrushStrengthQ,
+          maxBiomassBrushStrengthUnits: engine.config.interventions.maxBiomassBrushStrengthUnits,
+          maxGlobalTemperatureOffsetCentiC:
+            engine.config.interventions.maxGlobalTemperatureOffsetCentiC,
+          meteorMinRadiusLU: engine.config.interventions.meteor.minRadiusLU,
+          meteorMaxRadiusLU: engine.config.interventions.meteor.maxRadiusLU,
+        },
       },
     };
     this.#world = world;
@@ -366,6 +397,7 @@ export class SimulationHost {
     this.#lastRenderAt = Number.NEGATIVE_INFINITY;
     this.#lastVegetationAt = Number.NEGATIVE_INFINITY;
     this.#lastTelemetryAt = Number.NEGATIVE_INFINITY;
+    this.#lastAppliedCommandCursor = 0;
     this.#telemetryWindowStart = this.#clock.now();
     this.#telemetryWindowTicks = 0;
     this.#profiler.resetWindow();
@@ -469,6 +501,7 @@ export class SimulationHost {
     try {
       const executed = this.#runTickSlice(engine);
       this.#telemetryWindowTicks += executed;
+      this.#emitTerrainIfCommandsApplied();
       this.#emitRenderSnapshotIfDue();
       this.#emitVegetationIfDue();
       this.#emitTelemetryIfDue();
@@ -544,6 +577,69 @@ export class SimulationHost {
     this.#profiler.beginTick();
     engine.step();
     this.#profiler.endTick();
+  }
+
+  // --- Player commands (Milestone 9) ------------------------------------------
+
+  /**
+   * Queue one player command with the engine and answer with its verdict.
+   *
+   * The host converts wire shapes to engine inputs and back; it decides
+   * NOTHING about validity — acceptance, bounds and the target tick are the
+   * engine's judgement, returned as a deterministic result rather than an
+   * exception, so a rejected command becomes a toast and never a dead world.
+   */
+  #queueCommand(request: CommandRequestDto, requestId: number): void {
+    const engine = this.#engine;
+    if (engine === null) {
+      throw new Error("cannot queue a command before a world is initialized");
+    }
+    const result = engine.queueCommand(commandInputFromDto(request));
+    const dto: CommandResultDto = result.accepted
+      ? {
+          accepted: true,
+          kind: request.kind,
+          commandId: result.command.id,
+          tick: result.command.tick,
+          sequence: result.command.sequence,
+        }
+      : {
+          accepted: false,
+          kind: request.kind,
+          reason: (COMMAND_REJECT_REASON_NAMES[result.reason] ??
+            "malformed") as (CommandResultDto & { accepted: false })["reason"],
+          detail: result.detail,
+        };
+    this.#port.post(
+      requestEnvelope("COMMAND_RESULT", { result: dto, tick: engine.tick }, requestId),
+    );
+  }
+
+  /**
+   * Re-ship the packed terrain fields if any command was applied since the
+   * last check. Commands are the only thing that can change terrain between
+   * WORLD_READY snapshots, and they apply inside `step()`, so polling the
+   * log's cursor once per loop slice is exact — no applied command can be
+   * missed, and a world with no interventions never re-sends a byte.
+   */
+  #emitTerrainIfCommandsApplied(): void {
+    const engine = this.#engine;
+    const world = this.#world;
+    if (engine === null || world === null) {
+      return;
+    }
+    if (engine.commands.cursor === this.#lastAppliedCommandCursor) {
+      return;
+    }
+    this.#lastAppliedCommandCursor = engine.commands.cursor;
+    const terrainBuffer = createTerrainBuffer(world.gridSize);
+    const terrain = viewTerrainSnapshot(terrainBuffer);
+    writeTerrainFields(engine, terrain);
+    writeVegetationField(engine, terrain.vegetation);
+    terrain.header[FieldHeader.Tick] = engine.tick;
+    this.#port.post(envelope("TERRAIN_SNAPSHOT", { buffer: terrainBuffer, tick: engine.tick }), [
+      terrainBuffer,
+    ]);
   }
 
   /**
@@ -703,6 +799,7 @@ export class SimulationHost {
       extinctSpeciesCount:
         engine.species.count - engine.species.activeCount - countSplitSpecies(engine),
       latestEventId: engine.events.latestEventId,
+      pendingCommandCount: engine.commands.pendingCount,
       speed: this.#speed,
       achievedTicksPerSecond,
       targetTicksPerSecond: target,
@@ -797,6 +894,7 @@ export class SimulationHost {
         this.#stepOnce(engine);
       }
       this.#telemetryWindowTicks += remaining;
+      this.#emitTerrainIfCommandsApplied();
     }
     this.#port.post(
       requestEnvelope(
@@ -833,6 +931,54 @@ export class SimulationHost {
         : requestEnvelope("ERROR", payload, requestId),
     );
   }
+}
+
+// --- Command DTO conversion (Milestone 9) -------------------------------------
+
+/** Map the wire kind names onto the engine's numeric InterventionKind. */
+const COMMAND_KIND_BY_NAME = {
+  setGlobalTemperature: InterventionKind.SetGlobalTemperature,
+  paintTemperature: InterventionKind.PaintTemperature,
+  paintMoisture: InterventionKind.PaintMoisture,
+  paintFertility: InterventionKind.PaintFertility,
+  raiseTerrain: InterventionKind.RaiseTerrain,
+  lowerTerrain: InterventionKind.LowerTerrain,
+  addBiomass: InterventionKind.AddBiomass,
+  removeBiomass: InterventionKind.RemoveBiomass,
+  meteor: InterventionKind.Meteor,
+} as const;
+
+/** Convert a decoded wire request into an engine command input. */
+function commandInputFromDto(request: CommandRequestDto): CommandInput {
+  const targetTick =
+    request.targetTick === null || request.targetTick === undefined
+      ? {}
+      : { targetTick: request.targetTick };
+  if (request.kind === "setGlobalTemperature") {
+    return {
+      kind: InterventionKind.SetGlobalTemperature,
+      offsetCentiC: request.offsetCentiC,
+      ...targetTick,
+    };
+  }
+  if (request.kind === "meteor") {
+    return {
+      kind: InterventionKind.Meteor,
+      centerXLU: request.centerXLU,
+      centerYLU: request.centerYLU,
+      radiusLU: request.radiusLU,
+      ...targetTick,
+    };
+  }
+  return {
+    kind: COMMAND_KIND_BY_NAME[request.kind],
+    radiusLU: request.radiusLU,
+    strength: request.strength,
+    falloff: request.falloff === "hard" ? BrushFalloff.Hard : BrushFalloff.Linear,
+    samplesXLU: [...request.samplesXLU],
+    samplesYLU: [...request.samplesYLU],
+    ...targetTick,
+  };
 }
 
 // --- Species/history DTO conversion (Milestone 8) ----------------------------

@@ -19,6 +19,13 @@ import {
   type WorldEventDto,
   type WorldSummaryDto,
 } from "@eon/protocol";
+import { resampleStroke } from "@eon/protocol";
+import type {
+  BrushFalloffDto,
+  BrushKindDto,
+  CommandRequestDto,
+  CommandResultDto,
+} from "@eon/protocol";
 import { WorkerClient, workerPort, type RawWorker } from "../worker/WorkerClient";
 
 /**
@@ -69,8 +76,29 @@ export interface WorldSessionCallbacks {
    * so React can render it directly.
    */
   onHistoryEvents?: (events: readonly WorldEventDto[], droppedBeforeOldest: number) => void;
+  /** Verdict on a queued intervention (Milestone 9): accepted identity or rejection. */
+  onCommandResult?: (result: CommandResultDto, tick: number) => void;
   onError: (error: WorkerErrorDto) => void;
 }
+
+/**
+ * The tool a pointer stroke feeds (Milestone 9). The UI owns choosing it; the
+ * session owns turning strokes into canonical commands with it. Global
+ * temperature is not a canvas tool — see {@link WorldSession.applyGlobalTemperature}.
+ */
+export interface ActiveBrushTool {
+  kind: BrushKindDto;
+  radiusLU: number;
+  strength: number;
+  falloff: BrushFalloffDto;
+}
+
+export interface ActiveMeteorTool {
+  kind: "meteor";
+  radiusLU: number;
+}
+
+export type ActiveCanvasTool = ActiveBrushTool | ActiveMeteorTool;
 
 /**
  * Client-side bound on the accumulated event log, mirroring the engine's own
@@ -94,6 +122,7 @@ export interface SessionRenderer {
   setSelected(entityId: number | null): void;
   setFollowed(entityId: number | null): void;
   setDebugOverlay(enabled: boolean): void;
+  setToolCapture(radiusLU: number | null): void;
   setWorldLayer(layer: WorldLayerId): void;
   setLayerOpacity(opacity: number): void;
   focusEntity(entityId: number): boolean;
@@ -112,6 +141,7 @@ export interface RendererFactoryOptions {
   onFollowEnd: (reason: "died" | "user") => void;
   onRecycleRenderBuffer: (buffer: ArrayBuffer) => void;
   onRecycleVegetationBuffer: (buffer: ArrayBuffer) => void;
+  onStrokeComplete?: (points: { xLU: number; yLU: number }[]) => void;
 }
 
 export interface WorldSessionOptions {
@@ -215,6 +245,9 @@ export class WorldSession {
   #destroyed = false;
   #world: WorldSummaryDto | null = null;
 
+  // --- Player tools (Milestone 9) ----------------------------------------------
+  #activeTool: ActiveCanvasTool | null = null;
+
   // --- Species and history (Milestone 8) --------------------------------------
   #selectedSpeciesId: number | null = null;
   /** True while a species/tree panel is open, so populations stay live. */
@@ -261,6 +294,12 @@ export class WorldSession {
       },
       onVegetationSnapshot: (payload) => {
         this.#handleVegetation(payload.buffer);
+      },
+      onTerrainSnapshot: (payload) => {
+        // A command edited the world; repaint the terrain planes (Milestone 9).
+        if (!this.#destroyed) {
+          this.#renderer?.applyTerrain(viewTerrainSnapshot(payload.buffer));
+        }
       },
       onTelemetry: (telemetry) => {
         options.callbacks.onTelemetry(freezeTelemetry(telemetry));
@@ -373,6 +412,85 @@ export class WorldSession {
   /** Suspend or resume the render stream, e.g. when the tab is hidden. */
   setRenderStream(enabled: boolean): void {
     this.#client.setRenderStream(enabled);
+  }
+
+  // --- Player tools (Milestone 9) ----------------------------------------------
+
+  /**
+   * Arm a canvas tool, or disarm with null. While armed, one-pointer strokes
+   * paint (the renderer suppresses click-select and pan for that pointer), and
+   * each completed stroke becomes ONE canonical command. The UI never touches
+   * simulation state: this whole path ends in QUEUE_COMMAND.
+   */
+  setActiveTool(tool: ActiveCanvasTool | null): void {
+    this.#activeTool = tool;
+    this.#renderer?.setToolCapture(tool === null ? null : tool.radiusLU);
+  }
+
+  get activeTool(): ActiveCanvasTool | null {
+    return this.#activeTool;
+  }
+
+  /** Queue a SET_GLOBAL_TEMPERATURE_OFFSET command (panel tool, no canvas). */
+  applyGlobalTemperature(offsetCentiC: number): void {
+    this.#queueCommand({
+      kind: "setGlobalTemperature",
+      offsetCentiC: Math.round(offsetCentiC),
+    });
+  }
+
+  /** Turn one completed pointer stroke into one canonical command. */
+  #handleStrokeComplete(points: { xLU: number; yLU: number }[]): void {
+    const tool = this.#activeTool;
+    const world = this.#world;
+    if (tool === null || world === null || this.#destroyed || points.length === 0) {
+      return;
+    }
+    if (tool.kind === "meteor") {
+      // A meteor is aimed, not painted: the strike lands where the pointer
+      // lifted, quantized like every command coordinate.
+      const last = points[points.length - 1] as { xLU: number; yLU: number };
+      this.#queueCommand({
+        kind: "meteor",
+        centerXLU: Math.round(Math.min(Math.max(last.xLU, 0), world.worldSizeLU)),
+        centerYLU: Math.round(Math.min(Math.max(last.yLU, 0), world.worldSizeLU)),
+        radiusLU: Math.round(tool.radiusLU),
+      });
+      return;
+    }
+    // Canonicalization (docs/02 §16): resample the raw pointer path at the
+    // configured world spacing and quantize to whole LU. Device event rate
+    // dies here; only the canonical samples reach the log.
+    const bounds = world.display.interventions;
+    const stroke = resampleStroke(points, {
+      spacingLU: bounds.brushSampleSpacingLU,
+      maxSamples: bounds.maxBrushSamplesPerCommand,
+      worldSizeLU: world.worldSizeLU,
+    });
+    if (stroke.samplesXLU.length === 0) {
+      return;
+    }
+    this.#queueCommand({
+      kind: tool.kind,
+      radiusLU: Math.round(tool.radiusLU),
+      strength: Math.round(tool.strength),
+      falloff: tool.falloff,
+      samplesXLU: stroke.samplesXLU,
+      samplesYLU: stroke.samplesYLU,
+    });
+  }
+
+  #queueCommand(command: CommandRequestDto): void {
+    this.#client
+      .queueCommand(command)
+      .then((payload) => {
+        if (!this.#destroyed) {
+          this.#options.callbacks.onCommandResult?.(Object.freeze(payload.result), payload.tick);
+        }
+      })
+      .catch(() => {
+        // Worker failure; the error handler already surfaced it.
+      });
   }
 
   // --- Species and history (Milestone 8) --------------------------------------
@@ -539,6 +657,9 @@ export class WorldSession {
       onRecycleVegetationBuffer: (buffer) => {
         this.#client.recycleVegetationBuffer(buffer);
       },
+      onStrokeComplete: (points) => {
+        this.#handleStrokeComplete(points);
+      },
     });
 
     // The session may have been torn down while Pixi was initializing.
@@ -548,6 +669,9 @@ export class WorldSession {
     }
     this.#renderer = renderer;
     renderer.setDebugOverlay(this.#debugOverlay);
+    if (this.#activeTool !== null) {
+      renderer.setToolCapture(this.#activeTool.radiusLU);
+    }
     if (this.#worldLayer !== "terrain") {
       renderer.setWorldLayer(this.#worldLayer);
     }

@@ -99,6 +99,14 @@ export interface EonRendererOptions {
   onRecycleRenderBuffer: (buffer: ArrayBuffer) => void;
   /** Hands a spent vegetation buffer back. */
   onRecycleVegetationBuffer: (buffer: ArrayBuffer) => void;
+  /**
+   * A tool stroke finished (Milestone 9): the pointer path in float world
+   * coordinates, pointerdown to pointerup. Fired only while tool capture is
+   * armed via {@link EonRenderer.setToolCapture}. The renderer reports the
+   * gesture and draws the brush ring — canonicalization, commands and every
+   * simulation consequence live outside it (a projection must not decide).
+   */
+  onStrokeComplete?: (points: { xLU: number; yLU: number }[]) => void;
 }
 
 export interface RendererStats {
@@ -152,6 +160,8 @@ export class EonRenderer {
   readonly #detailPool: Sprite[] = [];
   readonly #selectionLayer = new Graphics();
   readonly #debugLayer = new Graphics();
+  /** Screen-space brush ring; drawn only while a tool is armed (Milestone 9). */
+  readonly #toolLayer = new Graphics();
 
   #snapshot: RenderSnapshotView | null = null;
   #organismCount = 0;
@@ -174,6 +184,12 @@ export class EonRenderer {
   #dragLastY = 0;
   #dragTravel = 0;
   #pinchDistance = 0;
+
+  // Tool capture state (Milestone 9). While armed, a one-pointer drag paints
+  // instead of panning; pan stays available with two fingers or by disarming.
+  #toolRadiusLU: number | null = null;
+  #toolStroke: { xLU: number; yLU: number }[] | null = null;
+  #toolCursor: { x: number; y: number } | null = null;
 
   private constructor(app: Application, options: EonRendererOptions) {
     this.#app = app;
@@ -255,6 +271,7 @@ export class EonRenderer {
     // is in pixels, so it is round at every zoom and its stroke is exactly the
     // width asked for.
     app.stage.addChild(this.#selectionLayer);
+    app.stage.addChild(this.#toolLayer);
 
     this.camera.setViewport(app.renderer.width, app.renderer.height);
     this.camera.fitWorld();
@@ -531,6 +548,24 @@ export class EonRenderer {
     this.camera.centerOn(view.organismX[index] as number, view.organismY[index] as number);
   }
 
+  /**
+   * Arm or disarm tool capture (Milestone 9).
+   *
+   * Armed, the canvas cursor paints: a one-pointer drag is collected as a
+   * stroke and reported through `onStrokeComplete` instead of panning, click
+   * selection is suppressed, and a brush ring of `radiusLU` follows the
+   * pointer. Pinch zoom and wheel zoom keep working. `null` disarms and
+   * discards any half-drawn stroke.
+   */
+  setToolCapture(radiusLU: number | null): void {
+    this.#toolRadiusLU = radiusLU;
+    if (radiusLU === null) {
+      this.#toolStroke = null;
+      this.#toolCursor = null;
+    }
+    this.#toolLayer.clear();
+  }
+
   setDebugOverlay(enabled: boolean): void {
     this.#debugEnabled = enabled;
     this.#debugLayer.visible = enabled;
@@ -601,6 +636,7 @@ export class EonRenderer {
       }
       this.#visualDirty = false;
     }
+    this.#drawToolRing();
   };
 
   #applyCamera(): void {
@@ -865,6 +901,16 @@ export class EonRenderer {
       // read as a click and select whatever it happened to land on.
       this.#dragPointerId = null;
       this.#pinchDistance = this.#currentPinchDistance();
+      // A pinch also cancels a tool stroke: the gesture stopped being a paint.
+      this.#toolStroke = null;
+      return;
+    }
+    if (this.#toolRadiusLU !== null) {
+      // Tool armed: this pointer paints. It never pans and never clicks.
+      const world = this.camera.screenToWorld(point.x, point.y);
+      this.#toolStroke = [{ xLU: world.xLU, yLU: world.yLU }];
+      this.#toolCursor = point;
+      this.#canvas.setPointerCapture(event.pointerId);
       return;
     }
     this.#dragPointerId = event.pointerId;
@@ -876,10 +922,20 @@ export class EonRenderer {
 
   readonly #onPointerMove = (event: PointerEvent): void => {
     const point = this.#localPoint(event);
+    if (this.#toolRadiusLU !== null) {
+      // The ring follows the pointer whether or not a stroke is in progress.
+      this.#toolCursor = point;
+    }
     if (!this.#activePointers.has(event.pointerId)) {
       return;
     }
     this.#activePointers.set(event.pointerId, point);
+
+    if (this.#toolStroke !== null && this.#activePointers.size === 1) {
+      const world = this.camera.screenToWorld(point.x, point.y);
+      this.#toolStroke.push({ xLU: world.xLU, yLU: world.yLU });
+      return;
+    }
 
     if (this.#activePointers.size >= 2) {
       const distance = this.#currentPinchDistance();
@@ -914,6 +970,18 @@ export class EonRenderer {
     const wasDragging = this.#dragPointerId === event.pointerId;
     const point = this.#localPoint(event);
     this.#activePointers.delete(event.pointerId);
+
+    if (this.#toolStroke !== null && this.#activePointers.size === 0) {
+      // The stroke is complete. Deliver the raw pointer path upward; the
+      // session canonicalizes it and builds the command.
+      const stroke = this.#toolStroke;
+      this.#toolStroke = null;
+      if (this.#canvas.hasPointerCapture(event.pointerId)) {
+        this.#canvas.releasePointerCapture(event.pointerId);
+      }
+      this.#options.onStrokeComplete?.(stroke);
+      return;
+    }
     if (this.#activePointers.size < 2) {
       this.#pinchDistance = 0;
     }
@@ -965,6 +1033,23 @@ export class EonRenderer {
       return { x: this.camera.viewportWidth / 2, y: this.camera.viewportHeight / 2 };
     }
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+
+  /** The screen-space brush ring, redrawn per frame while a tool is armed. */
+  #drawToolRing(): void {
+    const graphics = this.#toolLayer;
+    const radiusLU = this.#toolRadiusLU;
+    const cursor = this.#toolCursor;
+    graphics.clear();
+    if (radiusLU === null || cursor === null) {
+      return;
+    }
+    const radiusPx = Math.max(3, radiusLU * this.camera.zoom);
+    graphics
+      .circle(cursor.x, cursor.y, radiusPx)
+      .stroke({ color: 0xffd166, width: 1.5, alpha: 0.9 })
+      .circle(cursor.x, cursor.y, 1.5)
+      .fill({ color: 0xffd166, alpha: 0.9 });
   }
 
   /** Hit-test a screen point and report the result upward. */

@@ -96,6 +96,9 @@ class FakeRenderer implements SessionRenderer {
   setDebugOverlay(): void {
     this.calls.push("setDebugOverlay");
   }
+  setToolCapture(radiusLU: number | null): void {
+    this.calls.push(`setToolCapture:${radiusLU === null ? "off" : radiusLU}`);
+  }
   setWorldLayer(layer: WorldLayerId): void {
     this.layer = layer;
     this.calls.push(`setWorldLayer:${layer}`);
@@ -140,6 +143,21 @@ function worldFixture(): WorldSummaryDto {
       eventSeverityLabels: ["info"],
       speciesEndReasonLabels: ["active"],
       traitDimensionLabels: ["adultSize"],
+      interventionKindLabels: ["globalTemperature"],
+      interventions: {
+        brushSampleSpacingLU: 8,
+        maxBrushSamplesPerCommand: 64,
+        minBrushRadiusLU: 4,
+        maxBrushRadiusLU: 128,
+        maxTemperatureBrushStrengthCentiC: 400,
+        maxMoistureBrushStrengthQ: 512,
+        maxFertilityBrushStrengthQ: 512,
+        maxTerrainBrushStrengthQ: 256,
+        maxBiomassBrushStrengthUnits: 4000,
+        maxGlobalTemperatureOffsetCentiC: 2000,
+        meteorMinRadiusLU: 24,
+        meteorMaxRadiusLU: 256,
+      },
       temperatureDisplayMinC: -25,
       temperatureDisplayMaxC: 35,
       capacityDisplayReference: 4000,
@@ -175,6 +193,7 @@ function telemetryFixture(tick: number): TelemetryDto {
     totalSpeciesCount: 1,
     extinctSpeciesCount: 0,
     latestEventId: 1,
+    pendingCommandCount: 0,
     speed: "x1",
     achievedTicksPerSecond: 20,
     targetTicksPerSecond: 20,

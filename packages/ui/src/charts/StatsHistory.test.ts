@@ -36,6 +36,7 @@ function telemetryAt(tick: number, overrides: Partial<TelemetryDto> = {}): Telem
     totalSpeciesCount: 1,
     extinctSpeciesCount: 0,
     latestEventId: 1,
+    pendingCommandCount: 0,
     speed: "x1",
     achievedTicksPerSecond: 20,
     targetTicksPerSecond: 20,

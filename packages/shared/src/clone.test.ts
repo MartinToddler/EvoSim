@@ -26,4 +26,22 @@ describe("deepCloneJson", () => {
     expect(clone.x.y).toBe(2);
     expect(frozen.x.y).toBe(1);
   });
+
+  it('copies a real "__proto__" key as data instead of reshaping the prototype', () => {
+    // JSON.parse produces a genuine own "__proto__" key; snapshots are JSON
+    // that may come from disk (foundation-gate ADR §7).
+    const source = JSON.parse('{"__proto__": {"polluted": 1}, "safe": 2}') as Record<
+      string,
+      unknown
+    >;
+    const clone = deepCloneJson(source);
+    expect(Object.getPrototypeOf(clone)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(clone, "__proto__")).toBe(true);
+    expect((clone as { safe: number }).safe).toBe(2);
+    expect(
+      (Object.getOwnPropertyDescriptor(clone, "__proto__")?.value as { polluted: number }).polluted,
+    ).toBe(1);
+    // Nothing leaked onto Object.prototype either.
+    expect(({} as { polluted?: number }).polluted).toBeUndefined();
+  });
 });

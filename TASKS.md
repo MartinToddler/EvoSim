@@ -341,15 +341,40 @@ distance — the ADR 0007 §2 / ADR 0009 §1 class), and `SpeciesStore.capture()
 a hypothetical zero-pass split candidate (now asserted loudly at save time).
 
 ## J Player tools
-- [ ] J01 immutable command log.
-- [ ] J02 stroke resampling.
-- [ ] J03 global/local temperature.
-- [ ] J04 moisture/fertility.
-- [ ] J05 terrain raise/lower.
-- [ ] J06 biomass.
-- [ ] J07 meteor.
-- [ ] J08 timeline integration.
-- [ ] J09 optional translocation.
+- [x] J01 immutable command log.
+- [x] J02 stroke resampling.
+- [x] J03 global/local temperature.
+- [x] J04 moisture/fertility.
+- [x] J05 terrain raise/lower.
+- [x] J06 biomass.
+- [x] J07 meteor.
+- [x] J08 timeline integration.
+- [ ] J09 optional translocation — deliberately not built: docs/01 §4 and docs/02 §15 both label
+      it "late-MVP if schedule permits", and `TRANSLOCATE_ORGANISMS` is the one command whose
+      payload the docs never specify. It stays open as the optional task it is.
+
+Milestone 9 gate: **PASS** (engine 0.6.0 → 0.7.0, snapshot schema 8, config schema 7, protocol 5,
+ADR 0015). Phase 0 (applyCommands) now runs. Player input is canonical commands only: immutable,
+versioned (`COMMAND_SCHEMA_VERSION` 1), engine-stamped `(id, tick, sequence)` identity, validated
+with deterministic rejection (past tick / malformed / out of bounds), `(tick, sequence)`-ordered,
+hashed and serialized with an application cursor so a restored world neither re-applies nor skips
+a command. Brush strokes canonicalize in the protocol package (fixed world-distance resampling +
+whole-LU quantization) so pointer event rate never reaches history — the same stroke at 2, 17 and
+500 pointer events is the same command. Every documented tool shipped: global temperature offset,
+warm/cool, wet/dry, fertility, terrain raise/lower (with real flooding/draining via the
+deterministic biome/capacity/passability region recompute), biomass add/remove (with the
+docs/03 §27 bounded transient overfill), and the meteor (radial organism damage with a lethal
+core, biomass loss, crater, scorched soil, Major event). Each applied command appends exactly one
+PlayerIntervention event; the timeline names the tool. The golden fixture now RUNS a nine-command
+log covering every kind — every applier is inside the golden regression net. 96 new tests.
+
+**The pre-J05 merge mandate is closed** (ADR 0006 §0 → ADR 0013 §10): the foundation-gate and
+Milestone 2.5 branches were reconciled semantically rather than textually merged — every
+foundation-gate fix is now in this line (exact config shape, geometry bounds, snapshot value
+validation, restore-without-regeneration through a forge-proof channel, the hashed founder
+region, the sealed environment store, the `__proto__`-safe clone, dead noise salts removed), and
+the M2.5 debug visualizer is recorded as superseded by the M6 renderer + M7 layer views it was
+reused into. Details and per-fix disposition in ADR 0015 §0.
 
 ## K Persistence/replay
 - [ ] K01 IndexedDB schema.

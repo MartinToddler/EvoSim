@@ -163,6 +163,17 @@ export class EventStore {
 
   /** Append one event, assigning its ID. Returns the stored record. */
   append(input: WorldEventInput): WorldEventRecord {
+    // Payload entries are SIGNED 32-bit integers by contract since engine
+    // 0.7.0: intervention payloads legitimately carry negative values (a
+    // cooling brush strength, a negative global offset). The bound is asserted
+    // at the one place payloads enter, so hashing them as 32-bit words below
+    // can never truncate.
+    for (const value of input.payload) {
+      assert(
+        Number.isSafeInteger(value) && value >= -2147483648 && value <= 2147483647,
+        `event payload entries must be signed 32-bit integers, got ${value}`,
+      );
+    }
     const record: WorldEventRecord = {
       id: this.#nextEventId,
       tick: input.tick,
@@ -219,7 +230,10 @@ export class EventStore {
       hasher.word(event.payloadVersion);
       hasher.word(event.payload.length);
       for (const value of event.payload) {
-        hasher.safeInteger(value);
+        // Signed 32-bit by the append contract; the word hash keeps the
+        // two's-complement bit pattern, so -1 and 4294967295 cannot collide
+        // with each other's neighbours the way a truncating cast would.
+        hasher.word(value | 0);
       }
     }
   }
@@ -254,6 +268,13 @@ export class EventStore {
         );
       }
       previousId = event.id;
+      for (const value of event.payload) {
+        if (!Number.isSafeInteger(value) || value < -2147483648 || value > 2147483647) {
+          throw new EventSnapshotError(
+            `event ${event.id} payload entry ${value} is outside the signed 32-bit contract`,
+          );
+        }
+      }
     }
     this.#nextEventId = snapshot.nextEventId;
     this.#droppedEventCount = snapshot.droppedEventCount;

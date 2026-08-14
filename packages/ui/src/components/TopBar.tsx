@@ -53,6 +53,7 @@ export interface TopBarProps {
   speciesOpen: boolean;
   treeOpen: boolean;
   timelineOpen: boolean;
+  toolsOpen: boolean;
   onSpeedChange: (speed: SimulationSpeed) => void;
   /** Resume from pause at the last running speed. */
   onResume: () => void;
@@ -63,6 +64,7 @@ export interface TopBarProps {
   onToggleSpecies: () => void;
   onToggleTree: () => void;
   onToggleTimeline: () => void;
+  onToggleTools: () => void;
 }
 
 /** Run-state label: the honest one, including "behind" (docs/01 §11). */
@@ -282,6 +284,14 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
           onClick={props.onToggleTimeline}
         >
           History
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.toolsOpen}
+          title="Intervention tools: climate, ecology, terrain, catastrophe"
+          onClick={props.onToggleTools}
+        >
+          Tools
         </button>
         <button
           type="button"

@@ -79,16 +79,16 @@ const SOAK_TICKS = 100_000;
  * State hash after 100 000 ticks of the soak world. Regenerate together with the
  * golden fixture whenever ENGINE_VERSION changes.
  *
- * Engine 0.6.0 moved it because Milestone 8 extended the canonical stream with
- * the species registry, event log and detector state, and the initial world now
- * carries a founder species record and a WorldCreated event. The population
- * trajectory itself is unchanged from 0.5.0 — the new phases observe, they do
- * not act. Notable: 100 000 ticks of real evolution end with ONE species — the
- * evolved diversity is a continuous cloud, and the detector correctly refuses
- * to split a cloud (docs/05 §7); the synthetic split fixtures prove the other
- * direction.
+ * Engine 0.7.0 moved it with no ecological change: the founder region and the
+ * (empty) command log joined the canonical stream, event payloads became
+ * signed 32-bit words, and the config digest gained the interventions section.
+ * No command ever runs in this world — the population trajectory is unchanged
+ * from 0.6.0, exactly as 0.6.0's was from 0.5.0. Notable, still: 100 000 ticks
+ * of real evolution end with ONE species — the evolved diversity is a
+ * continuous cloud, and the detector correctly refuses to split a cloud
+ * (docs/05 §7); the synthetic split fixtures prove the other direction.
  */
-const GOLDEN_SOAK_HASH = "0c68f8d29c69c142";
+const GOLDEN_SOAK_HASH = "a7e2b5e223c8657a";
 
 interface Violations {
   /** A live slot with the invalid entity ID 0, or an ID seen twice. */

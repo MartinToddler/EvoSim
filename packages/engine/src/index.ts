@@ -352,6 +352,39 @@ export {
   type TreeSnapshot,
   type HistorySlice,
 } from "./render/querySpecies";
+export {
+  COMMAND_SCHEMA_VERSION,
+  InterventionKind,
+  INTERVENTION_KIND_COUNT,
+  INTERVENTION_KIND_NAMES,
+  COMMAND_TYPE_NAMES,
+  BrushFalloff,
+  BRUSH_FALLOFF_NAMES,
+  CommandRejectReason,
+  COMMAND_REJECT_REASON_NAMES,
+  isBrushKind,
+  brushStrengthBound,
+  brushStrengthIsSigned,
+  validateCommandInput,
+  type SimulationCommand,
+  type GlobalTemperatureCommand,
+  type BrushCommand,
+  type MeteorCommand,
+  type BrushKind,
+  type CommandInput,
+  type GlobalTemperatureInput,
+  type BrushInput,
+  type MeteorInput,
+  type CommandQueueResult,
+} from "./commands/SimulationCommand";
+export {
+  CommandLog,
+  CommandLogSnapshotError,
+  type CommandLogSnapshot,
+} from "./commands/CommandLog";
+export { applyCommandsForTick } from "./commands/applyCommands";
+export { FIXTURE_COMMANDS } from "./fixtures/fixtureCommands";
+export { recomputeDerivedRegion } from "./world/recomputeRegion";
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG
 // must stay unreachable from outside this package (see internal.ts).
 export { SimulationEngine, type SimulationEngineOptions, MAX_TICK } from "./SimulationEngine";

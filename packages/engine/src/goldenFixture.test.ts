@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "./SimulationEngine";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import { hashConfig } from "./config/hashConfig";
+import { FIXTURE_COMMANDS } from "./fixtures/fixtureCommands";
 import goldenFixture from "./fixtures/goldenStateHashes.json";
 import { CONFIG_SCHEMA_VERSION, ENGINE_VERSION } from "./version";
 
@@ -10,11 +11,11 @@ import { CONFIG_SCHEMA_VERSION, ENGINE_VERSION } from "./version";
  *
  *   seed:     0xE0A12026
  *   config:   DEFAULT_CONFIG
- *   commands: fixed fixture log (empty until player commands exist, M9)
+ *   commands: FIXTURE_COMMANDS (one command of every intervention kind, M9)
  *
  * If these assertions fail after an intentional engine change: bump
  * ENGINE_VERSION, regenerate hashes with
- * `pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000`,
+ * `pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000 --fixture-commands`,
  * update the fixture file and add a CHANGELOG entry. UI-only changes must
  * NEVER alter these hashes.
  */
@@ -24,8 +25,10 @@ describe("golden deterministic fixture", () => {
     expect(goldenFixture.configSchemaVersion).toBe(CONFIG_SCHEMA_VERSION);
   });
 
-  it("fixture command log is empty in Milestone 1", () => {
-    expect(goldenFixture.commands).toEqual([]);
+  it("fixture command log matches the canonical module, so the two cannot drift", () => {
+    expect(goldenFixture.commands).toEqual(
+      FIXTURE_COMMANDS.map((input) => JSON.parse(JSON.stringify(input)) as unknown),
+    );
   });
 
   it("DEFAULT_CONFIG hash matches the fixture", () => {
@@ -40,6 +43,10 @@ describe("golden deterministic fixture", () => {
     expect(seed).toBe(0xe0a12026);
 
     const engine = new SimulationEngine({ seed, config: DEFAULT_CONFIG });
+    for (const input of FIXTURE_COMMANDS) {
+      const result = engine.queueCommand(input);
+      expect(result.accepted).toBe(true);
+    }
     const expected = goldenFixture.checkpoints as Record<string, string>;
     const checkpointTicks = Object.keys(expected)
       .map((key) => Number.parseInt(key, 10))

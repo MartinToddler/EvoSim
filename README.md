@@ -99,15 +99,20 @@ pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (
 pnpm --filter @eon/web dev   # run the web app locally
 ```
 
-Current status: Milestones 0–8 complete — workspace, determinism skeleton (hardened after
+Current status: Milestones 0–9 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
 combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), the Worker host, render
 transport and PixiJS renderer (ADR 0010), the observation UI (ADR 0011, reviewed in ADR 0012),
-and species + history (ADR 0013): a deterministic species registry, seeded 2-means bifurcation
-detection with five-interval stability, extinction and lineage records, a bounded world event
-log with eight deterministic detectors, tiered statistics, and the Tree of Life / species
-inspector / history timeline views (engine 0.6.0, snapshot schema 7, protocol 4).
+species + history (ADR 0013, reviewed in ADR 0014), and player interventions (ADR 0015): an
+immutable `(tick, sequence)`-ordered command log applied only in phase 0, canonical
+device-independent brush strokes, nine intervention tools (global temperature, warm/cool,
+wet/dry, fertility, terrain raise/lower with real flooding and draining, biomass add/remove,
+meteor), deterministic biome/capacity/passability recompute after every edit, one
+PlayerIntervention timeline event per command, and command cursor/history in every snapshot so
+saves replay without double-applying (engine 0.7.0, snapshot schema 8, config schema 7,
+protocol 5). The pre-J05 foundation-gate mandate is closed: its six fixes are ported (ADR 0015
+§0).
 
 **The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,

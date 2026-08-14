@@ -22,6 +22,7 @@ export { LayersPanel, type LayersPanelProps } from "./components/LayersPanel";
 export { SpeciesPanel, speciesName, type SpeciesPanelProps } from "./components/SpeciesPanel";
 export { StatsPanel, type StatsPanelProps } from "./components/StatsPanel";
 export { TimelinePanel, type TimelinePanelProps } from "./components/TimelinePanel";
+export { ToolsPanel, type ToolSelection, type ToolsPanelProps } from "./components/ToolsPanel";
 export { TopBar, type TopBarProps } from "./components/TopBar";
 export { TreePanel, type TreePanelProps } from "./components/TreePanel";
 export {

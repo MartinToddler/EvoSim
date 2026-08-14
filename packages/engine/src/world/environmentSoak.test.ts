@@ -43,11 +43,12 @@ describe("100k tick environment soak", () => {
    * world. Regenerate together with the golden fixture whenever ENGINE_VERSION
    * changes.
    */
-  // Engine 0.6.0 moved this hash even though this world is lifeless: the
-  // species registry (holding the empty founder species), the event log
-  // (holding WorldCreated) and the detector state (sampling an empty world
-  // every statistics interval) all joined the canonical stream.
-  const GOLDEN_SOAK_HASH = "3ec8fef25a0a3e86";
+  // Engine 0.7.0 moved this hash with no ecological change: the founder
+  // region and the (empty) command log joined the canonical stream, event
+  // payloads became signed 32-bit words, and the config digest gained the
+  // interventions section. The world itself is untouched — no command ever
+  // runs here.
+  const GOLDEN_SOAK_HASH = "50f1dab29578c7fe";
 
   const LIFELESS_CONFIG = (() => {
     const config = cloneConfig(DEFAULT_CONFIG);

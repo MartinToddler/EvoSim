@@ -39,12 +39,34 @@ export {
   type WorldSummaryDto,
 } from "./dto";
 
+// Player commands and canonical stroke resampling (Milestone 9, tasks J01–J02).
+export {
+  COMMAND_KINDS,
+  COMMAND_REJECT_REASONS,
+  resampleStroke,
+  type BrushFalloffDto,
+  type BrushKindDto,
+  type BrushRequestDto,
+  type CanonicalStroke,
+  type CommandKindDto,
+  type CommandRejectReasonDto,
+  type CommandRequestDto,
+  type CommandResultDto,
+  type GlobalTemperatureRequestDto,
+  type InterventionDisplayDto,
+  type MeteorRequestDto,
+  type ResampleStrokeOptions,
+  type StrokePointLU,
+} from "./commands";
+
 // Message unions and safe decoding (task G01).
 export {
+  commandKindOf,
   decodeMainToWorkerMessage,
   decodeWorkerToMainMessage,
   envelope,
   requestEnvelope,
+  type CommandResultPayload,
   type DecodeResult,
   type EntityDetailsPayload,
   type HistoryEventsPayload,
@@ -54,6 +76,7 @@ export {
   type QueryEntityPayload,
   type QuerySpeciesPayload,
   type QueryStateHashPayload,
+  type QueueCommandPayload,
   type RecycleBufferPayload,
   type RenderSnapshotPayload,
   type RequestHistoryRangePayload,
@@ -61,6 +84,7 @@ export {
   type SetRunStatePayload,
   type SpeciesDetailsPayload,
   type StateHashPayload,
+  type TerrainSnapshotPayload,
   type TreeSnapshotPayload,
   type VegetationSnapshotPayload,
   type WorkerToMainMessage,

@@ -30,6 +30,13 @@
  * arrived with Milestone 8 (protocol 4).
  */
 
+import {
+  COMMAND_KINDS,
+  type BrushRequestDto,
+  type CommandKindDto,
+  type CommandRequestDto,
+  type CommandResultDto,
+} from "./commands";
 import type {
   EntityDetailsDto,
   HistorySliceDto,
@@ -102,6 +109,16 @@ export interface RecycleBufferPayload {
   buffer: ArrayBuffer;
 }
 
+export interface QueueCommandPayload {
+  /**
+   * One canonical player command request (Milestone 9). The Worker forwards it
+   * to the engine, which validates, stamps identity and records it; the
+   * COMMAND_RESULT response echoes the outcome. Commands are the ONLY channel
+   * through which the UI can change authoritative state.
+   */
+  command: CommandRequestDto;
+}
+
 export interface SetRenderStreamPayload {
   /**
    * Whether the Worker should keep producing render snapshots.
@@ -115,6 +132,7 @@ export interface SetRenderStreamPayload {
 export type MainToWorkerMessage =
   | Envelope<"INIT_NEW_WORLD", InitNewWorldPayload>
   | Envelope<"SET_RUN_STATE", SetRunStatePayload>
+  | Envelope<"QUEUE_COMMAND", QueueCommandPayload>
   | Envelope<"QUERY_ENTITY", QueryEntityPayload>
   | Envelope<"QUERY_SPECIES", QuerySpeciesPayload>
   | Envelope<"REQUEST_TREE", Record<string, never>>
@@ -130,6 +148,7 @@ export type MainToWorkerType = MainToWorkerMessage["type"];
 const MAIN_TO_WORKER_TYPES: readonly MainToWorkerType[] = [
   "INIT_NEW_WORLD",
   "SET_RUN_STATE",
+  "QUEUE_COMMAND",
   "QUERY_ENTITY",
   "QUERY_SPECIES",
   "REQUEST_TREE",
@@ -160,6 +179,23 @@ export interface RenderSnapshotPayload {
 export interface VegetationSnapshotPayload {
   /** Packed vegetation field; see `./terrainSnapshot`. Transferred. */
   buffer: ArrayBuffer;
+  tick: number;
+}
+
+export interface TerrainSnapshotPayload {
+  /**
+   * Packed terrain fields, the same layout WORLD_READY ships; see
+   * `./terrainSnapshot`. Transferred. Sent again whenever an applied command
+   * changed the environment (Milestone 9) — terrain stopped being static the
+   * moment the player could raise, lower, flood and scorch it.
+   */
+  buffer: ArrayBuffer;
+  tick: number;
+}
+
+export interface CommandResultPayload {
+  result: CommandResultDto;
+  /** Tick at which the engine answered. */
   tick: number;
 }
 
@@ -204,7 +240,9 @@ export type WorkerToMainMessage =
   | Envelope<"WORLD_READY", WorldReadyPayload>
   | Envelope<"RENDER_SNAPSHOT", RenderSnapshotPayload>
   | Envelope<"VEGETATION_SNAPSHOT", VegetationSnapshotPayload>
+  | Envelope<"TERRAIN_SNAPSHOT", TerrainSnapshotPayload>
   | Envelope<"TELEMETRY", TelemetryDto>
+  | Envelope<"COMMAND_RESULT", CommandResultPayload>
   | Envelope<"ENTITY_DETAILS", EntityDetailsPayload>
   | Envelope<"SPECIES_DETAILS", SpeciesDetailsPayload>
   | Envelope<"TREE_SNAPSHOT", TreeSnapshotPayload>
@@ -337,6 +375,24 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
         message: { protocolVersion: PROTOCOL_VERSION, type: "SET_RUN_STATE", payload: { speed } },
       };
     }
+    case "QUEUE_COMMAND": {
+      if (requestId === undefined) {
+        return bad("QUEUE_COMMAND requires a requestId so the result can be correlated");
+      }
+      const decoded = decodeCommandRequest(payload["command"]);
+      if (!decoded.ok) {
+        return bad(`QUEUE_COMMAND ${decoded.reason}`);
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "QUEUE_COMMAND",
+          payload: { command: decoded.command },
+        },
+      };
+    }
     case "QUERY_ENTITY": {
       const entityId = payload["entityId"];
       if (!isSafeIndex(entityId)) {
@@ -461,6 +517,91 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
 }
 
 /**
+ * Structural decode of one command request (Milestone 9).
+ *
+ * Deliberately SHAPE-only: field types, array parallelism, known kind and
+ * falloff names. Values — bounds, signs, integrality — are the ENGINE's to
+ * judge, and it answers with a deterministic COMMAND_RESULT rejection rather
+ * than a protocol error, so a slider bug in the UI produces a readable "out of
+ * bounds" toast instead of a dead message.
+ */
+function decodeCommandRequest(
+  value: unknown,
+): { ok: true; command: CommandRequestDto } | { ok: false; reason: string } {
+  if (!isRecord(value)) {
+    return { ok: false, reason: "command must be an object" };
+  }
+  const kind = value["kind"];
+  if (typeof kind !== "string" || !(COMMAND_KINDS as readonly string[]).includes(kind)) {
+    return { ok: false, reason: `command kind is unknown: ${JSON.stringify(kind)}` };
+  }
+  const targetTick = value["targetTick"];
+  if (targetTick !== undefined && targetTick !== null && typeof targetTick !== "number") {
+    return { ok: false, reason: "command targetTick must be a number, null or absent" };
+  }
+  const tickField = targetTick === undefined ? {} : { targetTick };
+
+  if (kind === "setGlobalTemperature") {
+    const offsetCentiC = value["offsetCentiC"];
+    if (typeof offsetCentiC !== "number") {
+      return { ok: false, reason: "setGlobalTemperature offsetCentiC must be a number" };
+    }
+    return { ok: true, command: { kind, offsetCentiC, ...tickField } };
+  }
+
+  if (kind === "meteor") {
+    const centerXLU = value["centerXLU"];
+    const centerYLU = value["centerYLU"];
+    const radiusLU = value["radiusLU"];
+    if (
+      typeof centerXLU !== "number" ||
+      typeof centerYLU !== "number" ||
+      typeof radiusLU !== "number"
+    ) {
+      return { ok: false, reason: "meteor centre and radius must be numbers" };
+    }
+    return { ok: true, command: { kind, centerXLU, centerYLU, radiusLU, ...tickField } };
+  }
+
+  const radiusLU = value["radiusLU"];
+  const strength = value["strength"];
+  const falloff = value["falloff"];
+  const samplesXLU = value["samplesXLU"];
+  const samplesYLU = value["samplesYLU"];
+  if (typeof radiusLU !== "number" || typeof strength !== "number") {
+    return { ok: false, reason: `${kind} radius and strength must be numbers` };
+  }
+  if (falloff !== "linear" && falloff !== "hard") {
+    return { ok: false, reason: `${kind} falloff must be "linear" or "hard"` };
+  }
+  if (!isNumberArray(samplesXLU) || !isNumberArray(samplesYLU)) {
+    return { ok: false, reason: `${kind} samples must be number arrays` };
+  }
+  if (samplesXLU.length !== samplesYLU.length || samplesXLU.length === 0) {
+    return { ok: false, reason: `${kind} sample arrays must be parallel and non-empty` };
+  }
+  const command: BrushRequestDto = {
+    kind: kind as BrushRequestDto["kind"],
+    radiusLU,
+    strength,
+    falloff,
+    samplesXLU: [...samplesXLU],
+    samplesYLU: [...samplesYLU],
+    ...tickField,
+  };
+  return { ok: true, command };
+}
+
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "number");
+}
+
+/** The wire kind of a command request, for COMMAND_RESULT echoes. */
+export function commandKindOf(command: CommandRequestDto): CommandKindDto {
+  return command.kind;
+}
+
+/**
  * Decode an untrusted `MessageEvent.data` into a worker→main message.
  *
  * The main thread is the less hostile direction — it only ever receives what
@@ -488,7 +629,9 @@ export function decodeWorkerToMainMessage(data: unknown): DecodeResult<WorkerToM
     case "WORLD_READY":
     case "RENDER_SNAPSHOT":
     case "VEGETATION_SNAPSHOT":
+    case "TERRAIN_SNAPSHOT":
     case "TELEMETRY":
+    case "COMMAND_RESULT":
     case "ENTITY_DETAILS":
     case "SPECIES_DETAILS":
     case "TREE_SNAPSHOT":

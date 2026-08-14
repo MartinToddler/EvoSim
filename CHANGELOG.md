@@ -6,6 +6,74 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 9: player interventions and the command log
+
+Engine **0.6.0 → 0.7.0**, snapshot schema **7 → 8**, config schema **6 → 7**, protocol **4 → 5**,
+new `COMMAND_SCHEMA_VERSION` **1** (ADR 0015). **Every golden hash regenerated** (10k fixture,
+both 100k soaks): the canonical stream gained the founder region and the player command log,
+event payloads became signed 32-bit words, the config gained the `interventions` section — and
+the mandatory fixture now RUNS a fixed nine-command log (one command of every kind), so its
+trajectory legitimately diverges once the first command applies at tick 50. A no-command world
+reproduces 0.6.0's organism trajectory exactly.
+
+### Added
+
+- **Authoritative command log** (`commands/CommandLog.ts`, task J01): immutable, engine-stamped
+  `(id, tick, sequence)` identity, `(tick, sequence)` application order, deterministic rejection
+  (past tick / malformed / out of bounds), hashed and serialized with its application cursor so a
+  restored world neither re-applies nor skips a command. Duplicate ids/sequences and disordered
+  logs are unrepresentable live and typed errors on restore.
+- **Phase 0: applyCommands** (`commands/applyCommands.ts`, docs/03 §7): the only write path from
+  player input to authoritative state; pure integer math, no PRNG draws, row-major affected-cell
+  order, at most one application per cell per command (max falloff over stroke samples).
+- **All documented interventions** (docs/03 §25): global temperature offset, warm/cool brush,
+  wet/dry brush, fertility brush, terrain raise/lower with real flooding/draining, biomass
+  add/remove with the docs/03 §27 bounded transient overfill, and the meteor (lethal-core radial
+  damage, biomass loss, crater, scorched soil, Major event). Deterministic
+  biome/capacity/passability recompute for every affected region (`world/recomputeRegion.ts`),
+  generation-parity pinned by test. `DeathCause.Meteor` is now reachable.
+- **Canonical stroke resampling** (`@eon/protocol` `resampleStroke`, task J02, docs/02 §16):
+  fixed world-distance resampling plus whole-LU quantization; the same stroke at 2, 17 and 500
+  pointer events is the same command. Pointer event rate never reaches history.
+- **Protocol 5**: `QUEUE_COMMAND` → `COMMAND_RESULT` (structural decode; value judgements are the
+  engine's, answered as deterministic rejections), `TERRAIN_SNAPSHOT` terrain re-ship after an
+  applied command, `TelemetryDto.pendingCommandCount`, intervention labels and config-derived
+  tool bounds in `WorldDisplayDto`.
+- **Tools UI** (docs/06 §10): grouped palette (Climate/Ecology/Terrain/Catastrophe) with
+  radius/strength bounded by the shipped config limits, persistence notes and pressure-language
+  descriptions; renderer tool-capture mode (brush ring, paint-not-pan, click-select suppressed,
+  pinch cancels a stroke); timeline names the tool of every `PlayerIntervention` event;
+  "queued — applies when the simulation runs" honesty while paused.
+- **Fixture command log** (`fixtures/fixtureCommands.ts`): nine commands, every kind, inside the
+  golden regression net; `pnpm headless --fixture-commands` regenerates.
+- 96 new tests across engine, protocol, host and UI: same-stream hash equality, ordering,
+  multi-command ticks, duplicate handling, past-tick rejection, per-kind appliers, brush
+  frequency invariance, snapshot cursor round-trips, exactly-once application, full-session
+  replay equality, worker-vs-headless determinism with commands.
+
+### Changed
+
+- **Event payloads are signed 32-bit integers** by contract (asserted at append, validated at
+  restore, hashed as words): a cooling brush legitimately logs a negative strength.
+- `TickPhase` gains `Commands` (15 phases; profiling captures phase 0).
+
+### Fixed (foundation-gate port — closes the ADR 0006 §0 → ADR 0013 §10 pre-J05 mandate)
+
+- **Exact config shape**: unknown fields, missing fields and host values in the authoritative
+  config fail construction instead of silently entering the world hash.
+- **World geometry bounds**: `envGridSize ≤ 4096`; `sizeLU` bounded so Int32 positions cannot
+  wrap.
+- **Snapshot value validation**: field ranges, biome enum, growth carry, founder-region
+  consistency, biomass within the overfill ceiling — corrupt payloads fail loudly at load.
+- **Restore without regeneration**: `fromSnapshot` adopts the snapshot's environment, founder
+  region and stored `generationAttempt` through a forge-proof module-private channel; a save
+  whose config can no longer generate any world still loads.
+- **Founder region hashed** (four words after the environment arrays).
+- **Sealed environment store**: frozen instance; the global temperature offset is writable only
+  through the engine-internal setter.
+- `deepCloneJson` defines `__proto__` as an own property; dead per-octave noise salts removed;
+  `getMoistureQ` magic `4096` → `Q`.
+
 ## [Unreleased] — 2026-08-14 — Milestone 8 review: species and history
 
 Independent review of Milestone 8 (ADR 0014) against the twenty-one-point audit brief. All

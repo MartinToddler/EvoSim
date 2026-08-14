@@ -302,6 +302,29 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     eventCooldownStatsSamples: 10,
   },
 
+  interventions: {
+    maxBrushSamplesPerCommand: 64,
+    brushSampleSpacingLU: 8,
+    minBrushRadiusLU: 4,
+    maxBrushRadiusLU: 128,
+    maxTemperatureBrushStrengthCentiC: 400, // ±4.00 °C per application
+    maxMoistureBrushStrengthQ: 512, // ±0.125 per application
+    maxFertilityBrushStrengthQ: 512, // ±0.125 per application
+    maxTerrainBrushStrengthQ: 256, // ~0.0625 elevation per application
+    maxBiomassBrushStrengthUnits: 4000,
+    maxLocalTemperatureOffsetCentiC: 4000, // saturates at ±40 °C
+    maxGlobalTemperatureOffsetCentiC: 2000, // ±20 °C
+    biomassOverfillLimitQ: 8192, // 2.0 × capacity (docs/03 §27 transient overfill)
+    meteor: {
+      minRadiusLU: 24,
+      maxRadiusLU: 256,
+      damageQ: 8192, // 2.0 health bars at the centre: lethal within the inner half-radius
+      biomassLossQ: 4096, // all plants at the centre
+      depressionQ: 450, // ~0.11 elevation drop: lowlands flood, mountains crater
+      fertilityDeltaQ: -614, // ~-0.15: scorched soil at the centre
+    },
+  },
+
   limits: {
     maxOrganisms: 8192,
     maxCarcasses: 4096,

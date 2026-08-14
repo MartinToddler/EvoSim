@@ -1,5 +1,7 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
+import { Q } from "../math/fixed";
+import { BIOME_COUNT } from "./biomes";
 import { EnvironmentStore } from "./EnvironmentStore";
 import type { FounderRegion } from "./validateWorld";
 
@@ -71,6 +73,17 @@ function checkLength(actual: number, expected: number, name: string): void {
   }
 }
 
+function checkRange(values: ArrayLike<number>, min: number, max: number, name: string): void {
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i] as number;
+    if (value < min || value > max) {
+      throw new EnvironmentSnapshotError(
+        `environment snapshot ${name}[${i}] is ${value}, outside [${min}, ${max}]`,
+      );
+    }
+  }
+}
+
 /**
  * Rebuild a live store from a snapshot, validating array lengths first
  * (docs/06 §27: a load validates lengths before trusting the payload).
@@ -104,6 +117,80 @@ export function restoreEnvironment(
   checkLength(snapshot.plantCapacity.length, cells, "plantCapacity");
   checkLength(snapshot.plantGrowthRemainderQ.length, cells, "plantGrowthRemainderQ");
 
+  // Value validation (docs/06 §27, docs/03 §27; foundation-gate ADR §5): a
+  // payload with correct lengths and impossible contents must fail here, not
+  // surface later as a world that silently went barren or wrapped a row.
+  checkRange(snapshot.elevationQ, 0, Q, "elevationQ");
+  checkRange(snapshot.baseMoistureQ, 0, Q, "baseMoistureQ");
+  checkRange(snapshot.moistureOffsetQ, -Q, Q, "moistureOffsetQ");
+  checkRange(snapshot.fertilityQ, 0, Q, "fertilityQ");
+  checkRange(snapshot.temperatureOffsetCentiC, -32768, 32767, "temperatureOffsetCentiC");
+  // Growth carry is a strict fraction of one biomass unit.
+  checkRange(snapshot.plantGrowthRemainderQ, 0, Q - 1, "plantGrowthRemainderQ");
+  for (let i = 0; i < snapshot.biome.length; i += 1) {
+    const biome = snapshot.biome[i] as number;
+    if (biome >= BIOME_COUNT) {
+      throw new EnvironmentSnapshotError(
+        `environment snapshot biome[${i}] is ${biome}, not a Biome value (0..${BIOME_COUNT - 1})`,
+      );
+    }
+  }
+  // Biomass may exceed capacity only within the documented transient brush
+  // overfill allowance (docs/03 §27, interventions.biomassOverfillLimitQ) —
+  // a snapshot saved right after an ADD_BIOMASS stroke is a legitimate world.
+  const overfillLimitQ = config.interventions.biomassOverfillLimitQ;
+  for (let i = 0; i < snapshot.plantBiomass.length; i += 1) {
+    const biomass = snapshot.plantBiomass[i] as number;
+    const capacity = snapshot.plantCapacity[i] as number;
+    const ceiling = Math.trunc((capacity * overfillLimitQ) / Q);
+    if (biomass > ceiling) {
+      throw new EnvironmentSnapshotError(
+        `environment snapshot plantBiomass[${i}] is ${biomass}, above the overfill ceiling ` +
+          `${ceiling} for capacity ${capacity}`,
+      );
+    }
+  }
+  if (!Number.isSafeInteger(snapshot.globalTemperatureOffsetCentiC)) {
+    throw new EnvironmentSnapshotError(
+      `environment snapshot global temperature offset must be an integer, got ` +
+        `${snapshot.globalTemperatureOffsetCentiC}`,
+    );
+  }
+
+  // The founder region must be internally consistent with the grid it claims
+  // to belong to: it becomes authoritative state on restore (the saved region
+  // is the true one; foundation-gate ADR §2), so a corrupt one must not load.
+  const region = snapshot.founderRegion;
+  const inGrid =
+    Number.isSafeInteger(region.centerGridX) &&
+    Number.isSafeInteger(region.centerGridY) &&
+    region.centerGridX >= 0 &&
+    region.centerGridX < snapshot.size &&
+    region.centerGridY >= 0 &&
+    region.centerGridY < snapshot.size;
+  if (!inGrid) {
+    throw new EnvironmentSnapshotError(
+      `environment snapshot founder region centre (${region.centerGridX}, ${region.centerGridY}) ` +
+        `is outside the ${snapshot.size}x${snapshot.size} grid`,
+    );
+  }
+  if (region.centerCellIndex !== region.centerGridY * snapshot.size + region.centerGridX) {
+    throw new EnvironmentSnapshotError(
+      `environment snapshot founder region cell index ${region.centerCellIndex} does not match ` +
+        `its coordinates (${region.centerGridX}, ${region.centerGridY})`,
+    );
+  }
+  if (
+    !Number.isSafeInteger(region.componentCells) ||
+    region.componentCells < 1 ||
+    region.componentCells > snapshot.size * snapshot.size
+  ) {
+    throw new EnvironmentSnapshotError(
+      `environment snapshot founder region component size ${region.componentCells} is not a ` +
+        `cell count within the grid`,
+    );
+  }
+
   environment.elevationQ.set(snapshot.elevationQ);
   environment.baseMoistureQ.set(snapshot.baseMoistureQ);
   environment.moistureOffsetQ.set(snapshot.moistureOffsetQ);
@@ -114,7 +201,7 @@ export function restoreEnvironment(
   environment.plantBiomass.set(snapshot.plantBiomass);
   environment.plantCapacity.set(snapshot.plantCapacity);
   environment.plantGrowthRemainderQ.set(snapshot.plantGrowthRemainderQ);
-  environment.globalTemperatureOffsetCentiC = snapshot.globalTemperatureOffsetCentiC;
+  environment.setGlobalTemperatureOffsetCentiC(snapshot.globalTemperatureOffsetCentiC);
 
   environment.recomputePassability();
   return environment;

@@ -7,6 +7,8 @@
  * simulation state back.
  */
 
+import type { InterventionDisplayDto } from "./commands";
+
 /**
  * Requested simulation speed (docs/02 §8).
  *
@@ -83,6 +85,13 @@ export interface WorldDisplayDto {
   temperatureDisplayMaxC: number;
   /** Plant units that byte 255 of the terrain capacity plane represents. */
   capacityDisplayReference: number;
+  /**
+   * Intervention kind names, indexed like the engine's InterventionKind and
+   * the first entry of a PlayerIntervention event payload (Milestone 9).
+   */
+  interventionKindLabels: readonly string[];
+  /** Intervention tool bounds, copied from the authoritative config (Milestone 9). */
+  interventions: InterventionDisplayDto;
 }
 
 /** Identity of the world currently loaded in the Worker. */
@@ -185,6 +194,12 @@ export interface TelemetryDto {
    * event push stream exists.
    */
   latestEventId: number;
+  /**
+   * Player commands accepted but not yet applied (Milestone 9). Nonzero mostly
+   * while paused: a command queued on a paused world applies on the next
+   * executed tick, and the UI says so instead of pretending it already did.
+   */
+  pendingCommandCount: number;
 
   // --- Host pacing, measured on the wall clock outside the engine -----------
   speed: SimulationSpeed;

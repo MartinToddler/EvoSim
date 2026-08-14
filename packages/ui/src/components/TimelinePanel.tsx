@@ -39,7 +39,13 @@ function eventIcon(type: number): string {
 }
 
 function eventLabel(event: WorldEventDto, display: WorldDisplayDto | null): string {
-  const raw = display?.eventTypeLabels[event.type] ?? `event ${event.type}`;
+  let raw = display?.eventTypeLabels[event.type] ?? `event ${event.type}`;
+  // An intervention names its tool (Milestone 9): payload[0] is the kind,
+  // indexed into the shipped intervention labels.
+  if (raw === "playerIntervention") {
+    const kind = display?.interventionKindLabels[event.payload[0] ?? -1];
+    raw = kind === undefined ? raw : `intervention: ${kind}`;
+  }
   // "speciesSplit" -> "species split", for humans.
   return raw.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
 }

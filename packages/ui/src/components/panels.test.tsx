@@ -62,6 +62,31 @@ const display: WorldDisplayDto = {
     "maxAge",
     "offspringInvestment",
   ],
+  interventionKindLabels: [
+    "globalTemperature",
+    "temperatureBrush",
+    "moistureBrush",
+    "fertilityBrush",
+    "raiseTerrain",
+    "lowerTerrain",
+    "addBiomass",
+    "removeBiomass",
+    "meteor",
+  ],
+  interventions: {
+    brushSampleSpacingLU: 8,
+    maxBrushSamplesPerCommand: 64,
+    minBrushRadiusLU: 4,
+    maxBrushRadiusLU: 128,
+    maxTemperatureBrushStrengthCentiC: 400,
+    maxMoistureBrushStrengthQ: 512,
+    maxFertilityBrushStrengthQ: 512,
+    maxTerrainBrushStrengthQ: 256,
+    maxBiomassBrushStrengthUnits: 4000,
+    maxGlobalTemperatureOffsetCentiC: 2000,
+    meteorMinRadiusLU: 24,
+    meteorMaxRadiusLU: 256,
+  },
   temperatureDisplayMinC: -25,
   temperatureDisplayMaxC: 35,
   capacityDisplayReference: 4000,
@@ -116,6 +141,7 @@ function telemetryFixture(overrides: Partial<TelemetryDto> = {}): TelemetryDto {
     totalSpeciesCount: 5,
     extinctSpeciesCount: 1,
     latestEventId: 4,
+    pendingCommandCount: 0,
     speed: "x1",
     achievedTicksPerSecond: 19.9,
     targetTicksPerSecond: 20,
@@ -187,6 +213,7 @@ describe("TopBar", () => {
         layersOpen={false}
         speciesOpen={false}
         treeOpen={false}
+        toolsOpen={false}
         timelineOpen={false}
         onSpeedChange={noop}
         onResume={noop}
@@ -197,6 +224,7 @@ describe("TopBar", () => {
         onToggleSpecies={noop}
         onToggleTree={noop}
         onToggleTimeline={noop}
+        onToggleTools={noop}
         {...overrides}
       />,
     );

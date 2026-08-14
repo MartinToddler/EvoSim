@@ -24,9 +24,17 @@
  *   stream); `WorldDisplayDto` gains event/severity/end-reason/trait label
  *   arrays.
  *
+ * Protocol 5 (Milestone 9, player interventions): `QUEUE_COMMAND` →
+ *   `COMMAND_RESULT` carries canonical player commands and their stamped
+ *   identities; `TERRAIN_SNAPSHOT` re-ships the packed terrain fields after a
+ *   command edits the world; `TelemetryDto` gains `pendingCommandCount`;
+ *   `WorldDisplayDto` gains intervention labels and bounds; the canonical
+ *   stroke resampler (`resampleStroke`) joins the package as part of the wire
+ *   contract's meaning.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;

@@ -578,7 +578,8 @@ details.brain summary {
   .layers-panel,
   .species-panel,
   .tree-panel,
-  .timeline-panel {
+  .timeline-panel,
+  .tools-panel {
     position: absolute;
     left: 0;
     right: 0;
@@ -1007,4 +1008,73 @@ details.brain summary {
   .species-panel {
     width: 100%;
   }
+}
+
+/* --- Intervention tools (Milestone 9, docs/06 §10) ---------------------------- */
+
+.tools-panel {
+  position: absolute;
+  left: 0.75rem;
+  top: 6.5rem;
+  width: min(16rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+}
+
+.tools-panel h2 {
+  margin: 0 0 0.4rem;
+}
+
+.tools-panel h3 {
+  margin: 0.55rem 0 0.25rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--eon-text-dim);
+}
+
+.tool-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.tool-groups button,
+.tools-panel .tool-settings button {
+  text-align: left;
+}
+
+.tool-groups button[aria-checked="true"] {
+  outline: 1px solid var(--eon-accent, #ffd166);
+  background: rgba(255, 209, 102, 0.12);
+}
+
+.tool-settings {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--eon-panel-border);
+}
+
+.command-notice {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 1rem;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  pointer-events: none;
+  z-index: 30;
 }

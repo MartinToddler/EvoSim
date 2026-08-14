@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  CommandResultDto,
   EntityDetailsDto,
   HostRuntimeConfig,
   SimulationSpeed,
@@ -18,8 +19,10 @@ import {
   StatsHistory,
   StatsPanel,
   TimelinePanel,
+  ToolsPanel,
   TopBar,
   TreePanel,
+  type ToolSelection,
 } from "@eon/ui";
 import { WorldSession } from "./app/WorldSession";
 import { readSeedFromLocation } from "./app/seed";
@@ -49,7 +52,7 @@ import "./styles/app.css";
  */
 
 /** Panels that compete for the single mobile sheet slot. */
-type PanelId = "stats" | "layers" | "species" | "tree" | "timeline";
+type PanelId = "stats" | "layers" | "species" | "tree" | "timeline" | "tools";
 
 type PanelsOpen = Readonly<Record<PanelId, boolean>>;
 
@@ -59,6 +62,7 @@ const NO_PANELS: PanelsOpen = {
   species: false,
   tree: false,
   timeline: false,
+  tools: false,
 };
 
 /**
@@ -66,7 +70,14 @@ const NO_PANELS: PanelsOpen = {
  * and running context (stats) first, then the M8 views, layers last — a
  * deterministic rule, applied without any click involved.
  */
-const NARROW_KEEP_PRIORITY: readonly PanelId[] = ["stats", "species", "tree", "timeline", "layers"];
+const NARROW_KEEP_PRIORITY: readonly PanelId[] = [
+  "tools",
+  "stats",
+  "species",
+  "tree",
+  "timeline",
+  "layers",
+];
 
 /** Close every panel except `keep`; identity-stable when nothing changes. */
 function keepOnly(previous: PanelsOpen, keep: PanelId | null): PanelsOpen {
@@ -145,6 +156,12 @@ export function App(): React.JSX.Element {
   const speciesOpen = panels.species;
   const treeOpen = panels.tree;
   const timelineOpen = panels.timeline;
+  const toolsOpen = panels.tools;
+
+  // --- Player tools state (Milestone 9) ----------------------------------------
+  const [activeTool, setActiveTool] = useState<ToolSelection | null>(null);
+  const [commandNotice, setCommandNotice] = useState<string | null>(null);
+  const commandNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Species and history state (Milestone 8) --------------------------------
   const [tree, setTree] = useState<TreeSnapshotDto | null>(null);
@@ -210,6 +227,20 @@ export function App(): React.JSX.Element {
           setEvents(nextEvents);
           setEventsDropped(droppedBeforeOldest);
         },
+        onCommandResult: (result: CommandResultDto) => {
+          setCommandNotice(
+            result.accepted
+              ? `Intervention queued for tick ${result.tick} (#${result.commandId})`
+              : `Intervention rejected: ${result.detail}`,
+          );
+          if (commandNoticeTimer.current !== null) {
+            clearTimeout(commandNoticeTimer.current);
+          }
+          commandNoticeTimer.current = setTimeout(() => {
+            setCommandNotice(null);
+            commandNoticeTimer.current = null;
+          }, 4000);
+        },
         onError: (workerError) => {
           setError(workerError);
         },
@@ -227,6 +258,11 @@ export function App(): React.JSX.Element {
     // Esc clears the selection — the keyboard path to "deselect" (docs/06 §17).
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        // Esc leaves tool mode first; a second Esc clears the selection.
+        if (session.activeTool !== null) {
+          setActiveTool(null);
+          return;
+        }
         session.clearSelection();
       }
     };
@@ -235,6 +271,10 @@ export function App(): React.JSX.Element {
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("keydown", onKeyDown);
+      if (commandNoticeTimer.current !== null) {
+        clearTimeout(commandNoticeTimer.current);
+        commandNoticeTimer.current = null;
+      }
       session.destroy();
       sessionRef.current = null;
       canvas.remove();
@@ -326,6 +366,40 @@ export function App(): React.JSX.Element {
   const toggleTimeline = useCallback(() => {
     togglePanel("timeline");
   }, [togglePanel]);
+  const toggleTools = useCallback(() => {
+    togglePanel("tools");
+  }, [togglePanel]);
+
+  // Arm/disarm a canvas tool. React state is the source of truth; the session
+  // is synchronized by the effect below.
+  const selectTool = useCallback((tool: ToolSelection | null) => {
+    setActiveTool(tool);
+  }, []);
+
+  const applyGlobalTemperature = useCallback((offsetCentiC: number) => {
+    sessionRef.current?.applyGlobalTemperature(offsetCentiC);
+  }, []);
+
+  // The session's armed tool follows (panel open AND a tool chosen). Closing
+  // the panel — by toggle or by the narrow-viewport one-sheet rule — disarms
+  // capture without losing the choice: reopening re-arms the same tool. This
+  // is an external-system sync, not derived state, so an effect is the right
+  // place for it.
+  useEffect(() => {
+    const tool = toolsOpen ? activeTool : null;
+    sessionRef.current?.setActiveTool(
+      tool === null
+        ? null
+        : tool.kind === "meteor"
+          ? { kind: "meteor", radiusLU: tool.radiusLU }
+          : {
+              kind: tool.kind,
+              radiusLU: tool.radiusLU,
+              strength: tool.strength,
+              falloff: tool.falloff,
+            },
+    );
+  }, [toolsOpen, activeTool]);
 
   // Live tree refresh only while someone is looking at species data; otherwise
   // the session refreshes it only when the species set itself changes.
@@ -362,7 +436,8 @@ export function App(): React.JSX.Element {
 
   // On narrow viewports an open sheet takes the inspector's slot; selection
   // survives underneath and the inspector returns when the sheet closes.
-  const anySheetOpen = statsOpen || layersOpen || speciesOpen || treeOpen || timelineOpen;
+  const anySheetOpen =
+    statsOpen || layersOpen || speciesOpen || treeOpen || timelineOpen || toolsOpen;
   const inspectorVisible = !narrow || !anySheetOpen;
 
   return (
@@ -380,6 +455,7 @@ export function App(): React.JSX.Element {
         speciesOpen={speciesOpen}
         treeOpen={treeOpen}
         timelineOpen={timelineOpen}
+        toolsOpen={toolsOpen}
         onSpeedChange={changeSpeed}
         onResume={resume}
         onToggleDebug={toggleDebug}
@@ -389,6 +465,7 @@ export function App(): React.JSX.Element {
         onToggleSpecies={toggleSpecies}
         onToggleTree={toggleTree}
         onToggleTimeline={toggleTimeline}
+        onToggleTools={toggleTools}
       />
 
       {world === null && error === null ? (
@@ -443,6 +520,23 @@ export function App(): React.JSX.Element {
           onSelectSpecies={selectSpecies}
           onClose={toggleTree}
         />
+      ) : null}
+
+      {toolsOpen ? (
+        <ToolsPanel
+          display={world?.display ?? null}
+          active={activeTool}
+          pendingCommandCount={telemetry?.pendingCommandCount ?? 0}
+          onSelect={selectTool}
+          onApplyGlobalTemperature={applyGlobalTemperature}
+          onClose={toggleTools}
+        />
+      ) : null}
+
+      {commandNotice !== null ? (
+        <div className="command-notice" role="status">
+          {commandNotice}
+        </div>
       ) : null}
 
       {timelineOpen ? (
