@@ -141,8 +141,15 @@ export function buildTraitRanges(config: DeepReadonly<SimulationConfig>): TraitR
   const span = new Int32Array(TRAIT_DIMENSIONS);
   for (let d = 0; d < TRAIT_DIMENSIONS; d += 1) {
     const s = (max[d] as number) - (min[d] as number);
-    assert(s > 0, `trait dimension ${d} has a non-positive range ${s}; config was not validated`);
-    span[d] = s;
+    assert(s >= 0, `trait dimension ${d} has a negative range ${s}; config was not validated`);
+    // A zero span is a CONSTANT dimension: the validator accepts min == max as
+    // a legitimate "fix this trait" experiment, and every organism then shares
+    // the value. Storing span 1 makes `(value - min) * Q / span` exactly 0 for
+    // every member, so a frozen trait contributes nothing to any distance —
+    // which is what "cannot vary" means to clustering. (M8 review; the
+    // alternative was a constructor crash on a validator-accepted config, the
+    // ADR 0007 §2 / ADR 0009 §1 defect class.)
+    span[d] = s === 0 ? 1 : s;
   }
   return { min, span };
 }

@@ -6,6 +6,26 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 8 review: species and history
+
+Independent review of Milestone 8 (ADR 0014) against the twenty-one-point audit brief. All
+versions unchanged — engine 0.6.0, snapshot schema 7, protocol 4 — and **every golden hash
+unchanged**: the one engine fix is unreachable from any config that could previously construct.
+
+### Fixed
+
+- **A validator-accepted degenerate gene range crashed engine construction** (P1,
+  `evolution/traitVector.ts`). `validateConfig` accepts `min == max` ranges (the "fix this
+  trait" experiment); `buildTraitRanges` then threw on the zero span. A zero span is now a
+  constant dimension contributing exactly zero to every clustering distance — the correct
+  semantics for a trait that cannot vary. Same class as ADR 0007 §2 / ADR 0009 §1. Regression
+  test added; unreachable from `DEFAULT_CONFIG`, so no hash moved.
+- **A zero-pass split candidate would be silently dropped by save/load** (P2,
+  `evolution/SpeciesStore.ts`). The snapshot encodes "has candidate" as `passes > 0`; today
+  candidates always start at one pass, but the invariant was enforced nowhere. `capture()` now
+  asserts it, so a future violation fails loudly at save time instead of silently delaying a
+  split after restore.
+
 ## [Unreleased] — 2026-08-14 — Milestone 8: species and history
 
 Engine **0.5.0 → 0.6.0**, snapshot schema **6 → 7**, protocol **3 → 4**, config schema unchanged

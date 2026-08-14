@@ -25,6 +25,35 @@ describe("trait ranges", () => {
     }
   });
 
+  it("a validator-accepted min==max range becomes a constant dimension, not a crash (M8 review)", () => {
+    // "Fix this trait" is a legitimate experiment config: the validator accepts
+    // min == max, every organism shares the value, and the frozen dimension
+    // must contribute exactly zero to every distance.
+    const world = createTestWorld({
+      configure: (config) => {
+        config.organism.geneRanges.adultRadiusMaxPos = config.organism.geneRanges.adultRadiusMinPos;
+      },
+    });
+    const small = spawnTestOrganism(world, {
+      xPos: 5000,
+      yPos: 5000,
+      silentBrain: true,
+      genesQ: { [Gene.AdultSize]: 0 },
+    });
+    const large = spawnTestOrganism(world, {
+      xPos: 6000,
+      yPos: 6000,
+      silentBrain: true,
+      genesQ: { [Gene.AdultSize]: Q },
+    });
+
+    const out = new Int32Array(2 * TRAIT_DIMENSIONS);
+    writeTraitVector(out, 0, world.ctx.phenotypes, small, world.ctx.traitRanges);
+    writeTraitVector(out, TRAIT_DIMENSIONS, world.ctx.phenotypes, large, world.ctx.traitRanges);
+    expect(out[TraitDim.AdultSize]).toBe(0);
+    expect(out[TRAIT_DIMENSIONS + TraitDim.AdultSize]).toBe(0);
+  });
+
   it("has exactly the documented fifteen dimensions, named", () => {
     expect(TRAIT_DIMENSIONS).toBe(15);
     expect(TRAIT_DIM_NAMES).toHaveLength(15);

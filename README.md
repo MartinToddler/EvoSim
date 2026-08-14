@@ -229,6 +229,9 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
   deterministic 2-means with the swap-unambiguity validator rule, extinction at the death tick,
   one-emission-site-per-fact event detection, the hashed/derived statistics split, protocol 4's
   pull-based UI, and what 100 000 ticks of real evolution says about splitting clouds.
+- `0014-milestone-8-review.md` — the independent Milestone 8 review: the twenty-one-point audit,
+  the validator-accepted degenerate range that crashed construction (now a constant dimension),
+  and the zero-pass candidate save/load assertion.
 - `0012-milestone-7-review.md` — the independent Milestone 7 review: a third finger during a pinch
   that fired a click selection, a pinch that left its surviving finger dead, charts that blocked
   the mobile sheet from scrolling, a one-sheet rule that did not survive rotating to narrow, and

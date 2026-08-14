@@ -318,6 +318,18 @@ export class SpeciesStore {
 
   /** Capture the registry for a snapshot. Arrays are copied. */
   capture(): SpeciesSnapshot {
+    for (const record of this.#records) {
+      // The snapshot encodes "has a candidate" as candidatePasses > 0, so a
+      // candidate at zero passes would be silently DROPPED across save/load —
+      // a split delayed by one analysis, exactly the divergence M8 forbids.
+      // Today a candidate is born at one pass and only ever incremented; this
+      // makes any future violation fail loudly at save time (M8 review).
+      assert(
+        record.candidate === null || record.candidate.passes >= 1,
+        `species ${record.id} has a split candidate with ${record.candidate?.passes ?? 0} passes; ` +
+          "the snapshot encoding cannot represent it",
+      );
+    }
     return {
       nextSpeciesId: this.#nextSpeciesId,
       records: this.#records.map((record) => ({

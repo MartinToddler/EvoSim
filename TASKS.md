@@ -328,6 +328,18 @@ Two notes carried forward:
 2. **"Focus members" from the docs/06 §12 species-inspector list is deferred** — it needs a
    member-position query the protocol does not carry; every other listed field shipped.
 
+Milestone 8 review gate: **PASS** (engine 0.6.0 unchanged, ADR 0014). The implementation was
+audited against the twenty-one-point brief — normalization, clustering determinism,
+initialization, ties, order dependence, flicker, false splits, failure-to-split, minimum
+populations, split persistence, centroid stability, IDs, extinction, lineage cycles, parent
+species, event duplication, event hysteresis, pending-split and detector snapshots, hash coverage,
+replay equivalence — by tracing concrete values and by repro scripts; all eight mandated fixtures
+were already present and honest. **Every golden hash unchanged and reproduced.** Two defects found
+and fixed, neither reachable from a previously-constructible world: a validator-accepted
+`min == max` gene range crashed engine construction (now a constant dimension contributing zero
+distance — the ADR 0007 §2 / ADR 0009 §1 class), and `SpeciesStore.capture()` would silently drop
+a hypothetical zero-pass split candidate (now asserted loudly at save time).
+
 ## J Player tools
 - [ ] J01 immutable command log.
 - [ ] J02 stroke resampling.
