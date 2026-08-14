@@ -200,6 +200,15 @@ describe("TopBar", () => {
     expect(html).toContain("Population cap reached");
     expect(html).toContain("⚠");
   });
+
+  it("derives speed tooltips from the runtime's real 1x rate, not a hardcode", () => {
+    // A host paced at 30 ticks/s must not advertise the default 20-based rates.
+    const html = render({ hostRuntime: { ...hostRuntime, targetTicksPerSecond1x: 30 } });
+    expect(html).toContain("30 ticks per second");
+    expect(html).toContain("600 ticks per second"); // x20
+    expect(html).toContain("3,000 ticks per second"); // x100
+    expect(html).not.toContain("400 ticks per second");
+  });
 });
 
 describe("InspectorPanel", () => {
@@ -289,6 +298,9 @@ describe("LayersPanel", () => {
       expect(html).toContain(label);
     }
     expect(html).toMatch(/aria-checked="true"[^>]*>Temperature/);
+    // Radios are aria-checked only: aria-pressed belongs to toggle buttons and
+    // contradicts the radio role for assistive tech.
+    expect(html).not.toContain("aria-pressed");
   });
 
   it("captions the temperature legend with the published display range", () => {

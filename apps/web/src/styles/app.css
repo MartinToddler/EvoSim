@@ -173,7 +173,8 @@ button:focus-visible {
   outline-offset: 1px;
 }
 
-button[aria-pressed="true"] {
+button[aria-pressed="true"],
+button[aria-checked="true"] {
   background: rgba(100, 208, 255, 0.22);
   border-color: var(--eon-accent);
   color: #eaf7ff;
@@ -473,7 +474,10 @@ details.brain summary {
   display: block;
   width: 100%;
   height: auto;
-  touch-action: none;
+  /* pan-y, not none: a vertical swipe starting on a chart must still scroll
+     the stats sheet on touch screens — charts cover most of it — while
+     horizontal movement stays available to the hover crosshair. */
+  touch-action: pan-y;
 }
 
 .chart-gridline {

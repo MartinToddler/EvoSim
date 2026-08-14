@@ -10,7 +10,7 @@ import type {
 import type { WorldLayerId } from "@eon/renderer/palette";
 import { InspectorPanel, LayersPanel, StatsHistory, StatsPanel, TopBar } from "@eon/ui";
 import { WorldSession } from "./app/WorldSession";
-import { DEFAULT_SEED, readSeedFromLocation } from "./app/seed";
+import { readSeedFromLocation } from "./app/seed";
 import "./styles/app.css";
 
 /**
@@ -39,7 +39,18 @@ import "./styles/app.css";
 /** Panels that compete for the single mobile sheet slot. */
 type PanelId = "stats" | "layers";
 
-function useNarrowViewport(): boolean {
+interface PanelsOpen {
+  stats: boolean;
+  layers: boolean;
+}
+
+/**
+ * Track the narrow-viewport media query and enforce the one-sheet rule
+ * (docs/06 §16) on the way *into* narrow: a tablet rotating with both panels
+ * open must end up with one sheet, not two stacked ones. Toggle-time
+ * exclusivity alone misses that path, because no click is involved.
+ */
+function useNarrowViewport(setPanels: React.Dispatch<React.SetStateAction<PanelsOpen>>): boolean {
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
     const query = globalThis.matchMedia?.("(max-width: 760px)");
@@ -48,13 +59,20 @@ function useNarrowViewport(): boolean {
     }
     const update = (): void => {
       setNarrow(query.matches);
+      if (query.matches) {
+        // Keep the stats sheet, close layers: deterministic, and stats is the
+        // sheet whose content (running charts) loses context when dismissed.
+        setPanels((previous) =>
+          previous.stats && previous.layers ? { stats: true, layers: false } : previous,
+        );
+      }
     };
     update();
     query.addEventListener("change", update);
     return () => {
       query.removeEventListener("change", update);
     };
-  }, []);
+  }, [setPanels]);
   return narrow;
 }
 
@@ -64,6 +82,9 @@ export function App(): React.JSX.Element {
   // One long-lived, bounded accumulator. `useState` (never re-set) rather than
   // a ref, because the object is read during render by the stats panel.
   const [history] = useState(() => new StatsHistory());
+  // Resolved once: the URL cannot change under a mounted app, and the banner
+  // must name the world actually being generated, not always the default.
+  const [requestedSeed] = useState(() => readSeedFromLocation(globalThis.location?.search ?? ""));
 
   const [world, setWorld] = useState<WorldSummaryDto | null>(null);
   const [hostRuntime, setHostRuntime] = useState<HostRuntimeConfig | null>(null);
@@ -78,9 +99,12 @@ export function App(): React.JSX.Element {
   const [debugOverlay, setDebugOverlay] = useState(false);
   const [worldLayer, setWorldLayer] = useState<WorldLayerId>("terrain");
   const [layerOpacity, setLayerOpacity] = useState(0.85);
-  const [statsOpen, setStatsOpen] = useState(false);
-  const [layersOpen, setLayersOpen] = useState(false);
-  const narrow = useNarrowViewport();
+  // One state object for both panels, because the one-sheet rule is a joint
+  // constraint: updating them together can never leave two sheets open.
+  const [panels, setPanels] = useState<PanelsOpen>({ stats: false, layers: false });
+  const narrow = useNarrowViewport(setPanels);
+  const statsOpen = panels.stats;
+  const layersOpen = panels.layers;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -97,7 +121,7 @@ export function App(): React.JSX.Element {
     const session = WorldSession.start({
       canvas,
       viewport,
-      seed: readSeedFromLocation(globalThis.location?.search ?? ""),
+      seed: requestedSeed,
       // Worlds open running: open the page, watch organisms live.
       initialSpeed: "x1",
       callbacks: {
@@ -158,7 +182,7 @@ export function App(): React.JSX.Element {
       sessionRef.current = null;
       canvas.remove();
     };
-  }, [history]);
+  }, [history, requestedSeed]);
 
   const changeSpeed = useCallback((next: SimulationSpeed) => {
     setSpeed(next);
@@ -218,14 +242,13 @@ export function App(): React.JSX.Element {
   // desktop the panels are independent.
   const togglePanel = useCallback(
     (panel: PanelId) => {
-      const setThis = panel === "stats" ? setStatsOpen : setLayersOpen;
-      const setOther = panel === "stats" ? setLayersOpen : setStatsOpen;
-      setThis((previous) => {
-        const next = !previous;
-        if (next && narrow) {
-          setOther(false);
+      setPanels((previous) => {
+        if (panel === "stats") {
+          const stats = !previous.stats;
+          return { stats, layers: stats && narrow ? false : previous.layers };
         }
-        return next;
+        const layers = !previous.layers;
+        return { stats: layers && narrow ? false : previous.stats, layers };
       });
     },
     [narrow],
@@ -263,7 +286,9 @@ export function App(): React.JSX.Element {
 
       {world === null && error === null ? (
         <div className="banner">
-          <strong>Generating world 0x{DEFAULT_SEED.toString(16).toUpperCase()}…</strong>
+          <strong>
+            Generating world 0x{requestedSeed.toString(16).toUpperCase().padStart(8, "0")}…
+          </strong>
           <p className="hint">Procedural terrain, plants and the founder population.</p>
         </div>
       ) : null}

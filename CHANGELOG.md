@@ -6,6 +6,42 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 7 review: observation UI
+
+Independent review of the observation UI (ADR 0012). All versions unchanged — engine 0.5.0,
+protocol 3, field layout 2 — and **every golden hash untouched**: nothing under
+`packages/engine`, `packages/protocol` or the Worker host moved. Verified statically, through the
+fake-driven session tests, and in a scripted headless-Chromium pass (25/25 checks, zero console
+and page errors).
+
+### Fixed
+
+- **A third finger during a pinch fired a click selection** (`EonRenderer`). Only exactly-two
+  active pointers were treated as a pinch, so a steadying third finger became a zero-travel drag
+  whose lift read as a tap — selecting or deselecting whatever it rested on, tearing down follow
+  and retargeting the inspector mid-gesture. Two or more pointers are now always a pinch, and no
+  finger of a pinch can end as a click.
+- **A pinch that ended with one finger still down left that finger dead.** It now continues the
+  gesture as a pan, with its click suppressed — the standard map-app behaviour.
+- **Charts blocked the mobile stats sheet from scrolling.** `.chart-plot` demanded
+  `touch-action: none`, and the chart grid is most of the sheet's touch surface; a vertical swipe
+  starting on a chart went nowhere. Now `pan-y`: swipes scroll the sheet, horizontal movement
+  still drives the hover crosshair.
+- **Two bottom sheets could stack on a viewport that became narrow** with both panels open (a
+  tablet rotating, a window shrinking) — the docs/06 §16 one-sheet rule was enforced only at
+  toggle time. Panel visibility is one state object now, and the narrow-viewport media-query
+  subscription settles the conflict on entry (stats stays, layers closes).
+- **Speed tooltips hardcoded the default tick rates** instead of deriving them from
+  `hostRuntime.targetTicksPerSecond1x`; a re-paced host would have advertised rates it never
+  targets. Now computed from `SPEED_MULTIPLIER` and the runtime's real 1× rate (test-pinned
+  against a non-default rate).
+- **Layer radios carried `aria-pressed` alongside `role="radio"`** — the toggle-button attribute
+  contradicts the radio role for assistive tech. They expose `aria-checked` alone, with the
+  stylesheet highlighting either shape.
+- **The seed-copy confirmation timer leaked**: a rapid second copy let the first timer cut the
+  new confirmation short, and unmounting mid-confirmation left the timer firing afterwards. It is
+  cleared on re-click and on unmount.
+
 ## [Unreleased] — 2026-08-14 — Milestone 7: Observation UI
 
 Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `PROTOCOL_VERSION` 2 → **3**,

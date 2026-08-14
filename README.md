@@ -103,7 +103,8 @@ Current status: Milestones 0–7 complete — workspace, determinism skeleton (h
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
 combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), the Worker host, render
-transport and PixiJS renderer (ADR 0010), and the observation UI (ADR 0011).
+transport and PixiJS renderer (ADR 0010), and the observation UI (ADR 0011, reviewed in ADR 0012 —
+four touch/layout defects fixed, no engine or protocol change).
 
 **The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
@@ -219,6 +220,11 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0012-milestone-7-review.md` — the independent Milestone 7 review: a third finger during a pinch
+  that fired a click selection, a pinch that left its surviving finger dead, charts that blocked
+  the mobile sheet from scrolling, a one-sheet rule that did not survive rotating to narrow, and
+  the eighteen review dimensions that came back clean — verified statically, through the
+  fake-driven session tests, and in a scripted headless-Chromium pass.
 
 > **Repository note.** Three branches diverged in parallel from the Milestone 2 commit. This line is
 > Milestone 2 → 3 → 4 → 5. The Milestone 0–2 "foundation gate" branch

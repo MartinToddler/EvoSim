@@ -858,7 +858,11 @@ export class EonRenderer {
   readonly #onPointerDown = (event: PointerEvent): void => {
     const point = this.#localPoint(event);
     this.#activePointers.set(event.pointerId, point);
-    if (this.#activePointers.size === 2) {
+    if (this.#activePointers.size >= 2) {
+      // Any extra finger makes the gesture a pinch — including a third one. A
+      // third finger must not become a fresh drag pointer: it would sit at zero
+      // travel while the pinch swallows every move, and lifting it would then
+      // read as a click and select whatever it happened to land on.
       this.#dragPointerId = null;
       this.#pinchDistance = this.#currentPinchDistance();
       return;
@@ -912,6 +916,21 @@ export class EonRenderer {
     this.#activePointers.delete(event.pointerId);
     if (this.#activePointers.size < 2) {
       this.#pinchDistance = 0;
+    }
+    if (this.#activePointers.size === 1 && this.#dragPointerId === null) {
+      // A pinch just lost its second-to-last finger. The finger still on the
+      // glass continues the gesture as a pan — leaving it dead until re-press
+      // is the standard map-app behaviour violation — but it can never end as
+      // a click, because the gesture it belongs to was a pinch, not a tap.
+      const remaining = [...this.#activePointers.entries()][0] as [
+        number,
+        { x: number; y: number },
+      ];
+      this.#dragPointerId = remaining[0];
+      this.#dragLastX = remaining[1].x;
+      this.#dragLastY = remaining[1].y;
+      this.#dragTravel = CLICK_SLOP_PX + 1;
+      return;
     }
     if (!wasDragging) {
       return;

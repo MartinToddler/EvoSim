@@ -271,6 +271,30 @@ Three notes carried forward:
 - [x] H05 heatmaps.
 - [x] H06 responsive mobile layout.
 
+Milestone 7 review gate: **PASS** (engine 0.5.0 unchanged, protocol 3 unchanged, ADR 0012). The
+observation UI was reviewed against the eighteen-point brief — placeholder honesty, the React
+boundary, telemetry cadence, chart memory bounds, stale queries, entity death, follow, slot vs
+entity ID, pause/play, rapid speed switching, layer purity, query purity, resize, mobile layout,
+gestures, listener/chart leaks, Pixi lifetime, accessibility — statically, through the fake-driven
+session tests, and in a scripted headless-Chromium pass (25/25 checks, zero console/page errors).
+**Every golden hash is untouched**: all fixes are presentation-side.
+
+Four P2 defects found and fixed, plus three P3 polish items:
+
+1. **A third finger during a pinch fired a click selection** — `#onPointerDown` treated only
+   exactly-two pointers as a pinch, so a steadying finger became a zero-travel drag whose lift
+   read as a tap and silently retargeted selection, follow and the inspector. Any `>= 2` pointers
+   are now a pinch, and no pinch finger can end as a click.
+2. **Touch dead ends** — a pinch ending with one finger down left that finger inert (now it
+   continues as a pan that can never click), and `.chart-plot { touch-action: none }` made the
+   mobile stats sheet unscrollable wherever a chart was under the finger (now `pan-y`).
+3. **The one-sheet rule did not survive becoming narrow** — rotating/shrinking with both panels
+   open stacked two bottom sheets (browser-reproduced). Panel state is one object now, settled in
+   the media-query subscription: entering narrow keeps stats and closes layers.
+4. P3: speed tooltips now derive from `hostRuntime.targetTicksPerSecond1x` instead of hardcoding
+   the defaults; the layer radios expose `aria-checked` alone (`aria-pressed` contradicted the
+   radio role); the seed-copy confirmation timer is cleared on re-click and unmount.
+
 ## I Species/history
 - [ ] I01 species registry.
 - [ ] I02 trait vector/distance.

@@ -65,8 +65,9 @@ export function LayersPanel(props: LayersPanelProps): React.JSX.Element {
             key={layer.id}
             type="button"
             role="radio"
+            // aria-checked alone: aria-pressed belongs to toggle buttons and
+            // contradicts the radio role for assistive tech.
             aria-checked={props.active === layer.id}
-            aria-pressed={props.active === layer.id}
             onClick={() => {
               props.onSelect(layer.id);
             }}

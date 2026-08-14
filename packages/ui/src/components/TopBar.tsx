@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
-import type {
-  HostRuntimeConfig,
-  SimulationSpeed,
-  TelemetryDto,
-  WorldSummaryDto,
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  SPEED_MULTIPLIER,
+  type HostRuntimeConfig,
+  type SimulationSpeed,
+  type TelemetryDto,
+  type WorldSummaryDto,
 } from "@eon/protocol";
 import { formatCompact, formatInt } from "../format";
 
@@ -20,13 +21,26 @@ import { formatCompact, formatInt } from "../format";
  * Milestone 10 persistence and is absent entirely.
  */
 
-const SPEED_BUTTONS: readonly { speed: SimulationSpeed; label: string; title: string }[] = [
-  { speed: "x1", label: "1×", title: "20 ticks per second" },
-  { speed: "x5", label: "5×", title: "100 ticks per second" },
-  { speed: "x20", label: "20×", title: "400 ticks per second" },
-  { speed: "x100", label: "100×", title: "2000 ticks per second" },
-  { speed: "max", label: "MAX", title: "Unpaced — as fast as this machine allows" },
+const SPEED_BUTTONS: readonly { speed: SimulationSpeed; label: string }[] = [
+  { speed: "x1", label: "1×" },
+  { speed: "x5", label: "5×" },
+  { speed: "x20", label: "20×" },
+  { speed: "x100", label: "100×" },
+  { speed: "max", label: "MAX" },
 ];
+
+/**
+ * Tooltip for a speed button, derived from the runtime's real 1× rate rather
+ * than hardcoded — a host configured to pace differently must not have its
+ * buttons promise the default rates.
+ */
+function speedTitle(speed: SimulationSpeed, hostRuntime: HostRuntimeConfig | null): string {
+  if (speed === "max") {
+    return "Unpaced — as fast as this machine allows";
+  }
+  const base = hostRuntime?.targetTicksPerSecond1x ?? 20;
+  return `${formatInt(SPEED_MULTIPLIER[speed] * base)} ticks per second`;
+}
 
 export interface TopBarProps {
   world: WorldSummaryDto | null;
@@ -71,6 +85,17 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
   const capWarning = (telemetry?.capRejectedBirths ?? 0) > 0;
 
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The confirmation tick clears itself; the timer must not outlive the
+  // component, and a re-click must restart the interval instead of letting the
+  // first click's timer cut the second confirmation short.
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current !== null) {
+        clearTimeout(copiedTimer.current);
+      }
+    };
+  }, []);
   const copySeed = useCallback(() => {
     const seedHex = world?.seedHex;
     if (seedHex === undefined) {
@@ -82,8 +107,12 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
     }
     void clipboard.writeText(seedHex).then(() => {
       setCopied(true);
-      setTimeout(() => {
+      if (copiedTimer.current !== null) {
+        clearTimeout(copiedTimer.current);
+      }
+      copiedTimer.current = setTimeout(() => {
         setCopied(false);
+        copiedTimer.current = null;
       }, 1500);
     });
   }, [world?.seedHex]);
@@ -183,7 +212,7 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
             key={button.speed}
             type="button"
             aria-pressed={speed === button.speed}
-            title={button.title}
+            title={speedTitle(button.speed, hostRuntime)}
             onClick={() => {
               props.onSpeedChange(button.speed);
             }}
