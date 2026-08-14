@@ -242,7 +242,11 @@ Three notes carried forward:
    and this milestone deploys from a feature branch. Both are now resolved — the repository is public
    (which also makes Pages free and Actions minutes unlimited) and the environment has no branch
    restriction. Recorded because the failure modes are unobvious: the second one produces an empty
-   log and looks like an infrastructure glitch rather than a policy denial.
+   log and looks like an infrastructure glitch rather than a policy denial. `main` now carries the
+   full Milestone 0-6 history as a fast-forward and is the sole source of the published site.
+   **Outstanding: the repository's default branch is still `claude/milestone-0-1-setup-g7huou`**, a
+   feature branch stopped at Milestone 2, so the repo front page and the cross-platform
+   `determinism` matrix both look at Milestone 2 until it is pointed at `main`.
 2. **Playwright is still not wired into the repository (L08).** The browser verification above was
    run ad-hoc against a real Chromium. CLAUDE.md's toolchain policy says to add Playwright once the
    first interactive vertical slice exists, which is now true, but the suite itself is section L.

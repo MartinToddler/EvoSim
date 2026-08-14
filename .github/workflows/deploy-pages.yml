@@ -6,22 +6,24 @@
 # to protect: GitHub Pages gives a repository one site, and this publishes to
 # it.
 #
-# The milestone branch is a trigger on purpose and temporarily. `main` still
-# carries only the Milestone 0-1 skeleton, so restricting this to the default
-# branch today would publish an empty page. Once the application is merged, drop
-# the `claude/milestone-6-**` pattern below and let the default branch be the
-# only source of the published site.
+# The published site comes from `main`, which is the project's trunk: it now
+# carries the full Milestone 0-6 history, so publishing from it is publishing
+# the current state. The Milestone 6 branch was a temporary trigger while `main`
+# still held only the 0-1 skeleton; that is no longer true, and the pattern is
+# gone.
 #
-# `push.branches` cannot take an expression, so the default branch has to be
-# named literally here. If it is ever renamed, or if it is not `main`, update
-# the list — the `workflow_dispatch` trigger covers any branch in the meantime.
+# `push.branches` cannot take an expression, so the trunk is named literally.
+# Note that `main` is NOT this repository's default branch as of this commit —
+# the default is still a feature branch stopped at Milestone 2. Deploying works
+# regardless (the `github-pages` environment has no branch restriction), but
+# pointing the default at `main` is the outstanding cleanup: until then the repo
+# front page and the cross-platform determinism matrix both look at Milestone 2.
 name: deploy-pages
 
 on:
   push:
     branches:
       - main
-      - "claude/milestone-6-**"
   workflow_dispatch:
 
 # `pages` and `id-token` are what the deploy action needs; everything else stays
