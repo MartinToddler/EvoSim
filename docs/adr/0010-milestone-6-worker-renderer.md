@@ -244,6 +244,42 @@ takes twenty times as long).
 at run time: every asset, the Worker included, 404s.
 
 The workflow triggers on the milestone branch as well as `main`, because `main` still carries
-only the Milestone 0–1 skeleton and restricting it to `main` today would publish an empty page.
-**Once this work is merged, drop the branch pattern** so `main` is the only source of the
-published site.
+only the Milestone 0–1 skeleton and restricting it to the default branch today would publish an
+empty page. **Once this work is merged, drop the branch pattern** so the default branch is the only
+source of the published site.
+
+### What it actually took, because neither failure was self-explanatory
+
+Live at **https://martintoddler.github.io/EvoSim/**. Two repository settings had to be changed by
+hand, and both fail in ways that look like infrastructure faults rather than policy:
+
+1. **Enabling Pages.** `enablement: true` cannot work with `GITHUB_TOKEN`: creating a Pages site is
+   an administration-scope operation and `administration: write` is not a permission a workflow
+   token can be granted. The error is `Resource not accessible by integration`, which reads like a
+   bug in the workflow.
+2. **The `github-pages` environment.** Enabling Pages with the GitHub Actions source creates that
+   environment with a deployment rule restricted to the **default branch**. Deploying a feature
+   branch is then rejected _before a runner is assigned_ — the job fails in one second, with
+   `runner_id: 0` and **no log at all**. Nothing in the run points at environment policy; the
+   diagnosis came from the shape of the failure (build succeeded, artifact uploaded, deploy died
+   instantly and silently).
+
+Also worth recording: this repository's default branch is `claude/milestone-0-1-setup-g7huou`, a
+feature branch stopped at Milestone 2 — not `main`. That is why the environment rule blocked the
+deploy, and it is why the `determinism` gate reads the branch name from the event payload instead
+of assuming `main`.
+
+### How the deployment was verified
+
+Chromium in the build sandbox cannot reach any HTTPS host through the environment's egress proxy —
+`example.com` resets identically — so the live URL could not be driven directly from here.
+Verification was therefore split, and both halves are on the deployed artifact:
+
+- **Over HTTPS from the live host:** `index.html` plus all 13 referenced assets fetched and checked
+  for status, type and size, including `simulation.worker-*.js` (118 701 B). The worker chunk is the
+  asset a wrong `base` breaks first, so a 200 on it is the base-path proof.
+- **In a real browser, on those exact bytes:** the fetched deployment was served locally under the
+  same `/EvoSim/` path and driven through world generation, 1× (20.2 TPS), 20× (399 against a 400
+  target), pause (tick frozen exactly), wheel zoom, click-selection with a full inspector readout,
+  MAX (69.9 TPS at 1 288 organisms) and the grid overlay — with zero console errors and zero page
+  errors.

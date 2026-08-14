@@ -52,7 +52,7 @@ and CLAUDE.md requires that a UI-only change never move an engine hash. Decision
   selected-organism readout. React holds world metadata, 2 Hz telemetry and the selected entity —
   never an organism coordinate.
 - **`deploy-pages.yml`.** Builds and publishes `apps/web/dist` to GitHub Pages, gated on typecheck
-  and lint. See "Known limitations" below.
+  and lint. Live at **https://martintoddler.github.io/EvoSim/**.
 - **`pnpm equivalence`** (`scripts/workerEquivalence.ts`). Drives the Worker host through an erratic
   schedule on the real default world and compares the result against a plain `stepMany` and against
   the committed golden hash. At tick 10 000, with 9 820 of the ticks produced by the scheduler
@@ -92,12 +92,12 @@ and CLAUDE.md requires that a UI-only change never move an engine hash. Decision
 
 ### Known limitations
 
-- **GitHub Pages is not enabled for this repository, and no workflow can enable it.** Creating a
-  Pages site requires repository-administration scope, which `GITHUB_TOKEN` cannot hold. The
-  workflow reaches the Pages step green and then fails with "Resource not accessible by
-  integration". Unblock once by hand: **Settings → Pages → Build and deployment → Source: GitHub
-  Actions**, then re-run `deploy-pages`. Pages on a private repository additionally requires GitHub
-  Pro or higher.
+- **Deployment required two one-off repository settings.** No workflow token can enable Pages
+  (repository-administration scope, which `GITHUB_TOKEN` cannot hold), and once enabled the
+  `github-pages` environment restricts deployments to the default branch, so deploying a feature
+  branch is rejected in one second with an empty log. Both settled: the repository is public and the
+  environment has no branch restriction. Live at
+  **https://martintoddler.github.io/EvoSim/**.
 - **No Playwright suite (L08).** The browser verification for this milestone was run ad-hoc against
   a real Chromium; wiring Playwright into the repository is section L work.
 - **No viewport culling.** Every live organism is updated and submitted each frame. At the 8 192 cap

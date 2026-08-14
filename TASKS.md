@@ -214,8 +214,8 @@ All four Milestone 5 notes above are carried forward unchanged; this review conf
 - [x] G09 selection/query.
 - [x] G10 debug overlay.
 
-Milestone 6 gate: **PASS WITH NOTES** (engine 0.5.0 unchanged, protocol 1 → 2, host runtime schema
-1 → 2, ADR 0010). The simulation runs in a dedicated Worker, render state crosses as packed
+Milestone 6 gate: **PASS** (engine 0.5.0 unchanged, protocol 1 → 2, host runtime schema 1 → 2,
+ADR 0010). Deployed and verified at **https://martintoddler.github.io/EvoSim/**. The simulation runs in a dedicated Worker, render state crosses as packed
 transferable buffers, and a PixiJS renderer draws terrain, organisms, carcasses, a camera, selection
 and a development overlay. **Every golden hash is unchanged and reproduced** — this milestone adds
 projection and hosting, not behaviour, which is what CLAUDE.md requires of a UI-only change.
@@ -234,12 +234,15 @@ organisms on this container. Zero console errors, zero page errors.
 
 Three notes carried forward:
 
-1. **The deployment is blocked on a repository setting, not on code.** `deploy-pages.yml` builds and
-   publishes `apps/web/dist`, and reaches the Pages step with typecheck and lint green, but GitHub
-   Pages is not enabled for this repository and no workflow token can enable it: creating a Pages
-   site needs repository-administration scope, which `GITHUB_TOKEN` cannot hold. One manual action
-   unblocks it — **Settings → Pages → Build and deployment → Source: GitHub Actions**, then re-run
-   the workflow. Pages on a *private* repository additionally requires GitHub Pro or higher.
+1. **The deployment needed two repository settings that no workflow token can change.** Enabling
+   Pages requires repository-administration scope, which `GITHUB_TOKEN` cannot hold, so
+   `configure-pages` failed with "Resource not accessible by integration" until Pages was switched on
+   by hand. Then the `deploy` job was rejected in one second with no runner: enabling Pages with the
+   GitHub Actions source creates a `github-pages` environment restricted to the **default branch**,
+   and this milestone deploys from a feature branch. Both are now resolved — the repository is public
+   (which also makes Pages free and Actions minutes unlimited) and the environment has no branch
+   restriction. Recorded because the failure modes are unobvious: the second one produces an empty
+   log and looks like an infrastructure glitch rather than a policy denial.
 2. **Playwright is still not wired into the repository (L08).** The browser verification above was
    run ad-hoc against a real Chromium. CLAUDE.md's toolchain policy says to add Playwright once the
    first interactive vertical slice exists, which is now true, but the suite itself is section L.

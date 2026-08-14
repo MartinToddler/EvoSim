@@ -105,7 +105,8 @@ reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), pred
 combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), and the Worker host, render
 transport and PixiJS renderer (ADR 0010).
 
-**The world is now watchable.** `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
+**The world is now watchable — live at <https://martintoddler.github.io/EvoSim/>.**
+Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
 the plants, and the organisms living in it — pan, zoom, click an organism to inspect it, and run at
 1×, 5×, 20×, 100× or MAX. The simulation itself runs in a dedicated Worker and is unchanged by any
 of it: `ENGINE_VERSION` stayed at 0.5.0 through Milestone 6 and every golden hash is byte-identical,
