@@ -41,6 +41,28 @@ const HASHED_CONFIG_LEAF_PATHS: readonly string[] = [
   "history.massExtinctionMinStartingSpecies",
   "history.populationBoomFractionQ",
   "history.populationCrashFractionQ",
+  // Milestone 9 (ADR 0015): intervention bounds and effect scales are
+  // authoritative on purpose — they bound what a command may carry and scale
+  // what an applied command does, so two configs differing here produce
+  // different worlds from the first accepted command onward.
+  "interventions.biomassOverfillLimitQ",
+  "interventions.brushSampleSpacingLU",
+  "interventions.maxBiomassBrushStrengthUnits",
+  "interventions.maxBrushRadiusLU",
+  "interventions.maxBrushSamplesPerCommand",
+  "interventions.maxFertilityBrushStrengthQ",
+  "interventions.maxGlobalTemperatureOffsetCentiC",
+  "interventions.maxLocalTemperatureOffsetCentiC",
+  "interventions.maxMoistureBrushStrengthQ",
+  "interventions.maxTemperatureBrushStrengthCentiC",
+  "interventions.maxTerrainBrushStrengthQ",
+  "interventions.meteor.biomassLossQ",
+  "interventions.meteor.damageQ",
+  "interventions.meteor.depressionQ",
+  "interventions.meteor.fertilityDeltaQ",
+  "interventions.meteor.maxRadiusLU",
+  "interventions.meteor.minRadiusLU",
+  "interventions.minBrushRadiusLU",
   "limits.maxCarcasses",
   "limits.maxOrganisms",
   "limits.maxTimelineEventsInMemoryBeforeChunk",
