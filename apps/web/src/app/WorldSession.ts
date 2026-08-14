@@ -1,16 +1,21 @@
 import { EonRenderer } from "@eon/renderer";
+import type { WorldLayerId } from "@eon/renderer/palette";
 import {
   viewRenderSnapshot,
   viewTerrainSnapshot,
   viewVegetationSnapshot,
+  type EntityDetailsDto,
   type EntityDetailsPayload,
   type HostRuntimeConfig,
   type SimulationSpeed,
   type TelemetryDto,
+  type TerrainSnapshotView,
+  type VegetationSnapshotView,
+  type RenderSnapshotView,
   type WorkerErrorDto,
   type WorldSummaryDto,
 } from "@eon/protocol";
-import { WorkerClient, workerPort } from "../worker/WorkerClient";
+import { WorkerClient, workerPort, type RawWorker } from "../worker/WorkerClient";
 
 /**
  * Composition root for one open world (docs/10 §22).
@@ -26,6 +31,14 @@ import { WorkerClient, workerPort } from "../worker/WorkerClient";
  * first becomes a picture drawn by the second, and its only job at that seam is
  * to make sure buffers get handed back.
  *
+ * ## DTOs are frozen at this boundary
+ *
+ * Everything handed to the React callbacks is `Object.freeze`d first (arrays
+ * and nested objects included), so no UI code can mutate what it observes —
+ * the DTO a component sees is exactly the DTO the Worker sent, permanently.
+ * This costs a few freezes per second on small objects and turns "the UI
+ * cannot write simulation state" from a convention into a thrown TypeError.
+ *
  * ## Teardown is explicit
  *
  * Renderer destroyed, worker terminated, observers disconnected, buffers
@@ -33,12 +46,52 @@ import { WorkerClient, workerPort } from "../worker/WorkerClient";
  * running in the background with nothing watching it.
  */
 
+export type FollowEndReason = "died" | "user" | "selection" | "cleared";
+
 export interface WorldSessionCallbacks {
   onWorldReady: (world: WorldSummaryDto, hostRuntime: HostRuntimeConfig) => void;
   onTelemetry: (telemetry: TelemetryDto) => void;
   onSelectionChange: (entityId: number | null) => void;
   onEntityDetails: (payload: EntityDetailsPayload) => void;
+  /** Follow started (entityId) or stopped (null, with the reason why). */
+  onFollowChange: (entityId: number | null, reason: FollowEndReason | "started") => void;
   onError: (error: WorkerErrorDto) => void;
+}
+
+/**
+ * The slice of `Worker` the session actually uses, so tests can supply a fake
+ * without a browser (docs/10 §22's teardown contract is exactly what those
+ * tests pin down).
+ */
+export type SessionWorker = RawWorker;
+
+/** The slice of {@link EonRenderer} the session drives; structurally satisfied. */
+export interface SessionRenderer {
+  readonly camera: { fitWorld(): void };
+  applyTerrain(view: TerrainSnapshotView): void;
+  applyVegetation(view: VegetationSnapshotView): void;
+  applyRenderSnapshot(view: RenderSnapshotView): void;
+  setSelected(entityId: number | null): void;
+  setFollowed(entityId: number | null): void;
+  setDebugOverlay(enabled: boolean): void;
+  setWorldLayer(layer: WorldLayerId): void;
+  setLayerOpacity(opacity: number): void;
+  focusEntity(entityId: number): boolean;
+  resize(widthPx: number, heightPx: number): void;
+  destroy(): void;
+}
+
+export interface RendererFactoryOptions {
+  canvas: HTMLCanvasElement;
+  worldSizeLU: number;
+  gridSize: number;
+  maxOrganisms: number;
+  maxCarcasses: number;
+  maxDetailedOrganisms: number;
+  onSelectionChange: (entityId: number | null) => void;
+  onFollowEnd: (reason: "died" | "user") => void;
+  onRecycleRenderBuffer: (buffer: ArrayBuffer) => void;
+  onRecycleVegetationBuffer: (buffer: ArrayBuffer) => void;
 }
 
 export interface WorldSessionOptions {
@@ -48,13 +101,42 @@ export interface WorldSessionOptions {
   seed: number;
   initialSpeed: SimulationSpeed;
   callbacks: WorldSessionCallbacks;
+  /** Test seam: supply a fake Worker. Defaults to the real simulation Worker. */
+  createWorker?: () => SessionWorker;
+  /** Test seam: supply a fake renderer. Defaults to {@link EonRenderer}. */
+  createRenderer?: (options: RendererFactoryOptions) => Promise<SessionRenderer>;
+}
+
+/** Freeze a telemetry DTO and its nested arrays/objects in place. */
+function freezeTelemetry(telemetry: TelemetryDto): TelemetryDto {
+  Object.freeze(telemetry.deathsByCause);
+  Object.freeze(telemetry.phaseMillis);
+  Object.freeze(telemetry.traitMeans);
+  return Object.freeze(telemetry);
+}
+
+function freezeDetails(details: EntityDetailsDto | null): EntityDetailsDto | null {
+  if (details === null) {
+    return null;
+  }
+  Object.freeze(details.brainInputs);
+  Object.freeze(details.brainIntents);
+  return Object.freeze(details);
+}
+
+function freezeWorld(world: WorldSummaryDto): WorldSummaryDto {
+  Object.freeze(world.display.brainInputLabels);
+  Object.freeze(world.display.brainIntentLabels);
+  Object.freeze(world.display.deathCauseLabels);
+  Object.freeze(world.display);
+  return Object.freeze(world);
 }
 
 export class WorldSession {
   readonly #client: WorkerClient;
-  readonly #worker: Worker;
+  readonly #worker: SessionWorker;
   readonly #options: WorldSessionOptions;
-  #renderer: EonRenderer | null = null;
+  #renderer: SessionRenderer | null = null;
   #resizeObserver: ResizeObserver | null = null;
 
   /**
@@ -67,14 +149,22 @@ export class WorldSession {
    */
   #pendingSnapshot: ArrayBuffer | null = null;
   #selectedEntityId: number | null = null;
+  #followedEntityId: number | null = null;
+  /** Layer choices made before the renderer exists are applied when it does. */
+  #worldLayer: WorldLayerId = "terrain";
+  #layerOpacity = 0.85;
+  #debugOverlay = false;
   #destroyed = false;
   #world: WorldSummaryDto | null = null;
 
   private constructor(options: WorldSessionOptions) {
     this.#options = options;
-    this.#worker = new Worker(new URL("../worker/simulation.worker.ts", import.meta.url), {
-      type: "module",
-    });
+    this.#worker =
+      options.createWorker !== undefined
+        ? options.createWorker()
+        : new Worker(new URL("../worker/simulation.worker.ts", import.meta.url), {
+            type: "module",
+          });
     this.#client = new WorkerClient(workerPort(this.#worker), {
       onWorldReady: (payload) => {
         // Renderer creation is async and can genuinely fail — a machine with no
@@ -100,7 +190,7 @@ export class WorldSession {
         this.#handleVegetation(payload.buffer);
       },
       onTelemetry: (telemetry) => {
-        options.callbacks.onTelemetry(telemetry);
+        options.callbacks.onTelemetry(freezeTelemetry(telemetry));
         // Refresh the inspector in step with the HUD rather than per frame: an
         // organism's energy and age change every tick, but nobody can read a
         // number that updates 60 times a second.
@@ -132,8 +222,16 @@ export class WorldSession {
     return this.#world;
   }
 
-  get renderer(): EonRenderer | null {
-    return this.#renderer;
+  get selectedEntityId(): number | null {
+    return this.#selectedEntityId;
+  }
+
+  get followedEntityId(): number | null {
+    return this.#followedEntityId;
+  }
+
+  get worldLayer(): WorldLayerId {
+    return this.#worldLayer;
   }
 
   setSpeed(speed: SimulationSpeed): void {
@@ -141,10 +239,28 @@ export class WorldSession {
   }
 
   setDebugOverlay(enabled: boolean): void {
+    this.#debugOverlay = enabled;
     this.#renderer?.setDebugOverlay(enabled);
   }
 
+  /**
+   * Switch the world view. Renderer-local by construction: no Worker message
+   * exists for this, so a layer switch cannot regenerate or perturb the
+   * simulation (task H05 requirement).
+   */
+  setWorldLayer(layer: WorldLayerId): void {
+    this.#worldLayer = layer;
+    this.#renderer?.setWorldLayer(layer);
+  }
+
+  setLayerOpacity(opacity: number): void {
+    this.#layerOpacity = opacity;
+    this.#renderer?.setLayerOpacity(opacity);
+  }
+
   fitWorld(): void {
+    // Manually reframing the world is taking the camera back from follow.
+    this.#endFollow("user");
     this.#renderer?.camera.fitWorld();
   }
 
@@ -154,7 +270,23 @@ export class WorldSession {
     }
   }
 
+  /** Start following the currently selected organism. */
+  followSelected(): void {
+    const entityId = this.#selectedEntityId;
+    if (entityId === null || this.#destroyed) {
+      return;
+    }
+    this.#followedEntityId = entityId;
+    this.#renderer?.setFollowed(entityId);
+    this.#options.callbacks.onFollowChange(entityId, "started");
+  }
+
+  stopFollow(): void {
+    this.#endFollow("cleared");
+  }
+
   clearSelection(): void {
+    this.#endFollow("cleared");
     this.#selectedEntityId = null;
     this.#renderer?.setSelected(null);
     this.#options.callbacks.onSelectionChange(null);
@@ -187,8 +319,13 @@ export class WorldSession {
     hostRuntime: HostRuntimeConfig,
     terrain: ArrayBuffer,
   ): Promise<void> {
-    this.#world = world;
-    const renderer = await EonRenderer.create({
+    const frozenWorld = freezeWorld(world);
+    this.#world = frozenWorld;
+    const create =
+      this.#options.createRenderer ??
+      ((rendererOptions: RendererFactoryOptions): Promise<SessionRenderer> =>
+        EonRenderer.create(rendererOptions));
+    const renderer = await create({
       canvas: this.#options.canvas,
       worldSizeLU: world.worldSizeLU,
       gridSize: world.gridSize,
@@ -197,6 +334,14 @@ export class WorldSession {
       maxDetailedOrganisms: hostRuntime.maxDetailedRenderedOrganisms,
       onSelectionChange: (entityId) => {
         this.#handleSelection(entityId);
+      },
+      onFollowEnd: (reason) => {
+        // The renderer already stopped following (target died or the user
+        // dragged); mirror that here and tell the UI why the camera stopped.
+        if (this.#followedEntityId !== null) {
+          this.#followedEntityId = null;
+          this.#options.callbacks.onFollowChange(null, reason);
+        }
       },
       onRecycleRenderBuffer: (buffer) => {
         this.#client.recycleRenderBuffer(buffer);
@@ -212,6 +357,11 @@ export class WorldSession {
       return;
     }
     this.#renderer = renderer;
+    renderer.setDebugOverlay(this.#debugOverlay);
+    if (this.#worldLayer !== "terrain") {
+      renderer.setWorldLayer(this.#worldLayer);
+    }
+    renderer.setLayerOpacity(this.#layerOpacity);
     renderer.applyTerrain(viewTerrainSnapshot(terrain));
     this.#observeResize();
 
@@ -220,7 +370,7 @@ export class WorldSession {
     if (pending !== null) {
       renderer.applyRenderSnapshot(viewRenderSnapshot(pending));
     }
-    this.#options.callbacks.onWorldReady(world, hostRuntime);
+    this.#options.callbacks.onWorldReady(frozenWorld, Object.freeze(hostRuntime));
   }
 
   #handleRenderSnapshot(buffer: ArrayBuffer): void {
@@ -253,12 +403,26 @@ export class WorldSession {
     renderer.applyVegetation(viewVegetationSnapshot(buffer));
   }
 
-  // --- Selection -------------------------------------------------------------
+  // --- Selection and follow ----------------------------------------------------
 
   #handleSelection(entityId: number | null): void {
+    // Selecting something else — or empty space — releases the camera: follow
+    // is a property of the followed organism, not of selection in general.
+    if (this.#followedEntityId !== null && this.#followedEntityId !== entityId) {
+      this.#endFollow("selection");
+    }
     this.#selectedEntityId = entityId;
     this.#options.callbacks.onSelectionChange(entityId);
     this.#refreshSelectedEntity();
+  }
+
+  #endFollow(reason: FollowEndReason): void {
+    if (this.#followedEntityId === null) {
+      return;
+    }
+    this.#followedEntityId = null;
+    this.#renderer?.setFollowed(null);
+    this.#options.callbacks.onFollowChange(null, reason);
   }
 
   #refreshSelectedEntity(): void {
@@ -275,7 +439,14 @@ export class WorldSession {
         if (this.#destroyed || this.#selectedEntityId !== payload.entityId) {
           return;
         }
-        this.#options.callbacks.onEntityDetails(payload);
+        if (payload.details === null && this.#followedEntityId === payload.entityId) {
+          // Death discovered by query — the paused-world path, where no new
+          // snapshot will ever tell the renderer.
+          this.#endFollow("died");
+        }
+        this.#options.callbacks.onEntityDetails(
+          Object.freeze({ ...payload, details: freezeDetails(payload.details) }),
+        );
       })
       .catch(() => {
         // A rejected query means the worker is gone or reported a failure; the
@@ -291,6 +462,10 @@ export class WorldSession {
     };
     apply();
     this.#renderer?.camera.fitWorld();
+    // Absent in Node test environments; the initial size was still applied.
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
     const observer = new ResizeObserver(apply);
     observer.observe(this.#options.viewport);
     this.#resizeObserver = observer;

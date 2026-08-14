@@ -56,6 +56,9 @@ importers:
       '@eon/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer
+      '@eon/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -97,7 +100,27 @@ importers:
 
   packages/shared: {}
 
-  packages/ui: {}
+  packages/ui:
+    dependencies:
+      '@eon/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@eon/renderer':
+        specifier: workspace:*
+        version: link:../renderer
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
 
 packages:
 

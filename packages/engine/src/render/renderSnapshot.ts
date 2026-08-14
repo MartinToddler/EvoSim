@@ -219,21 +219,98 @@ export function writeVegetationField(engine: SimulationEngine, out: Uint8Array):
 }
 
 /**
- * Fill the static terrain fields: biome index and elevation shading.
+ * Display quantization range for the terrain temperature plane.
  *
- * Sent once with WORLD_READY. Elevation is rescaled from Q to a byte purely for
- * shading; nothing reads it back.
+ * Chosen to cover what the default generator can actually produce with margin:
+ * +30 °C at a sea-level equator, -10 °C at the pole edges, a further -10 °C of
+ * elevation cooling and a few degrees of noise (docs/03 §17, docs/08 §4).
+ * Values outside the range clamp — they are still *drawn*, at the ramp's end.
+ * These are named display constants, not tuning: no authoritative rule reads
+ * them, and the UI receives them via `WorldSummaryDto.display` so its legend
+ * can never disagree with the writer.
  */
-export function writeTerrainFields(
-  engine: SimulationEngine,
-  biomeOut: Uint8Array,
-  elevationOut: Uint8Array,
-): void {
+export const TEMPERATURE_DISPLAY_MIN_CENTI_C = -2500;
+export const TEMPERATURE_DISPLAY_MAX_CENTI_C = 3500;
+
+/**
+ * Plant units that byte 255 of the capacity plane represents: the richest
+ * biome's base capacity. Real cells sit at `base × fertility × suitability`,
+ * so every value fits under this reference by construction (docs/03 §20).
+ */
+export function capacityDisplayReference(config: {
+  plants: { baseCapacityByBiome: readonly number[] };
+}): number {
+  let reference = 1;
+  for (const base of config.plants.baseCapacityByBiome) {
+    if (base > reference) {
+      reference = base;
+    }
+  }
+  return reference;
+}
+
+/**
+ * The byte planes a static world-fields consumer must provide.
+ *
+ * Structural for the same reason as {@link RenderSnapshotWriter}: the packed
+ * wire layout is `@eon/protocol`'s concern and its `TerrainSnapshotView`
+ * satisfies this shape without either package importing the other.
+ */
+export interface StaticWorldFieldsWriter {
+  readonly biome: Uint8Array;
+  readonly elevation: Uint8Array;
+  readonly temperature: Uint8Array;
+  readonly moisture: Uint8Array;
+  readonly fertility: Uint8Array;
+  readonly capacity: Uint8Array;
+}
+
+/**
+ * Fill the static terrain fields: biome and elevation for the base map, and
+ * the temperature/moisture/fertility/capacity planes behind the Milestone 7
+ * world layers.
+ *
+ * Sent once with WORLD_READY. Everything is rescaled to bytes purely for
+ * display; nothing reads any of it back, and this function writes to no engine
+ * array — the same read-only contract as {@link writeRenderSnapshot}. "Static"
+ * is a Milestone 0-8 fact, not a law: the Milestone 9 interventions that edit
+ * these fields will resend them.
+ */
+export function writeTerrainFields(engine: SimulationEngine, out: StaticWorldFieldsWriter): void {
+  const { context } = engineInternals(engine);
   const environment = engine.environment;
-  const count = Math.min(biomeOut.length, elevationOut.length, environment.cellCount);
+  const capacityReference = capacityDisplayReference(context.config);
+  const temperatureSpan = TEMPERATURE_DISPLAY_MAX_CENTI_C - TEMPERATURE_DISPLAY_MIN_CENTI_C;
+  // Bounded by every plane, not just the first: a writer with one short array
+  // truncates the whole projection deterministically instead of silently
+  // no-op-writing past the short plane's end.
+  const count = Math.min(
+    environment.cellCount,
+    out.biome.length,
+    out.elevation.length,
+    out.temperature.length,
+    out.moisture.length,
+    out.fertility.length,
+    out.capacity.length,
+  );
   for (let cell = 0; cell < count; cell += 1) {
-    biomeOut[cell] = environment.biome[cell] as number;
-    elevationOut[cell] = byteFromQ(environment.elevationQ[cell] as number);
+    out.biome[cell] = environment.biome[cell] as number;
+    out.elevation[cell] = byteFromQ(environment.elevationQ[cell] as number);
+    out.temperature[cell] = clamp(
+      Math.round(
+        ((environment.getTemperatureCentiC(cell) - TEMPERATURE_DISPLAY_MIN_CENTI_C) * 255) /
+          temperatureSpan,
+      ),
+      0,
+      255,
+    );
+    out.moisture[cell] = byteFromQ(environment.getMoistureQ(cell));
+    out.fertility[cell] = byteFromQ(environment.fertilityQ[cell] as number);
+    out.capacity[cell] = clamp(
+      Math.round(((environment.plantCapacity[cell] as number) * 255) / capacityReference),
+      0,
+      255,
+    );
   }
 }
 

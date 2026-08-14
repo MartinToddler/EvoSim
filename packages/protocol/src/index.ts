@@ -28,7 +28,9 @@ export {
   type EntityDetailsDto,
   type SimulationSpeed,
   type TelemetryDto,
+  type TraitMeansDto,
   type WorkerErrorDto,
+  type WorldDisplayDto,
   type WorldSummaryDto,
 } from "./dto";
 

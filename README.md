@@ -99,18 +99,22 @@ pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (
 pnpm --filter @eon/web dev   # run the web app locally
 ```
 
-Current status: Milestones 0–6 complete — workspace, determinism skeleton (hardened after
+Current status: Milestones 0–7 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
-combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), and the Worker host, render
-transport and PixiJS renderer (ADR 0010).
+combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), the Worker host, render
+transport and PixiJS renderer (ADR 0010), and the observation UI (ADR 0011).
 
-**The world is now watchable — live at <https://martintoddler.github.io/EvoSim/>.**
+**The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
-the plants, and the organisms living in it — pan, zoom, click an organism to inspect it, and run at
-1×, 5×, 20×, 100× or MAX. The simulation itself runs in a dedicated Worker and is unchanged by any
-of it: `ENGINE_VERSION` stayed at 0.5.0 through Milestone 6 and every golden hash is byte-identical,
-because rendering is a projection and never a decision.
+the plants, and the organisms living in it — pan, zoom, run at 1×, 5×, 20×, 100× or MAX. Click an
+organism for the full inspector (vitals, inherited traits, running costs, the last tick's brain
+inputs and intents) and follow it as it lives; open the stats panel for bounded-memory charts of
+population, biomass, birth/death rates and trait drift; flip the world through nine data layers
+(biomes, elevation, temperature, moisture, fertility, plant biomass and capacity, organism
+density) without the simulation noticing. The simulation itself runs in a dedicated Worker and is
+unchanged by any of it: `ENGINE_VERSION` stayed at 0.5.0 through Milestone 7 and every golden hash
+is byte-identical, because rendering is a projection and never a decision.
 
 Everything below is still reproducible headlessly, which is the point — the same world, the same
 hashes, with or without a browser.
@@ -174,7 +178,7 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 2, snapshot schema 6, config
+entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 3, snapshot schema 6, config
 schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
@@ -206,6 +210,10 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
   why the scheduler takes its clock as a constructor argument, why a render snapshot is one buffer
   and one transfer, why render snapshots are droppable and ticks are not, how the engine is profiled
   without ever reading a clock, and why the selection ring is drawn in screen space.
+- `0011-milestone-7-observation-ui.md` — the observation UI: why the world layers ride the terrain
+  snapshot instead of a new request protocol, the tiered chart history and the head-collapse bug the
+  bounding test caught, running costs recomputed read-only and a brain view that is read rather than
+  re-inferred, DTOs frozen at the session boundary, and the placeholders that refuse to lie.
 - `0009-milestone-5-review.md` — the independent Milestone 5 review: a carcass meat value that
   silently wrapped its Uint32 row and conjured 4.3 billion units into the conservation identity, a
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order

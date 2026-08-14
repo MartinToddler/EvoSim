@@ -6,6 +6,76 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 7: Observation UI
+
+Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `PROTOCOL_VERSION` 2 → **3**,
+`FIELD_SNAPSHOT_LAYOUT_VERSION` 1 → **2**, everything else unchanged. **No golden hash changed**,
+and the suite reproduced every one — this milestone is observation: projections got richer, no
+authoritative rule moved. Decisions in `docs/adr/0011-milestone-7-observation-ui.md`.
+
+### Added
+
+- **World layers (H05).** The terrain snapshot grew four static byte-per-cell display planes —
+  temperature, moisture, fertility, plant capacity (field layout 2) — written once with
+  WORLD_READY by the extended `writeTerrainFields`. The renderer composes nine selectable views
+  (terrain, biomes, elevation, temperature, moisture, fertility, plant biomass, plant capacity,
+  organism density) from planes already on the main thread, blended over the composed terrain with
+  an opacity control. Switching layers sends the Worker nothing — a session test counts posted
+  messages to keep it that way. Density is derived from render snapshots only while its layer is
+  active. Legend ranges (temperature span, capacity reference) are engine constants published via
+  `WorldSummaryDto.display`, so the legend cannot disagree with the writer.
+- **Global statistics and charts (H04).** `collectTelemetryAggregates` now also returns alive-
+  population trait means (diet, top speed, adult radius, vision, attack, armor, metabolic pace,
+  thermal optimum), total organism mass and mean energy fraction — still one ascending pass at
+  telemetry cadence. `@eon/ui`'s `StatsHistory` accumulates the 2 Hz stream into the docs/05 §11
+  multiresolution tiers: recent history raw, older history geometrically coarser, hard
+  `bucketsPerTier × maxTiers` retention bound, whole run always on the chart. Hand-rolled SVG
+  time-series charts (population, plant biomass, births/deaths per 1 000 ticks, mean diet with a
+  zero reference, mean speed/vision/radius, mean energy) plot against the authoritative tick —
+  never the sample index — with hover crosshairs and numeric summaries (docs/06 §17).
+- **Full organism inspector (H03).** Overview, vitals with meters, inherited traits, running
+  costs (basal upkeep with thermal multiplier, movement cost of the last tick's realized effort,
+  thermal stress), a collapsible brain view — the last tick's 20 sensor inputs and 5 intents read
+  from retained scratch, labelled from the world's own label list, never re-inferred and never a
+  400-weight dump — plus lifetime tallies and surroundings. `EntityDetailsDto` gained the cost,
+  brain and reproduction-cooldown fields.
+- **Follow mode (H03).** The camera tracks the selected organism each frame; following ends
+  explicitly — cleared, replaced by a new selection, taken back by a drag, or the target died —
+  and the UI is told which. Death on a paused world (no further snapshots) is caught through the
+  inspector's query path.
+- **Top bar (H01/H02).** World name/seed with copy-to-clipboard, simulated year, tick, population
+  with a cap-pressure warning driven by `capRejectedBirths` (docs/01 §11), a species placeholder
+  that says why it is one (Milestone 8), plant biomass, generation, an honest run-state chip
+  (Paused/Running/Max/Behind), measured TPS, play/pause and the 1×–100×/MAX speed buttons, and
+  panel toggles.
+- **Responsive layout (H06).** Desktop: layers panel left, inspector right, charts bottom, canvas
+  dominant. Under 760 px the panels become bottom sheets and only one major sheet opens at a time
+  (docs/06 §16); the stat strip scrolls sideways; Esc deselects; touch targets stay ≥44 px.
+- **`@eon/ui` is real (docs/10 §1).** The M6 components moved out of `apps/web`; charts live in
+  `packages/ui/src/charts/`. The package depends on `@eon/protocol` and the new pixi-free
+  `@eon/renderer/palette` subpath only. React-hooks linting now covers it.
+
+### Changed
+
+- **DTOs are frozen at the session boundary.** `WorldSession` deep-freezes world summary,
+  telemetry and entity details before React sees them, turning "the UI cannot mutate authoritative
+  state" into a thrown `TypeError`. Tests assert frozenness end to end.
+- **`WorldSession` grew test seams.** The Worker and renderer are injectable, so selection,
+  stale-query dropping, follow lifecycles, layer isolation and teardown are unit-tested in Node
+  with fakes; `workerPort` accepts a structural worker.
+- **`WorldSummaryDto` carries a `display` block** (brain input/intent labels, death-cause labels,
+  temperature display range, capacity reference) copied from engine constants by the host — the
+  one module that imports both packages.
+- **Telemetry additions:** `organismMass`, `meanEnergyFraction`, `traitMeans`.
+
+### Known limitations
+
+- Species count and save state are placeholders until Milestones 8 and 10.
+- Charts begin at page load; there is no engine-side statistics history yet, so a reloaded world
+  starts its charts fresh (`REQUEST_HISTORY_RANGE` remains future work, docs/02 §13).
+- The Playwright suite is still task L08; this milestone was verified with a scripted manual
+  browser pass (Chromium) recorded in the session notes.
+
 ## [Unreleased] — 2026-08-13 — Milestone 6: Worker host, render transport and PixiJS renderer
 
 Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `CONFIG_SCHEMA_VERSION` unchanged (6),

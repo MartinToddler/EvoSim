@@ -15,7 +15,16 @@ import {
   type VegetationSnapshotView,
 } from "@eon/protocol";
 import { Camera } from "./Camera";
-import { CARCASS_TINT, SELECTION_TINT, composeTerrainRgba, organismTint } from "./palette";
+import {
+  CARCASS_TINT,
+  DENSITY_SATURATION_COUNT,
+  SELECTION_TINT,
+  composeBiomeLayerRgba,
+  composeDataLayerRgba,
+  composeTerrainRgba,
+  organismTint,
+  type WorldLayerId,
+} from "./palette";
 import { findOrganismIndex, pickOrganism, type PickResult } from "./selection/pickOrganism";
 import { SPRITE_FRAME, createRendererTextures, type RendererTextures } from "./textures";
 
@@ -80,6 +89,12 @@ export interface EonRendererOptions {
   maxDetailedOrganisms: number;
   /** Called when the user clicks an organism, or empty space (`null`). */
   onSelectionChange: (entityId: number | null) => void;
+  /**
+   * Called when follow mode ends without an explicit `setFollowed(null)`:
+   * the organism vanished from the snapshot (it died) or the user took the
+   * camera back by dragging.
+   */
+  onFollowEnd?: (reason: "died" | "user") => void;
   /** Hands a spent snapshot buffer back so the Worker can refill it. */
   onRecycleRenderBuffer: (buffer: ArrayBuffer) => void;
   /** Hands a spent vegetation buffer back. */
@@ -111,6 +126,24 @@ export class EonRenderer {
   readonly #biome: Uint8Array;
   readonly #elevation: Uint8Array;
 
+  // --- World-layer fields (task H05) ----------------------------------------
+  // Byte-per-cell display planes. The static five arrive once with the terrain
+  // snapshot, vegetation follows its stream, and density is derived here from
+  // each render snapshot when (and only when) its layer is active. Switching
+  // layers recombines these local arrays into the terrain texture — it sends
+  // nothing to the Worker and cannot touch the simulation.
+  readonly #vegetation: Uint8Array;
+  readonly #temperature: Uint8Array;
+  readonly #moisture: Uint8Array;
+  readonly #fertility: Uint8Array;
+  readonly #capacity: Uint8Array;
+  readonly #density: Uint8Array;
+  readonly #densityCounts: Uint16Array;
+  /** Composed default view, kept as the blend base for every data layer. */
+  readonly #basePixels: Uint8Array;
+  #activeLayer: WorldLayerId = "terrain";
+  #layerOpacity = 0.85;
+
   readonly #carcassLayer: ParticleContainer;
   readonly #carcassPool: Particle[] = [];
   readonly #organismLayer: ParticleContainer;
@@ -127,6 +160,7 @@ export class EonRenderer {
   #detailedCount = 0;
 
   #selectedEntityId: number | null = null;
+  #followedEntityId: number | null = null;
   #debugEnabled = false;
   #destroyed = false;
 
@@ -152,6 +186,14 @@ export class EonRenderer {
     const cells = options.gridSize * options.gridSize;
     this.#biome = new Uint8Array(cells);
     this.#elevation = new Uint8Array(cells);
+    this.#vegetation = new Uint8Array(cells);
+    this.#temperature = new Uint8Array(cells);
+    this.#moisture = new Uint8Array(cells);
+    this.#fertility = new Uint8Array(cells);
+    this.#capacity = new Uint8Array(cells);
+    this.#density = new Uint8Array(cells);
+    this.#densityCounts = new Uint16Array(cells);
+    this.#basePixels = new Uint8Array(cells * 4);
     this.#terrainPixels = new Uint8Array(cells * 4);
     this.#terrainSource = new BufferImageSource({
       resource: this.#terrainPixels,
@@ -246,10 +288,16 @@ export class EonRenderer {
 
   /** Adopt the one-off terrain field sent with WORLD_READY. */
   applyTerrain(view: TerrainSnapshotView): void {
-    this.#biome.set(view.biome.subarray(0, this.#biome.length));
-    this.#elevation.set(view.elevation.subarray(0, this.#elevation.length));
-    composeTerrainRgba(this.#biome, this.#elevation, view.vegetation, this.#terrainPixels);
-    this.#terrainSource.update();
+    const cells = this.#biome.length;
+    this.#biome.set(view.biome.subarray(0, cells));
+    this.#elevation.set(view.elevation.subarray(0, cells));
+    this.#vegetation.set(view.vegetation.subarray(0, cells));
+    this.#temperature.set(view.temperature.subarray(0, cells));
+    this.#moisture.set(view.moisture.subarray(0, cells));
+    this.#fertility.set(view.fertility.subarray(0, cells));
+    this.#capacity.set(view.capacity.subarray(0, cells));
+    this.#recomposeBase();
+    this.#recomposeView();
   }
 
   /**
@@ -259,9 +307,141 @@ export class EonRenderer {
    * holding it would only shrink the Worker's pool.
    */
   applyVegetation(view: VegetationSnapshotView): void {
-    composeTerrainRgba(this.#biome, this.#elevation, view.vegetation, this.#terrainPixels);
-    this.#terrainSource.update();
+    this.#vegetation.set(view.vegetation.subarray(0, this.#vegetation.length));
+    // The base always includes vegetation — even under a data layer it shows
+    // through at partial opacity — so a fresh field recomposes both.
+    this.#recomposeBase();
+    this.#recomposeView();
     this.#options.onRecycleVegetationBuffer(view.buffer);
+  }
+
+  // --- World layers (task H05) ------------------------------------------------
+
+  get worldLayer(): WorldLayerId {
+    return this.#activeLayer;
+  }
+
+  get layerOpacity(): number {
+    return this.#layerOpacity;
+  }
+
+  /**
+   * Switch the terrain texture to another view of the same world.
+   *
+   * Purely a recombination of display planes already on this side of the
+   * Worker boundary: no message is sent, no simulation state is read or
+   * written, and switching back and forth is idempotent (docs/06 §7,
+   * CLAUDE.md renderer boundary).
+   */
+  setWorldLayer(layer: WorldLayerId): void {
+    if (layer === this.#activeLayer) {
+      return;
+    }
+    this.#activeLayer = layer;
+    if (layer === "density") {
+      this.#recomputeDensity();
+    }
+    this.#recomposeView();
+  }
+
+  /** Blend strength of the active data layer over the terrain, in [0, 1]. */
+  setLayerOpacity(opacity: number): void {
+    if (!Number.isFinite(opacity)) {
+      // NaN slips through a min/max clamp and would blend every channel to
+      // black; an invalid opacity keeps the current one.
+      return;
+    }
+    const clamped = Math.min(1, Math.max(0, opacity));
+    if (clamped === this.#layerOpacity) {
+      return;
+    }
+    this.#layerOpacity = clamped;
+    if (this.#activeLayer !== "terrain") {
+      this.#recomposeView();
+    }
+  }
+
+  /** Rebuild the composed default view (biome + relief + vegetation). */
+  #recomposeBase(): void {
+    composeTerrainRgba(this.#biome, this.#elevation, this.#vegetation, this.#basePixels);
+  }
+
+  /** Rebuild the visible texture for the active layer and upload it. */
+  #recomposeView(): void {
+    const layer = this.#activeLayer;
+    if (layer === "terrain") {
+      this.#terrainPixels.set(this.#basePixels);
+    } else if (layer === "biome") {
+      composeBiomeLayerRgba(this.#biome, this.#basePixels, this.#layerOpacity, this.#terrainPixels);
+    } else {
+      const values = this.#layerValues(layer);
+      composeDataLayerRgba(
+        layer,
+        values,
+        this.#basePixels,
+        this.#layerOpacity,
+        this.#terrainPixels,
+      );
+    }
+    this.#terrainSource.update();
+  }
+
+  #layerValues(layer: WorldLayerId): Uint8Array {
+    switch (layer) {
+      case "elevation":
+        return this.#elevation;
+      case "temperature":
+        return this.#temperature;
+      case "moisture":
+        return this.#moisture;
+      case "fertility":
+        return this.#fertility;
+      case "vegetation":
+        return this.#vegetation;
+      case "capacity":
+        return this.#capacity;
+      case "density":
+        return this.#density;
+      default:
+        return this.#elevation;
+    }
+  }
+
+  /**
+   * Count organisms per environment cell from the current snapshot.
+   *
+   * Runs only while the density layer is active — an inactive layer costs
+   * nothing (docs/06 §7 "one heavy overlay at a time"). Saturates at
+   * {@link DENSITY_SATURATION_COUNT} organisms per cell.
+   */
+  #recomputeDensity(): void {
+    const counts = this.#densityCounts;
+    counts.fill(0);
+    const view = this.#snapshot;
+    const gridSize = this.#options.gridSize;
+    if (view !== null) {
+      const cellSizeLU = this.#options.worldSizeLU / gridSize;
+      const count = Math.min(this.#organismCount, view.organismId.length);
+      for (let i = 0; i < count; i += 1) {
+        const cellX = Math.min(
+          gridSize - 1,
+          Math.max(0, (view.organismX[i] as number) / cellSizeLU) | 0,
+        );
+        const cellY = Math.min(
+          gridSize - 1,
+          Math.max(0, (view.organismY[i] as number) / cellSizeLU) | 0,
+        );
+        const cell = cellY * gridSize + cellX;
+        counts[cell] = (counts[cell] as number) + 1;
+      }
+    }
+    const density = this.#density;
+    for (let cell = 0; cell < density.length; cell += 1) {
+      density[cell] = Math.min(
+        255,
+        Math.round(((counts[cell] as number) * 255) / DENSITY_SATURATION_COUNT),
+      );
+    }
   }
 
   /**
@@ -281,6 +461,10 @@ export class EonRenderer {
     this.#carcassCount = counts.carcassCount;
     this.#snapshotTick = counts.tick;
     this.#visualDirty = true;
+    if (this.#activeLayer === "density") {
+      this.#recomputeDensity();
+      this.#recomposeView();
+    }
     if (previous !== null) {
       this.#options.onRecycleRenderBuffer(previous.buffer);
     }
@@ -304,6 +488,47 @@ export class EonRenderer {
 
   get selectedEntityId(): number | null {
     return this.#selectedEntityId;
+  }
+
+  /**
+   * Keep the camera centred on an entity until it disappears or the user
+   * takes over (task H03 "follow").
+   *
+   * Passing `null` ends follow silently; the two implicit endings — the
+   * organism leaving the snapshot (death) and the user dragging the camera —
+   * are reported through `onFollowEnd` so the UI can say why the camera
+   * stopped moving.
+   */
+  setFollowed(entityId: number | null): void {
+    this.#followedEntityId = entityId;
+    if (entityId !== null) {
+      // Snap immediately rather than waiting for the next frame, so the
+      // button press is felt at once even on a paused world.
+      this.focusEntity(entityId);
+    }
+  }
+
+  get followedEntityId(): number | null {
+    return this.#followedEntityId;
+  }
+
+  /** Apply the follow camera for this frame; ends follow if the target is gone. */
+  #applyFollow(): void {
+    const entityId = this.#followedEntityId;
+    const view = this.#snapshot;
+    if (entityId === null || view === null) {
+      return;
+    }
+    const index = findOrganismIndex(view, this.#organismCount, entityId);
+    if (index < 0) {
+      // Not in this snapshot: it died (or fell out of a truncated snapshot,
+      // which the engine only does past the population cap). Stop moving the
+      // camera rather than chasing a stale coordinate.
+      this.#followedEntityId = null;
+      this.#options.onFollowEnd?.("died");
+      return;
+    }
+    this.camera.centerOn(view.organismX[index] as number, view.organismY[index] as number);
   }
 
   setDebugOverlay(enabled: boolean): void {
@@ -364,6 +589,7 @@ export class EonRenderer {
     if (this.#destroyed) {
       return;
     }
+    this.#applyFollow();
     this.#applyCamera();
     if (this.#visualDirty) {
       this.#syncCarcasses();
@@ -670,6 +896,12 @@ export class EonRenderer {
     this.#dragLastX = point.x;
     this.#dragLastY = point.y;
     this.#dragTravel += Math.abs(dx) + Math.abs(dy);
+    // A deliberate drag is the user taking the camera back: follow must yield,
+    // or the next frame would snap the view straight back to the organism.
+    if (this.#followedEntityId !== null && this.#dragTravel > CLICK_SLOP_PX) {
+      this.#followedEntityId = null;
+      this.#options.onFollowEnd?.("user");
+    }
     this.camera.panByScreen(dx, dy);
     this.#visualDirty = true;
   };

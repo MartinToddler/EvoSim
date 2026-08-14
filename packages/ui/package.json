@@ -11,5 +11,15 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eon/protocol": "workspace:*",
+    "@eon/renderer": "workspace:*",
+    "react": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "react-dom": "19.2.8"
   }
 }

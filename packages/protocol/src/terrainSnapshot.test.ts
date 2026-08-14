@@ -21,15 +21,25 @@ import {
 declare function structuredClone<T>(value: T, options?: { transfer?: ArrayBuffer[] }): T;
 
 describe("terrain snapshot", () => {
-  it("carries three byte-per-cell fields that do not alias", () => {
+  it("carries seven byte-per-cell fields that do not alias", () => {
     const view = viewTerrainSnapshot(createTerrainBuffer(8));
     expect(view.cellCount).toBe(64);
     view.biome.fill(3);
     view.elevation.fill(200);
     view.vegetation.fill(17);
+    view.temperature.fill(99);
+    view.moisture.fill(120);
+    view.fertility.fill(45);
+    view.capacity.fill(210);
     expect(view.biome[63]).toBe(3);
     expect(view.elevation[0]).toBe(200);
     expect(view.vegetation[32]).toBe(17);
+    expect(view.temperature[1]).toBe(99);
+    expect(view.moisture[62]).toBe(120);
+    expect(view.fertility[7]).toBe(45);
+    expect(view.capacity[40]).toBe(210);
+    // Filling every later plane must not have bled into the first one.
+    expect(view.biome[0]).toBe(3);
   });
 
   it("records the grid size so the consumer needs no side channel", () => {

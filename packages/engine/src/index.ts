@@ -252,14 +252,23 @@ export type { EngineContext } from "./EngineContext";
 // cannot change the world it is looking at.
 export {
   RenderFlagBit,
+  TEMPERATURE_DISPLAY_MAX_CENTI_C,
+  TEMPERATURE_DISPLAY_MIN_CENTI_C,
+  capacityDisplayReference,
   speedLUPerTick,
   writeRenderSnapshot,
   writeTerrainFields,
   writeVegetationField,
   type RenderSnapshotCounts,
   type RenderSnapshotWriter,
+  type StaticWorldFieldsWriter,
 } from "./render/renderSnapshot";
-export { collectTelemetryAggregates, queryEntity, type EntityDetails } from "./render/queryEntity";
+export {
+  collectTelemetryAggregates,
+  queryEntity,
+  type EntityDetails,
+  type TraitMeans,
+} from "./render/queryEntity";
 
 // Phase profiling hooks (CLAUDE.md "Profiling"). The engine reports phase
 // boundaries; the host owns the clock.

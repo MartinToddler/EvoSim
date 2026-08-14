@@ -13,6 +13,7 @@
     "@eon/engine": "workspace:*",
     "@eon/protocol": "workspace:*",
     "@eon/renderer": "workspace:*",
+    "@eon/ui": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

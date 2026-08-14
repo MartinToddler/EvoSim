@@ -300,9 +300,25 @@ export class WorkerClient {
   }
 }
 
-/** Adapt a real `Worker` to {@link ClientPort}. */
-export function workerPort(worker: Worker): ClientPort {
-  let listener: ((event: MessageEvent) => void) | null = null;
+/**
+ * The slice of `Worker` the adapter needs. Structural, so a Node test can pass
+ * a fake and a browser passes the real thing; the session's `SessionWorker`
+ * is the same shape.
+ */
+export interface RawWorker {
+  // Two call shapes rather than one optional parameter, mirroring the real
+  // `Worker.postMessage` overloads — a single `transfer?:` signature is not
+  // satisfiable by the DOM type, whose transfer-list overload is required.
+  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer: ArrayBuffer[]): void;
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  removeEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  terminate(): void;
+}
+
+/** Adapt a real `Worker` (or a test fake) to {@link ClientPort}. */
+export function workerPort(worker: RawWorker): ClientPort {
+  let listener: ((event: { data: unknown }) => void) | null = null;
   return {
     post(message, transfer): void {
       if (transfer !== undefined && transfer.length > 0) {
@@ -315,7 +331,7 @@ export function workerPort(worker: Worker): ClientPort {
       if (listener !== null) {
         worker.removeEventListener("message", listener);
       }
-      listener = (event: MessageEvent): void => {
+      listener = (event: { data: unknown }): void => {
         next(event.data);
       };
       worker.addEventListener("message", listener);

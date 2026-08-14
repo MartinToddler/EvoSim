@@ -264,12 +264,12 @@ Three notes carried forward:
    The deadline is unchanged: before **J05 / Milestone 9**.
 
 ## H UI/analytics
-- [ ] H01 app shell/top bar.
-- [ ] H02 time controls/actual TPS.
-- [ ] H03 organism inspector.
-- [ ] H04 global stats/charts.
-- [ ] H05 heatmaps.
-- [ ] H06 responsive mobile layout.
+- [x] H01 app shell/top bar.
+- [x] H02 time controls/actual TPS.
+- [x] H03 organism inspector.
+- [x] H04 global stats/charts.
+- [x] H05 heatmaps.
+- [x] H06 responsive mobile layout.
 
 ## I Species/history
 - [ ] I01 species registry.

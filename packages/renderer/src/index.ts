@@ -15,11 +15,19 @@ export {
   BIOME_COLORS,
   BIOME_NAMES,
   CARCASS_TINT,
+  DENSITY_SATURATION_COUNT,
   SELECTION_TINT,
+  WORLD_LAYERS,
   biomeName,
+  composeBiomeLayerRgba,
+  composeDataLayerRgba,
   composeTerrainRgba,
   hueTint,
+  isWorldLayerId,
   organismTint,
+  worldLayerLegendStops,
+  type WorldLayerId,
+  type WorldLayerInfo,
 } from "./palette";
 export { findOrganismIndex, pickOrganism, type PickResult } from "./selection/pickOrganism";
 export { SPRITE_FRAME, createRendererTextures, type RendererTextures } from "./textures";

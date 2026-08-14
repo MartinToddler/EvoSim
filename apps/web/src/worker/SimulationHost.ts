@@ -1,11 +1,17 @@
 import {
+  BRAIN_INPUT_NAMES,
+  BRAIN_OUTPUT_NAMES,
   CONFIG_SCHEMA_VERSION,
   DEATH_CAUSE_COUNT,
+  DEATH_CAUSE_NAMES,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
   SimulationEngine,
+  TEMPERATURE_DISPLAY_MAX_CENTI_C,
+  TEMPERATURE_DISPLAY_MIN_CENTI_C,
   TickPhase,
+  capacityDisplayReference,
   collectTelemetryAggregates,
   queryEntity,
   writeRenderSnapshot,
@@ -308,6 +314,18 @@ export class SimulationHost {
       // units, so it is converted here, at the cell's centre.
       founderCentreXLU: (engine.founderRegion.centerGridX + 0.5) * environment.cellSizeLU,
       founderCentreYLU: (engine.founderRegion.centerGridY + 0.5) * environment.cellSizeLU,
+      // Labels and legend ranges copied from engine constants here, in the one
+      // place that legitimately imports both packages — so the UI can caption
+      // engine numbers without an engine dependency, and the legend can never
+      // disagree with the writer that quantized the field.
+      display: {
+        brainInputLabels: [...BRAIN_INPUT_NAMES],
+        brainIntentLabels: [...BRAIN_OUTPUT_NAMES],
+        deathCauseLabels: [...DEATH_CAUSE_NAMES],
+        temperatureDisplayMinC: TEMPERATURE_DISPLAY_MIN_CENTI_C / 100,
+        temperatureDisplayMaxC: TEMPERATURE_DISPLAY_MAX_CENTI_C / 100,
+        capacityDisplayReference: capacityDisplayReference(engine.config),
+      },
     };
     this.#world = world;
 
@@ -326,7 +344,7 @@ export class SimulationHost {
 
     const terrainBuffer = createTerrainBuffer(world.gridSize);
     const terrain = viewTerrainSnapshot(terrainBuffer);
-    writeTerrainFields(engine, terrain.biome, terrain.elevation);
+    writeTerrainFields(engine, terrain);
     writeVegetationField(engine, terrain.vegetation);
 
     this.#port.post(
@@ -649,6 +667,9 @@ export class SimulationHost {
       plantBiomass: aggregates.plantBiomass,
       plantCapacity: aggregates.plantCapacity,
       maxGeneration: aggregates.maxGeneration,
+      organismMass: aggregates.organismMass,
+      meanEnergyFraction: aggregates.meanEnergyFraction,
+      traitMeans: aggregates.traitMeans,
       speed: this.#speed,
       achievedTicksPerSecond,
       targetTicksPerSecond: target,

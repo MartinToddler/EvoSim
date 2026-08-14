@@ -53,6 +53,30 @@ export function targetTicksPerSecond(speed: SimulationSpeed, targetAt1x: number)
   return SPEED_MULTIPLIER[speed] * targetAt1x;
 }
 
+/**
+ * Non-authoritative display metadata for the loaded world (Milestone 7).
+ *
+ * Everything here is either a label list copied from engine constants or a
+ * fixed quantization range for a byte-per-cell display field. The host fills it
+ * from `@eon/engine` exports so the UI never needs an engine import, and none
+ * of it can feed back into simulation state — it exists to caption numbers the
+ * engine already produced.
+ */
+export interface WorldDisplayDto {
+  /** Names of the brain sensor inputs, indexed like `EntityDetailsDto.brainInputs`. */
+  brainInputLabels: readonly string[];
+  /** Names of the brain intent outputs, indexed like `EntityDetailsDto.brainIntents`. */
+  brainIntentLabels: readonly string[];
+  /** Death cause names, indexed like `TelemetryDto.deathsByCause`. */
+  deathCauseLabels: readonly string[];
+  /** Temperature that byte 0 of the terrain temperature plane represents. */
+  temperatureDisplayMinC: number;
+  /** Temperature that byte 255 of the terrain temperature plane represents. */
+  temperatureDisplayMaxC: number;
+  /** Plant units that byte 255 of the terrain capacity plane represents. */
+  capacityDisplayReference: number;
+}
+
 /** Identity of the world currently loaded in the Worker. */
 export interface WorldSummaryDto {
   seed: number;
@@ -78,6 +102,36 @@ export interface WorldSummaryDto {
   /** Centre of the founder spawn region, in location units. */
   founderCentreXLU: number;
   founderCentreYLU: number;
+  /** Labels and legend ranges; see {@link WorldDisplayDto}. */
+  display: WorldDisplayDto;
+}
+
+/**
+ * Mean trait values over the *alive* population (Milestone 7 charts).
+ *
+ * A fixed handful of scalars, computed in the engine's single telemetry pass
+ * and streamed at telemetry cadence — this is what lets the charts show trait
+ * drift without ever shipping a per-organism array (CLAUDE.md React boundary).
+ * All values are in the same human units as `EntityDetailsDto`. When the
+ * population is zero every mean is 0 and the UI is expected to show a gap.
+ */
+export interface TraitMeansDto {
+  /** Mean signed diet in [-1, 1]: -1 herbivore, +1 carnivore. */
+  diet: number;
+  /** Mean genetic top speed in location units per tick. */
+  maxSpeedLUPerTick: number;
+  /** Mean adult body radius in location units. */
+  adultRadiusLU: number;
+  /** Mean vision range in location units. */
+  visionRangeLU: number;
+  /** Mean attack investment in [0, 1]. */
+  attack: number;
+  /** Mean armor investment in [0, 1]. */
+  armor: number;
+  /** Mean metabolic pace in [0, 1]. */
+  metabolicPace: number;
+  /** Mean thermal optimum in °C. */
+  thermalOptimumC: number;
 }
 
 /**
@@ -102,6 +156,12 @@ export interface TelemetryDto {
   plantCapacity: number;
   /** Highest generation number alive right now; 0 when the world is empty. */
   maxGeneration: number;
+  /** Total body mass of the alive population, in engine mass units. */
+  organismMass: number;
+  /** Mean energy as a fraction of each body's capacity, in [0, 1]. */
+  meanEnergyFraction: number;
+  /** Mean trait values over the alive population; see {@link TraitMeansDto}. */
+  traitMeans: TraitMeansDto;
 
   // --- Host pacing, measured on the wall clock outside the engine -----------
   speed: SimulationSpeed;
@@ -170,6 +230,33 @@ export interface EntityDetailsDto {
   maturityAgeTicks: number;
   maxAgeTicks: number;
   hueDegrees: number;
+  /** Ticks until this organism may reproduce again; 0 means ready. */
+  reproductionCooldownTicks: number;
+
+  // --- Current running costs (docs/06 §11), derived read-only ----------------
+  /** Basal upkeep in energy units per tick, thermal multiplier included. */
+  costBasalPerTick: number;
+  /** Movement cost of the most recent tick's realized effort. */
+  costMovementPerTick: number;
+  /**
+   * Thermal stress as a fraction of the engine's capped worst case, in [0, 1].
+   * Below 0.5 stress only raises the basal cost; above 0.5 the organism also
+   * takes health damage (the engine's severe-stress threshold).
+   */
+  thermalStress: number;
+
+  // --- Brain, debug-style (docs/06 §11) --------------------------------------
+  /**
+   * Sensor inputs the brain saw on the most recent tick, in [-1, 1], indexed
+   * like `WorldDisplayDto.brainInputLabels`. All zero before the first tick.
+   */
+  brainInputs: readonly number[];
+  /**
+   * Intent levels the brain produced on the most recent tick, indexed like
+   * `WorldDisplayDto.brainIntentLabels`. Turn is signed in [-1, 1] (negative
+   * left); the rest are in [0, 1].
+   */
+  brainIntents: readonly number[];
 
   /** Lifetime energy actually digested, by source. */
   plantEnergyEaten: number;
