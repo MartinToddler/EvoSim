@@ -76,11 +76,25 @@ jobs:
   determinism:
     name: determinism (${{ matrix.os }}, Node ${{ matrix.node }})
     needs: verify
+    # Default branch and manual runs only.
+    #
+    # This matrix is the most expensive thing in the repository: it runs the
+    # engine suite three times, and GitHub bills macOS minutes at 10x and
+    # Windows at 2x. At ~20 minutes a run that is ~200 billed minutes for the
+    # macOS leg alone, which on a private repository's monthly allowance is a
+    # few pushes. It never actually ran before — `needs: verify` kept it behind
+    # a job that was being cancelled at its timeout — so raising that timeout
+    # would have switched this on for every push to every branch at once.
+    #
+    # The branch name is read from the event rather than hard-coded, so this
+    # stays correct whatever the default branch is called and if it is ever
+    # renamed.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_name == github.event.repository.default_branch
     runs-on: ${{ matrix.os }}
     # Same reasoning as the verify job above, and the same arithmetic: this job
-    # runs the engine suite, which is where nearly all of that time goes. It has
-    # never actually run, because `needs: verify` kept it gated behind a job
-    # that was being cancelled.
+    # runs the engine suite, which is where nearly all of that time goes.
     timeout-minutes: 60
     strategy:
       fail-fast: false

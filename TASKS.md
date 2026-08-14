@@ -246,9 +246,11 @@ Three notes carried forward:
 3. **CI's `verify` job had been cancelling at its 20-minute timeout since Milestone 4** (runs 8-13),
    so no push since the evolution milestone was actually verified by CI, and the cross-platform
    `determinism` matrix never ran at all because `needs: verify` gated it behind the cancelled job.
-   Both budgets are raised to 60 minutes and documented as hang detectors. This is a symptom of the
-   suite cost that ADR 0006 §9 and ADR 0008 §7 both flagged; the real fix is scheduling the soaks
-   separately, which stays open.
+   Both budgets are raised to 60 minutes and documented as hang detectors, and the `determinism`
+   matrix is gated to the default branch and manual runs — three engine suites with macOS at 10x
+   billed minutes is ~200 minutes per push, which raising the timeout would have enabled everywhere
+   at once. This is a symptom of the suite cost that ADR 0006 §9 and ADR 0008 §7 both flagged; the
+   real fix is scheduling the soaks separately, which stays open.
 4. **The foundation-gate and Milestone 2.5 branches are still not merged** (ADR 0006 §0, ADR 0008 §0,
    ADR 0010 §0). Milestone 6 does not depend on either. The renderer's biome palette deliberately
    reuses the Milestone 2.5 colours verbatim so the eventual merge is textual rather than visual.

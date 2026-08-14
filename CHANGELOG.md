@@ -81,7 +81,11 @@ and CLAUDE.md requires that a UI-only change never move an engine hash. Decision
   milestones — the `determinism` matrix never ran at all, because `needs: verify` gated it behind
   the cancelled job. Both budgets are now 60 minutes and documented as hang detectors, not
   performance assertions (docs/07 §8). The long-term lever is still scheduling the soaks separately
-  rather than shortening them (ADR 0006 §9).
+  rather than shortening them (ADR 0006 §9). The cross-platform `determinism` matrix is now gated to
+  the default branch and manual runs: it is the most expensive thing in the repository — the engine
+  suite three times, with macOS billed at 10x minutes and Windows at 2x — so raising the timeout
+  would otherwise have switched ~200 billed minutes per push on for every branch at once. The branch
+  is read from the event payload rather than hard-coded, so the gate survives a rename.
 - **`?seed=` accepted malformed values as real worlds.** `Number.parseInt` reads `"0x"` as 0 and
   `"12abc"` as 12, so a typo in a shared link opened a _different_ world instead of the default one.
   The shape is now validated before parsing.

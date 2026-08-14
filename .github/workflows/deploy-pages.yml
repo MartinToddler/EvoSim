@@ -7,10 +7,14 @@
 # it.
 #
 # The milestone branch is a trigger on purpose and temporarily. `main` still
-# carries only the Milestone 0-1 skeleton, so restricting this to `main` today
-# would publish an empty page. Once the application is merged, drop the
-# `claude/milestone-6-**` pattern below and let `main` be the only source of
-# the published site.
+# carries only the Milestone 0-1 skeleton, so restricting this to the default
+# branch today would publish an empty page. Once the application is merged, drop
+# the `claude/milestone-6-**` pattern below and let the default branch be the
+# only source of the published site.
+#
+# `push.branches` cannot take an expression, so the default branch has to be
+# named literally here. If it is ever renamed, or if it is not `main`, update
+# the list — the `workflow_dispatch` trigger covers any branch in the meantime.
 name: deploy-pages
 
 on:
