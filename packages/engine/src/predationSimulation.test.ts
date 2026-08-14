@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import type { SimulationConfig } from "./config/SimulationConfig";
 import { GENE_COUNT, Gene, geneFromQ } from "./genetics/genes";
 import { createFounderGenes } from "./genetics/founderGenome";
+import { TRAIT_DIMENSIONS } from "./evolution/traitVector";
 import { engineInternals } from "./internal";
 import { POS_SCALE, Q, qmul } from "./math/fixed";
 import { DeathCause } from "./organisms/death";
@@ -111,6 +112,18 @@ interface PlacedOrganism {
  */
 function place(engine: SimulationEngine, options: PlacedOrganism): number {
   const ctx = engineInternals(engine).context;
+  // Since Milestone 8 every organism must belong to a registered species; the
+  // engine constructor creates species 1, and casts that use higher IDs get
+  // sibling records here (population is counted by spawnOrganism itself).
+  while (ctx.species.count < (options.speciesId ?? 1)) {
+    ctx.species.createSpecies({
+      parentSpeciesId: 0,
+      originTick: 0,
+      centroid: new Int32Array(TRAIT_DIMENSIONS),
+      founderEntityId: ctx.organisms.nextEntityId,
+      generationAtOrigin: 0,
+    });
+  }
   const genes = createFounderGenes();
   for (const [gene, valueQ] of Object.entries(options.genesQ ?? {})) {
     genes[Number(gene) % GENE_COUNT] = geneFromQ(valueQ);
