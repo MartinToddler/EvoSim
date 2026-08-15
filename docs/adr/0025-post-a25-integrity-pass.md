@@ -107,7 +107,46 @@ herbivore-on-grass case costs exactly what it did before.
 
 ### 2c. Carcass saturation (finding E) — MEASURED NUMBERS TO BE FILLED
 
-## 3. Speciation (finding G) — SCENARIO RESULTS TO BE FILLED
+## 3. Speciation (finding G): the split is reachable, and what it took to prove it
+
+Gate 6 asks for a calibrated fragmented/environmentally divergent run that creates an
+automatic species split. Getting there took four falsified designs, each of which taught
+something worth recording:
+
+1. **A hot barren barrier between two habitable bands** (96×96): the far band was never
+   colonized — the founder cannot cross a band it is not yet adapted to — and the single
+   populated band boom-crashed to extinction at tick 32 000.
+2. **A milder full-map cline** (96×96): survives, but stays ONE continuous cloud. The
+   population repeatedly bottlenecks (troughs of ~100), each crash erasing the spatial
+   structure a cline needs, and the detector correctly refuses to split a cline — the same
+   verdict every reference-world soak has always produced.
+3. **The barrier at 128–160 grid**: still either extinct or un-colonized. Fragmentation
+   that depends on organisms crossing hostile ground does not happen at these horizons.
+4. **The design that works — make the fragmentation happen to an already-spread
+   population.** One continent; at tick 8 000 a sequence of ordinary `LowerTerrain`
+   intervention commands floods a full-width equatorial channel (the product's own
+   geological tool, canonical and replayable); the continent becomes two, with the founder
+   lineage already living on both sides.
+
+On the 192×192 scenario world the measured between-deme RMS gene distance is ≤ ~66 Q
+before the channel (and in flat controls), then grows monotonically after it — ~180 Q at
+20 000, ~430 Q at 35 000, ~500 Q at 40 000 — led by size and diet, with a smaller world
+(128) reproducing the same curve until its half-sized demes died out. The scenario's
+detector is therefore calibrated at `splitDistanceThresholdQ` = **480** (continuity 160):
+2–3× the measured noise ceiling, on the measured divergence trajectory, with the
+anti-flicker machinery (five stable analyses, centroid continuity, minimum daughter
+population) unchanged in kind. The default 901 stays exactly as calibrated for the
+undivided reference world.
+
+**Result: the engine's own detector declares the split at tick ~45 000, and the two
+species persist for the next 60 000 ticks** (deme RMS 312–680 Q, divergence in size, diet
+and acceleration) until the northern deme's boom-crash trough hits zero at ~105 000 and
+the world honestly returns to one species — an extinction the event log records like any
+other. Reachability is what the gate asks for, and reachability is what the fixture
+(`fixtures/speciationScenario.ts`) plus `ecologicalSpeciation.test.ts` now pin: a split
+must occur by tick 60 000 (measured 45 000 + 33% headroom), asserted as a horizon rather
+than a brittle tick, on a config whose plant capacities are pinned as absolute values so
+DEFAULT_CONFIG retunes cannot shift the world the calibration measured.
 
 ## 4. Versioning
 
