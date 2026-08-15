@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CommandResultDto,
   EntityDetailsDto,
@@ -22,9 +22,14 @@ import {
   ToolsPanel,
   TopBar,
   TreePanel,
+  WorldsPanel,
+  type SavedWorldView,
   type ToolSelection,
 } from "@eon/ui";
+import { ENGINE_VERSION } from "@eon/engine";
+import type { StoredWorld } from "@eon/persistence";
 import { WorldSession } from "./app/WorldSession";
+import { defaultWorldName, type PersistenceStatus } from "./app/WorldPersistence";
 import { readSeedFromLocation } from "./app/seed";
 import "./styles/app.css";
 
@@ -51,8 +56,15 @@ import "./styles/app.css";
  * session effect.
  */
 
+/**
+ * Build identifier recorded in every save manifest, so a stored world can be
+ * traced to the app that wrote it. Vite substitutes it at build time; the
+ * fallback keeps a dev server honest rather than pretending to know.
+ */
+const APP_VERSION: string = (import.meta.env["VITE_APP_VERSION"] as string | undefined) ?? "dev";
+
 /** Panels that compete for the single mobile sheet slot. */
-type PanelId = "stats" | "layers" | "species" | "tree" | "timeline" | "tools";
+type PanelId = "stats" | "layers" | "species" | "tree" | "timeline" | "tools" | "worlds";
 
 type PanelsOpen = Readonly<Record<PanelId, boolean>>;
 
@@ -63,6 +75,7 @@ const NO_PANELS: PanelsOpen = {
   tree: false,
   timeline: false,
   tools: false,
+  worlds: false,
 };
 
 /**
@@ -71,6 +84,7 @@ const NO_PANELS: PanelsOpen = {
  * deterministic rule, applied without any click involved.
  */
 const NARROW_KEEP_PRIORITY: readonly PanelId[] = [
+  "worlds",
   "tools",
   "stats",
   "species",
@@ -157,11 +171,16 @@ export function App(): React.JSX.Element {
   const treeOpen = panels.tree;
   const timelineOpen = panels.timeline;
   const toolsOpen = panels.tools;
+  const worldsOpen = panels.worlds;
 
   // --- Player tools state (Milestone 9) ----------------------------------------
   const [activeTool, setActiveTool] = useState<ToolSelection | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const commandNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // --- Persistence state (Milestone 10) ---------------------------------------
+  const [storedWorlds, setStoredWorlds] = useState<readonly StoredWorld[]>([]);
+  const [persistence, setPersistence] = useState<PersistenceStatus | null>(null);
 
   // --- Species and history state (Milestone 8) --------------------------------
   const [tree, setTree] = useState<TreeSnapshotDto | null>(null);
@@ -241,10 +260,17 @@ export function App(): React.JSX.Element {
             commandNoticeTimer.current = null;
           }, 4000);
         },
+        onPersistenceStatus: (status) => {
+          setPersistence(status);
+        },
+        onWorldsChanged: (worlds) => {
+          setStoredWorlds(worlds);
+        },
         onError: (workerError) => {
           setError(workerError);
         },
       },
+      appVersion: APP_VERSION,
     });
     sessionRef.current = session;
 
@@ -369,6 +395,9 @@ export function App(): React.JSX.Element {
   const toggleTools = useCallback(() => {
     togglePanel("tools");
   }, [togglePanel]);
+  const toggleWorlds = useCallback(() => {
+    togglePanel("worlds");
+  }, [togglePanel]);
 
   // Arm/disarm a canvas tool. React state is the source of truth; the session
   // is synchronized by the effect below.
@@ -400,6 +429,31 @@ export function App(): React.JSX.Element {
             },
     );
   }, [toolsOpen, activeTool]);
+
+  // The stored-world list is read when the panel opens rather than polled: it
+  // changes only when this tab saves or deletes, and both of those refresh it.
+  useEffect(() => {
+    if (worldsOpen) {
+      sessionRef.current?.refreshWorlds();
+    }
+  }, [worldsOpen]);
+
+  const saveWorld = useCallback((name: string) => {
+    sessionRef.current?.saveWorld(name);
+  }, []);
+
+  const loadWorld = useCallback(
+    (worldId: string) => {
+      // A load replaces the world the charts were describing.
+      history.clear();
+      sessionRef.current?.loadWorld(worldId);
+    },
+    [history],
+  );
+
+  const deleteWorld = useCallback((worldId: string) => {
+    sessionRef.current?.deleteWorld(worldId);
+  }, []);
 
   // Live tree refresh only while someone is looking at species data; otherwise
   // the session refreshes it only when the species set itself changes.
@@ -434,10 +488,70 @@ export function App(): React.JSX.Element {
     [narrow],
   );
 
+  const refreshWorlds = useCallback(() => {
+    sessionRef.current?.refreshWorlds();
+  }, []);
+
+  // Derived from world state rather than read off the session during render:
+  // a ref holds no value React is allowed to read while rendering.
+  const suggestedWorldName = world === null ? "New world" : defaultWorldName(world.seed);
+
+  // Stored records mapped into the plain view model the panel renders. The UI
+  // package never sees a persistence type (see its package doc comment).
+  const savedWorldViews: SavedWorldView[] = useMemo(
+    () =>
+      storedWorlds.map((stored) => {
+        const newest = stored.saves[0];
+        return {
+          worldId: stored.manifest.worldId,
+          worldName: stored.manifest.worldName,
+          seedHex: `0x${stored.manifest.seed.toString(16).toUpperCase().padStart(8, "0")}`,
+          latestTick: stored.manifest.latestTick,
+          savedAtIso: newest?.savedAtIso ?? stored.manifest.lastOpenedAtIso,
+          saveCount: stored.saves.length,
+          engineVersion: stored.manifest.engineVersion,
+          stateHash: stored.manifest.latestStateHash,
+          totalBytes: stored.saves.reduce((sum, save) => sum + save.byteLength, 0),
+          status: stored.manifest.status,
+          statusDetail: stored.manifest.statusDetail,
+          isCurrent: stored.manifest.worldId === persistence?.worldId,
+          // A save from another engine build would run a different history, so
+          // the button is disabled rather than allowed to fail on click.
+          loadable: stored.manifest.engineVersion === ENGINE_VERSION,
+        };
+      }),
+    [storedWorlds, persistence?.worldId],
+  );
+
+  const persistenceStatusView = useMemo(
+    () => ({
+      worldId: persistence?.worldId ?? null,
+      worldName: persistence?.worldName ?? null,
+      busy: persistence?.busy ?? false,
+      autosaveArmed: persistence?.autosaveArmed ?? false,
+      lastSavedTick: persistence?.lastSavedTick ?? null,
+      message: persistence?.message ?? "Not saved yet",
+      failed: persistence?.failed ?? false,
+    }),
+    [persistence],
+  );
+
+  /** Compact save state for the top bar (docs/06 §9). */
+  const saveStateLabel =
+    persistence === null || persistence.lastSavedTick === null
+      ? persistence?.failed === true
+        ? "failed"
+        : "unsaved"
+      : persistence.busy
+        ? "saving…"
+        : persistence.failed
+          ? "failed"
+          : `saved @ ${persistence.lastSavedTick.toLocaleString()}`;
+
   // On narrow viewports an open sheet takes the inspector's slot; selection
   // survives underneath and the inspector returns when the sheet closes.
   const anySheetOpen =
-    statsOpen || layersOpen || speciesOpen || treeOpen || timelineOpen || toolsOpen;
+    statsOpen || layersOpen || speciesOpen || treeOpen || timelineOpen || toolsOpen || worldsOpen;
   const inspectorVisible = !narrow || !anySheetOpen;
 
   return (
@@ -456,6 +570,8 @@ export function App(): React.JSX.Element {
         treeOpen={treeOpen}
         timelineOpen={timelineOpen}
         toolsOpen={toolsOpen}
+        worldsOpen={worldsOpen}
+        saveState={saveStateLabel}
         onSpeedChange={changeSpeed}
         onResume={resume}
         onToggleDebug={toggleDebug}
@@ -466,6 +582,7 @@ export function App(): React.JSX.Element {
         onToggleTree={toggleTree}
         onToggleTimeline={toggleTimeline}
         onToggleTools={toggleTools}
+        onToggleWorlds={toggleWorlds}
       />
 
       {world === null && error === null ? (
@@ -530,6 +647,21 @@ export function App(): React.JSX.Element {
           onSelect={selectTool}
           onApplyGlobalTemperature={applyGlobalTemperature}
           onClose={toggleTools}
+        />
+      ) : null}
+
+      {worldsOpen ? (
+        <WorldsPanel
+          worlds={savedWorldViews}
+          status={persistenceStatusView}
+          tick={telemetry?.tick ?? 0}
+          suggestedName={suggestedWorldName}
+          autosaveIntervalTicks={hostRuntime?.autosaveCheckInterval ?? 0}
+          unavailableReason={null}
+          onSave={saveWorld}
+          onLoad={loadWorld}
+          onDelete={deleteWorld}
+          onRefresh={refreshWorlds}
         />
       ) : null}
 

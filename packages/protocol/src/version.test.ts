@@ -3,8 +3,8 @@ import { PROTOCOL_VERSION } from "./version";
 import { decodeMainToWorkerMessage } from "./messages";
 
 describe("protocol version", () => {
-  it("is 5 for Milestone 9 (changing it is a deliberate wire-format decision)", () => {
-    expect(PROTOCOL_VERSION).toBe(5);
+  it("is 6 for Milestone 10 (changing it is a deliberate wire-format decision)", () => {
+    expect(PROTOCOL_VERSION).toBe(6);
   });
 
   it("refuses messages stamped with any other version", () => {

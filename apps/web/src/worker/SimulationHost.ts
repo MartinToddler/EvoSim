@@ -37,6 +37,11 @@ import {
   type SpeciesSummary,
 } from "@eon/engine";
 import {
+  decodeDurableSnapshot,
+  encodeDurableSnapshot,
+  verifyRestoredStateHash,
+} from "@eon/persistence/codec";
+import {
   DEFAULT_HOST_RUNTIME_CONFIG,
   FieldHeader,
   PROTOCOL_VERSION,
@@ -291,6 +296,16 @@ export class SimulationHost {
       case "QUERY_STATE_HASH":
         this.#answerStateHashQuery(message.payload.targetTick, message.requestId ?? 0);
         return;
+      case "REQUEST_SAVE":
+        this.#answerSaveRequest(message.payload.reason, message.requestId ?? 0);
+        return;
+      case "LOAD_WORLD":
+        this.#loadWorld(
+          message.payload.snapshot as ArrayBuffer,
+          message.payload.hostRuntime,
+          message.payload.speed,
+        );
+        return;
       case "RECYCLE_RENDER_BUFFER":
         this.#renderPool?.release(message.payload.buffer);
         return;
@@ -309,9 +324,47 @@ export class SimulationHost {
   // --- World lifecycle -------------------------------------------------------
 
   #initWorld(seed: number, config: unknown, hostRuntime: Partial<HostRuntimeConfig> | null): void {
-    // Stop whatever was running before touching any field: initializing a
-    // second world while the first one's loop is still scheduled is exactly the
-    // race that would produce two engines stepping into one port.
+    const authoritativeConfig =
+      config === null || config === undefined ? DEFAULT_CONFIG : (config as SimulationConfig);
+    this.#adoptEngine(new SimulationEngine({ seed, config: authoritativeConfig }), hostRuntime);
+  }
+
+  /**
+   * Resume a world from a durable snapshot (Milestone 10, task K04).
+   *
+   * Order is the whole design here: the container is validated, the engine is
+   * rebuilt and its canonical hash is checked against the one recorded at save
+   * time — all before a single field of this host changes. A save that turns
+   * out to be corrupt, or written by another engine version, therefore leaves
+   * the world that is currently running exactly as it was, and the failure
+   * surfaces as an ordinary (non-fatal) error the UI can show.
+   */
+  #loadWorld(
+    snapshot: ArrayBuffer,
+    hostRuntime: Partial<HostRuntimeConfig> | null,
+    speed: SimulationSpeed,
+  ): void {
+    const { header, snapshot: state } = decodeDurableSnapshot(new Uint8Array(snapshot));
+    const engine = SimulationEngine.fromSnapshot(state);
+    // The end-to-end check: bytes survived (checksum) AND this build reads them
+    // as the same simulation state the writing build held (state hash).
+    verifyRestoredStateHash(header, engine.computeStateHash());
+
+    this.#adoptEngine(engine, hostRuntime);
+    this.#setSpeed(speed);
+  }
+
+  /**
+   * Make `engine` this host's world and announce it.
+   *
+   * Shared by "new world" and "loaded world" so a restored world is hosted by
+   * exactly the same code path as a fresh one — no second, subtly different
+   * WORLD_READY to drift out of sync.
+   */
+  #adoptEngine(engine: SimulationEngine, hostRuntime: Partial<HostRuntimeConfig> | null): void {
+    // Stop whatever was running before touching any field: adopting a second
+    // world while the first one's loop is still scheduled is exactly the race
+    // that would produce two engines stepping into one port.
     this.#stopLoop();
     this.#fatal = false;
 
@@ -325,9 +378,6 @@ export class SimulationHost {
     validateHostRuntimeConfig(merged);
     this.#hostRuntime = merged;
 
-    const authoritativeConfig =
-      config === null || config === undefined ? DEFAULT_CONFIG : (config as SimulationConfig);
-    const engine = new SimulationEngine({ seed, config: authoritativeConfig });
     engine.setProfiler(this.#profiler);
     this.#engine = engine;
 
@@ -397,7 +447,10 @@ export class SimulationHost {
     this.#lastRenderAt = Number.NEGATIVE_INFINITY;
     this.#lastVegetationAt = Number.NEGATIVE_INFINITY;
     this.#lastTelemetryAt = Number.NEGATIVE_INFINITY;
-    this.#lastAppliedCommandCursor = 0;
+    // A restored world resumes mid-history: starting this at 0 would make the
+    // first tick after a load look like "commands were applied" and re-ship
+    // terrain for nothing.
+    this.#lastAppliedCommandCursor = engine.commands.cursor;
     this.#telemetryWindowStart = this.#clock.now();
     this.#telemetryWindowTicks = 0;
     this.#profiler.resetWindow();
@@ -902,6 +955,52 @@ export class SimulationHost {
         { tick: engine.tick, hash: engine.computeStateHash(), engineVersion: ENGINE_VERSION },
         requestId,
       ),
+    );
+  }
+
+  /**
+   * Serialize the running world into a durable snapshot and transfer it
+   * (Milestone 10, task K04).
+   *
+   * Saving is a *read* of authoritative state. It draws no randomness, steps
+   * nothing and mutates nothing: `serialize()` hands over detached copies, and
+   * the container is built from those. A world saved at tick N therefore has
+   * exactly the future it would have had if nobody had ever pressed Save — the
+   * property the whole milestone exists to guarantee.
+   *
+   * The bytes are transferred rather than copied, so a multi-megabyte save does
+   * not double its own cost crossing the port.
+   */
+  #answerSaveRequest(reason: "manual" | "autosave", requestId: number): void {
+    const engine = this.#engine;
+    if (engine === null) {
+      throw new Error("cannot save before a world is initialized");
+    }
+    const stateHash = engine.computeStateHash();
+    const bytes = encodeDurableSnapshot({
+      snapshot: engine.serialize(),
+      stateHash,
+      configHash: engine.configHash,
+    });
+    // `encodeDurableSnapshot` returns a Uint8Array that exactly fills its own
+    // buffer, so transferring that buffer transfers precisely the save.
+    const buffer = bytes.buffer as ArrayBuffer;
+    this.#port.post(
+      requestEnvelope(
+        "SNAPSHOT_DATA",
+        {
+          buffer,
+          tick: engine.tick,
+          stateHash,
+          engineVersion: ENGINE_VERSION,
+          snapshotSchemaVersion: SNAPSHOT_SCHEMA_VERSION,
+          configHash: engine.configHash,
+          seed: engine.seed,
+          reason,
+        },
+        requestId,
+      ),
+      [buffer],
     );
   }
 

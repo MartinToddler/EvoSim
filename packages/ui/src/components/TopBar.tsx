@@ -16,9 +16,10 @@ import { formatCompact, formatInt } from "../format";
  * 2 Hz telemetry stream — never from a render snapshot (CLAUDE.md React
  * boundary).
  *
- * One docs/06 §9 item is deliberately a placeholder still: **save state**
- * belongs to Milestone 10 persistence and is absent entirely. The species
- * count became real with the Milestone 8 registry.
+ * The species count became real with the Milestone 8 registry, and the docs/06
+ * §9 **save state** slot with Milestone 10 persistence: it reports the tick the
+ * world was last stored at, or that it has never been stored, and opens the
+ * saved-worlds panel.
  */
 
 const SPEED_BUTTONS: readonly { speed: SimulationSpeed; label: string }[] = [
@@ -54,6 +55,9 @@ export interface TopBarProps {
   treeOpen: boolean;
   timelineOpen: boolean;
   toolsOpen: boolean;
+  worldsOpen: boolean;
+  /** Compact save state, e.g. "saved @ 4,000" or "unsaved" (docs/06 §9). */
+  saveState: string;
   onSpeedChange: (speed: SimulationSpeed) => void;
   /** Resume from pause at the last running speed. */
   onResume: () => void;
@@ -65,6 +69,7 @@ export interface TopBarProps {
   onToggleTree: () => void;
   onToggleTimeline: () => void;
   onToggleTools: () => void;
+  onToggleWorlds: () => void;
 }
 
 /** Run-state label: the honest one, including "behind" (docs/01 §11). */
@@ -197,6 +202,17 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
           <span className={behind ? "stat-value warn" : "stat-value"}>{state}</span>
         </div>
         <div className="stat">
+          <span className="stat-label">Saved</span>
+          <button
+            type="button"
+            className="stat-value seed-button"
+            title="Save, load and manage stored worlds"
+            onClick={props.onToggleWorlds}
+          >
+            {props.saveState}
+          </button>
+        </div>
+        <div className="stat">
           <span className="stat-label" title="Ticks per second actually achieved">
             TPS
           </span>
@@ -292,6 +308,14 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
           onClick={props.onToggleTools}
         >
           Tools
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.worldsOpen}
+          title="Save this world, or load one you saved earlier"
+          onClick={props.onToggleWorlds}
+        >
+          Worlds
         </button>
         <button
           type="button"

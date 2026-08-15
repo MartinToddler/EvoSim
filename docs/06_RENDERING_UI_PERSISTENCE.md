@@ -340,6 +340,14 @@ Stores:
 - `stats`;
 - `preferences`.
 
+> **Amended by ADR 0016 §6 (Milestone 10).** Schema version 1 creates `worlds`, `snapshots`
+> (metadata, indexed by world and by `[world, tick]`) and `snapshotBlobs` (payload bytes, same
+> key). Metadata and payload are separate rows so listing worlds never drags multi-megabyte
+> buffers through a structured clone. `commandChunks`, `events` and `stats` are **not** created
+> yet: a save carries all three inside its payload today, so they would be empty tables
+> pretending to be a design. They arrive as migration 2, with the milestone that chunks history
+> out of the snapshot.
+
 ## 20. Manifest
 
 ```ts
@@ -376,6 +384,14 @@ interface SnapshotHeader {
   payloadChecksum: string;
 }
 ```
+
+> **Amended by ADR 0016 §3 (Milestone 10).** The implemented header is a fixed 96-byte binary
+> block, not a JSON object: magic `EONSNAP\0`, a `containerVersion` for the framing that moves
+> independently of the state `schemaVersion`, the engine version, the config hash, **the
+> canonical state hash at the saved tick**, the seed, the tick as two 32-bit words, the payload
+> length, a CRC-32 over the payload and a second CRC-32 over the header itself. The state hash is
+> what makes a load prove the restored *simulation state* is the one that was saved, rather than
+> only proving the bytes survived.
 
 Payload stores typed arrays and PRNG state losslessly.
 

@@ -10,6 +10,7 @@ import {
   type RenderSnapshotPayload,
   type SimulationSpeed,
   type SpeciesDetailsPayload,
+  type SnapshotDataPayload,
   type StateHashPayload,
   type TelemetryDto,
   type TerrainSnapshotPayload,
@@ -74,6 +75,7 @@ interface PendingRequest {
     | "TREE_SNAPSHOT"
     | "HISTORY_EVENTS"
     | "STATE_HASH"
+    | "SNAPSHOT_DATA"
     | "COMMAND_RESULT";
 }
 
@@ -239,6 +241,50 @@ export class WorkerClient {
       type: "QUERY_STATE_HASH",
       payload: { targetTick },
     }));
+  }
+
+  /**
+   * Ask the Worker to serialize its world into durable snapshot bytes
+   * (Milestone 10).
+   *
+   * The client does not store anything: it hands the bytes back to its caller,
+   * which owns the database. Saving cannot change the simulation, so this is
+   * safe to call while the world is running at any speed.
+   */
+  requestSave(reason: "manual" | "autosave" = "manual"): Promise<SnapshotDataPayload> {
+    return this.#request<SnapshotDataPayload>("SNAPSHOT_DATA", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "REQUEST_SAVE",
+      payload: { reason },
+    }));
+  }
+
+  /**
+   * Replace the Worker's world with one restored from durable bytes.
+   *
+   * The buffer is transferred, so the caller must not touch it afterwards —
+   * pass a copy if the save is still needed on this side. Success is announced
+   * by the ordinary WORLD_READY handler, exactly as a new world is; failure
+   * arrives as a non-fatal ERROR, and the world already running keeps running.
+   */
+  loadWorld(options: {
+    snapshot: ArrayBuffer;
+    speed: SimulationSpeed;
+    hostRuntime?: Partial<HostRuntimeConfig>;
+  }): void {
+    this.#send(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        type: "LOAD_WORLD",
+        payload: {
+          snapshot: options.snapshot,
+          hostRuntime: options.hostRuntime ?? null,
+          speed: options.speed,
+        },
+      },
+      [options.snapshot],
+    );
   }
 
   /** Stop the Worker and fail every outstanding request. */

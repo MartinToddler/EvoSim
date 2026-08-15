@@ -96,9 +96,13 @@ jobs:
       # A project site is served from /<repo>/, not from the domain root. Vite
       # must know that at build time or every asset — including the simulation
       # Worker — resolves to a 404.
+      # VITE_APP_VERSION is recorded in every world manifest the app writes
+      # (Milestone 10), so a saved world can be traced back to the exact build
+      # that produced it.
       - name: Build
         env:
           EON_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          VITE_APP_VERSION: ${{ github.sha }}
         run: pnpm build
 
       - uses: actions/upload-pages-artifact@v3

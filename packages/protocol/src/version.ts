@@ -32,9 +32,15 @@
  *   stroke resampler (`resampleStroke`) joins the package as part of the wire
  *   contract's meaning.
  *
+ * Protocol 6 (Milestone 10) adds persistence: `REQUEST_SAVE` asks the Worker to
+ * serialize its engine into a durable snapshot container, `SNAPSHOT_DATA`
+ * transfers those bytes back for the main thread to store, and `LOAD_WORLD`
+ * hands a stored container back to the Worker to resume from. No existing
+ * message changed shape; the union simply grew.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;

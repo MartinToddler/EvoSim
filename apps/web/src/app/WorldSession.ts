@@ -27,6 +27,8 @@ import type {
   CommandResultDto,
 } from "@eon/protocol";
 import { WorkerClient, workerPort, type RawWorker } from "../worker/WorkerClient";
+import type { StoredWorld, WorldStore } from "@eon/persistence";
+import { WorldPersistence, defaultWorldName, type PersistenceStatus } from "./WorldPersistence";
 
 /**
  * Composition root for one open world (docs/10 §22).
@@ -78,6 +80,10 @@ export interface WorldSessionCallbacks {
   onHistoryEvents?: (events: readonly WorldEventDto[], droppedBeforeOldest: number) => void;
   /** Verdict on a queued intervention (Milestone 9): accepted identity or rejection. */
   onCommandResult?: (result: CommandResultDto, tick: number) => void;
+  /** Storage status after every save, load, delete or failure (Milestone 10). */
+  onPersistenceStatus?: (status: PersistenceStatus) => void;
+  /** The stored-world list, refreshed whenever it can have changed. */
+  onWorldsChanged?: (worlds: readonly StoredWorld[]) => void;
   onError: (error: WorkerErrorDto) => void;
 }
 
@@ -155,6 +161,10 @@ export interface WorldSessionOptions {
   createWorker?: () => SessionWorker;
   /** Test seam: supply a fake renderer. Defaults to {@link EonRenderer}. */
   createRenderer?: (options: RendererFactoryOptions) => Promise<SessionRenderer>;
+  /** Build identifier recorded in save manifests (Milestone 10). */
+  appVersion?: string;
+  /** Test seam: supply a world store backed by a fake IndexedDB. */
+  createWorldStore?: () => WorldStore;
 }
 
 /** Freeze a telemetry DTO and its nested arrays/objects in place. */
@@ -248,6 +258,17 @@ export class WorldSession {
   // --- Player tools (Milestone 9) ----------------------------------------------
   #activeTool: ActiveCanvasTool | null = null;
 
+  // --- Persistence (Milestone 10) ----------------------------------------------
+  readonly #persistence: WorldPersistence;
+  /**
+   * True while a LOAD_WORLD is in flight, so the WORLD_READY it produces keeps
+   * the session bound to the loaded world instead of unbinding it the way a
+   * brand-new world does.
+   */
+  #loadingStoredWorld = false;
+  /** Speed to restore after a load; a loaded world resumes as it was running. */
+  #speed: SimulationSpeed;
+
   // --- Species and history (Milestone 8) --------------------------------------
   #selectedSpeciesId: number | null = null;
   /** True while a species/tree panel is open, so populations stay live. */
@@ -265,6 +286,7 @@ export class WorldSession {
 
   private constructor(options: WorldSessionOptions) {
     this.#options = options;
+    this.#speed = options.initialSpeed;
     this.#worker =
       options.createWorker !== undefined
         ? options.createWorker()
@@ -303,6 +325,9 @@ export class WorldSession {
       },
       onTelemetry: (telemetry) => {
         options.callbacks.onTelemetry(freezeTelemetry(telemetry));
+        // Autosave cadence is measured in authoritative ticks, not seconds, so
+        // it means the same thing at 1x and at MAX (Milestone 10).
+        this.#persistence.onTelemetryTick(telemetry.tick);
         // Refresh the inspector in step with the HUD rather than per frame: an
         // organism's energy and age change every tick, but nobody can read a
         // number that updates 60 times a second.
@@ -326,6 +351,18 @@ export class WorldSession {
           whileHandling: null,
         });
       },
+    });
+
+    this.#persistence = new WorldPersistence({
+      client: this.#client,
+      appVersion: options.appVersion ?? "dev",
+      onStatus: (status) => {
+        options.callbacks.onPersistenceStatus?.(status);
+      },
+      onWorldsChanged: (worlds) => {
+        options.callbacks.onWorldsChanged?.(worlds);
+      },
+      ...(options.createWorldStore === undefined ? {} : { createStore: options.createWorldStore }),
     });
   }
 
@@ -352,6 +389,7 @@ export class WorldSession {
   }
 
   setSpeed(speed: SimulationSpeed): void {
+    this.#speed = speed;
     this.#client.setSpeed(speed);
   }
 
@@ -605,6 +643,49 @@ export class WorldSession {
       });
   }
 
+  // --- Persistence (Milestone 10) ---------------------------------------------
+
+  /** Current storage status (bound world, last outcome, autosave state). */
+  get persistenceStatus(): PersistenceStatus {
+    return this.#persistence.status;
+  }
+
+  /** Name proposed for a world that has never been saved. */
+  get suggestedWorldName(): string {
+    return this.#world === null ? "New world" : defaultWorldName(this.#world.seed);
+  }
+
+  /** Read the stored-world list and publish it through `onWorldsChanged`. */
+  refreshWorlds(): void {
+    void this.#persistence.refresh();
+  }
+
+  /** Save the running world under `name` (or keep its current name). */
+  saveWorld(name?: string): void {
+    void this.#persistence.save({ kind: "manual", ...(name === undefined ? {} : { name }) });
+  }
+
+  /**
+   * Replace the running world with a stored one.
+   *
+   * The loaded world resumes at the speed the UI is currently showing, so
+   * loading while paused leaves you paused at the restored tick — the state a
+   * user who is about to inspect a save actually wants.
+   */
+  loadWorld(worldId: string): void {
+    this.#loadingStoredWorld = true;
+    void this.#persistence.load(worldId, this.#speed).then((loaded) => {
+      if (!loaded) {
+        this.#loadingStoredWorld = false;
+      }
+    });
+  }
+
+  /** Delete a stored world. */
+  deleteWorld(worldId: string): void {
+    void this.#persistence.deleteWorld(worldId);
+  }
+
   destroy(): void {
     if (this.#destroyed) {
       return;
@@ -615,6 +696,7 @@ export class WorldSession {
     this.#renderer?.destroy();
     this.#renderer = null;
     this.#pendingSnapshot = null;
+    this.#persistence.dispose();
     // `dispose` sends DISPOSE and then terminates, so the host stops its loop
     // cleanly instead of being killed mid-tick.
     this.#client.dispose();
@@ -684,6 +766,13 @@ export class WorldSession {
     if (pending !== null) {
       renderer.applyRenderSnapshot(viewRenderSnapshot(pending));
     }
+    // A loaded world keeps the identity it was loaded from; a brand-new world
+    // starts unbound, so pressing Save cannot overwrite the world the previous
+    // session had open (Milestone 10).
+    this.#persistence.onWorldReady(hostRuntime.autosaveCheckInterval, {
+      keepBinding: this.#loadingStoredWorld,
+    });
+    this.#loadingStoredWorld = false;
     this.#options.callbacks.onWorldReady(frozenWorld, Object.freeze(hostRuntime));
   }
 

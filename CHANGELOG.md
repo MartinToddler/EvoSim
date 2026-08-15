@@ -6,6 +6,66 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-14 — Milestone 10: persistence
+
+Engine **0.7.0 unchanged**, snapshot schema **8 unchanged**, config schema **7 unchanged**,
+protocol **5 → 6**, new `SNAPSHOT_CONTAINER_VERSION` **1**, new IndexedDB schema
+`eon-worlds-v1` version **1** (ADR 0016). **No golden hash changed**, and none could: this
+milestone adds no phase, no constant and no authoritative rule. It writes state down and reads it
+back.
+
+### Added
+
+- **Durable snapshot container** (`@eon/persistence`, task K03): 96-byte header — magic
+  `EONSNAP\0`, container version, state-schema version, engine version, config hash, canonical
+  state hash, seed, 64-bit tick, payload length, payload CRC-32, reserved bits, header CRC-32 —
+  followed by a canonically encoded payload. Header and payload are checksummed separately so
+  listing worlds validates a header without reading megabytes behind it.
+- **Self-describing value codec** (`valueCodec.ts`): numbers, strings, booleans, arrays, plain
+  objects and all eight typed-array kinds, little-endian on every host, object keys sorted so the
+  same state always encodes to the same bytes. Capture and encode cannot drift apart — the whole
+  `EngineCoreSnapshot` graph is written as it stands.
+- **Durable shape contract and completeness audit** (`snapshotShape.ts`): the declared shape of a
+  stored snapshot, validated before the engine sees a payload (rebuilding plain objects, dropping
+  undeclared fields, rejecting forbidden keys). `snapshotShape.test.ts` walks a real snapshot and
+  fails if the engine serializes anything the shape does not describe, so a future milestone
+  cannot add authoritative state and silently leave it out of saves.
+- **IndexedDB adapter** (`db.ts`, `WorldStore.ts`, tasks K01/K02/K04/K05): database
+  `eon-worlds-v1` v1 with `worlds` manifests, `snapshots` metadata (indexed by world and by
+  `[world, tick]`) and `snapshotBlobs` payloads; ordered migration list; manual save, autosave,
+  list, load, delete; newest-N autosave retention that never prunes a manual save.
+- **Save/load over the wire** (protocol 6): `REQUEST_SAVE` → `SNAPSHOT_DATA` (bytes transferred,
+  not copied) and `LOAD_WORLD`. The Worker serializes and restores; the main thread stores and
+  reports. `SimulationHost` now shares one `#adoptEngine` path between a new world and a loaded
+  one.
+- **Saved-worlds UI** (`@eon/ui` `WorldsPanel`, docs/06 §§8, 19–20): name, Save, Refresh, the
+  stored-world list with tick, state hash, size, save count and time, Load, two-step Delete, and a
+  status line that keeps showing failures instead of flashing them. The top bar's save-state slot
+  (docs/06 §9) is no longer a placeholder.
+- **Autosave** (task K05): every `autosaveCheckInterval` ticks — measured in authoritative ticks,
+  so it means the same at 1× and at MAX — and armed only once a world has been saved or loaded,
+  so opening the page never fills storage with worlds nobody asked to keep.
+- **Acceptance test** (task K06, docs/06 §25): a control run to tick 10 000 against the same world
+  saved at 2 500, encoded to bytes, dropped, decoded into a fresh engine and continued to 10 000 —
+  identical canonical hashes; plus a second continuation from a carcass-rich save at tick 4 000, a
+  reference-world (`DEFAULT_CONFIG`) continuation, a command-history continuation that straddles
+  the command cursor, and eight consecutive save/load cycles.
+- **Robustness tests**: wrong magic, unknown container version, reserved bits set, foreign engine
+  version, unsupported state schema, truncation, damaged header, damaged payload, payload/header
+  disagreement, tampered config, wrong state hash; an aborted write leaving the previous save and
+  manifest intact; an autosave racing a manual save; a damaged newest save falling back to an
+  older one with the world marked and nothing deleted; and IndexedDB missing entirely.
+
+### Changed
+
+- `TopBarProps` gains `worldsOpen`, `saveState` and `onToggleWorlds`; `WorldSessionCallbacks`
+  gains `onPersistenceStatus` and `onWorldsChanged`.
+- `LOAD_WORLD` failures are non-fatal by construction: the container is validated, the engine
+  rebuilt and its state hash checked against the one recorded at save time _before_ the running
+  world is replaced, so a corrupt or foreign save leaves the current world running.
+- The Pages build records `VITE_APP_VERSION` (the deployed commit) in every world manifest it
+  writes.
+
 ## [Unreleased] — 2026-08-14 — Milestone 9: player interventions and the command log
 
 Engine **0.6.0 → 0.7.0**, snapshot schema **7 → 8**, config schema **6 → 7**, protocol **4 → 5**,

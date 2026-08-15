@@ -579,7 +579,8 @@ details.brain summary {
   .species-panel,
   .tree-panel,
   .timeline-panel,
-  .tools-panel {
+  .tools-panel,
+  .worlds-panel {
     position: absolute;
     left: 0;
     right: 0;
@@ -1077,4 +1078,139 @@ details.brain summary {
   font-size: 0.85rem;
   pointer-events: none;
   z-index: 30;
+}
+
+/* --- Saved worlds panel (Milestone 10, docs/06 §§8, 19-20) ------------------ */
+
+.worlds-panel {
+  position: absolute;
+  left: 0.75rem;
+  top: 6.5rem;
+  width: min(26rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  z-index: 20;
+}
+
+.worlds-panel h2 {
+  margin: 0 0 0.5rem;
+}
+
+.worlds-save {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.worlds-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1 1 10rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--eon-text-dim);
+}
+
+.worlds-name input {
+  font: inherit;
+  font-size: 0.85rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--eon-text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+}
+
+.worlds-status {
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+}
+
+/* Failure keeps its own colour AND its own wording; colour is never the only
+   signal (docs/06 §17). */
+.worlds-status.failed {
+  color: var(--eon-danger, #ff8080);
+}
+
+.worlds-hint,
+.worlds-empty {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--eon-text-dim);
+}
+
+.worlds-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.world-row {
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+
+.world-row.current {
+  outline: 1px solid var(--eon-accent, #ffd166);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.world-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.world-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.world-tick {
+  font-variant-numeric: tabular-nums;
+  color: var(--eon-text-dim);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.world-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--eon-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.world-problem {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  color: var(--eon-danger, #ff8080);
+}
+
+.world-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.world-actions button.danger {
+  border-color: var(--eon-danger, #ff8080);
+  color: var(--eon-danger, #ff8080);
 }

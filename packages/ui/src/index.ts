@@ -26,6 +26,12 @@ export { ToolsPanel, type ToolSelection, type ToolsPanelProps } from "./componen
 export { TopBar, type TopBarProps } from "./components/TopBar";
 export { TreePanel, type TreePanelProps } from "./components/TreePanel";
 export {
+  WorldsPanel,
+  type PersistenceStatusView,
+  type SavedWorldView,
+  type WorldsPanelProps,
+} from "./components/WorldsPanel";
+export {
   formatCompact,
   formatFixed,
   formatInt,

@@ -377,12 +377,12 @@ the M2.5 debug visualizer is recorded as superseded by the M6 renderer + M7 laye
 reused into. Details and per-fix disposition in ADR 0015 §0.
 
 ## K Persistence/replay
-- [ ] K01 IndexedDB schema.
-- [ ] K02 manifests.
-- [ ] K03 snapshot serializer/checksum.
-- [ ] K04 manual save/load.
-- [ ] K05 autosave.
-- [ ] K06 deterministic save/reload test.
+- [x] K01 IndexedDB schema.
+- [x] K02 manifests.
+- [x] K03 snapshot serializer/checksum.
+- [x] K04 manual save/load.
+- [x] K05 autosave.
+- [x] K06 deterministic save/reload test.
 - [ ] K07 rewind reconstruction.
 - [ ] K08 historical preview.
 - [ ] K09 return present.

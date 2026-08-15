@@ -21,13 +21,23 @@
  *
  * ## What is NOT here yet
  *
- * docs/02 §13 also lists LOAD_WORLD, QUEUE_COMMAND, REQUEST_SAVE,
- * REQUEST_REWIND and CREATE_BRANCH. Those address engine features that do not
- * exist yet — player commands (Milestone 9) and persistence (Milestone 10).
- * Declaring their wire shapes now would mean inventing payloads for rules
- * nobody has written, so they arrive with their milestones and bump
- * PROTOCOL_VERSION then. QUERY_SPECIES, REQUEST_TREE and REQUEST_HISTORY_RANGE
- * arrived with Milestone 8 (protocol 4).
+ * docs/02 §13 also lists REQUEST_REWIND and CREATE_BRANCH. Those address engine
+ * features that do not exist yet (Milestone 11), and declaring their wire
+ * shapes now would mean inventing payloads for rules nobody has written, so
+ * they arrive with their milestone and bump PROTOCOL_VERSION then.
+ * QUERY_SPECIES, REQUEST_TREE and REQUEST_HISTORY_RANGE arrived with
+ * Milestone 8 (protocol 4); QUEUE_COMMAND with Milestone 9 (protocol 5);
+ * REQUEST_SAVE, SNAPSHOT_DATA and LOAD_WORLD with Milestone 10 (protocol 6).
+ *
+ * ## Why saving is a message and not a storage call
+ *
+ * The engine lives in the Worker, and only the Worker can serialize it. The
+ * database lives on the main thread, where the UI can report what happened.
+ * REQUEST_SAVE therefore asks the Worker for *bytes* — it does not ask it to
+ * store anything — and SNAPSHOT_DATA transfers those bytes back for the main
+ * thread to write. LOAD_WORLD is the mirror image. Persistence stays a host
+ * concern on both sides of the port, and the engine keeps knowing nothing
+ * about storage (docs/02 §3, docs/06 §26).
  */
 
 import {
@@ -119,6 +129,28 @@ export interface QueueCommandPayload {
   command: CommandRequestDto;
 }
 
+export interface RequestSavePayload {
+  /**
+   * Free-form label the host echoes back with the bytes, so a save started
+   * before an autosave can be told apart from it when both answers arrive.
+   */
+  reason: "manual" | "autosave";
+}
+
+export interface LoadWorldPayload {
+  /**
+   * A durable snapshot container (`@eon/persistence`). Typed as `unknown` for
+   * the same reason `InitNewWorldPayload.config` is: the wire must not force
+   * `@eon/protocol` to depend on the persistence package, and the bytes are
+   * validated on arrival regardless of what the types here claim.
+   */
+  snapshot: unknown;
+  /** Host pacing overrides, or `null` for `DEFAULT_HOST_RUNTIME_CONFIG`. */
+  hostRuntime: Partial<HostRuntimeConfig> | null;
+  /** Speed to resume at. */
+  speed: SimulationSpeed;
+}
+
 export interface SetRenderStreamPayload {
   /**
    * Whether the Worker should keep producing render snapshots.
@@ -138,6 +170,8 @@ export type MainToWorkerMessage =
   | Envelope<"REQUEST_TREE", Record<string, never>>
   | Envelope<"REQUEST_HISTORY_RANGE", RequestHistoryRangePayload>
   | Envelope<"QUERY_STATE_HASH", QueryStateHashPayload>
+  | Envelope<"REQUEST_SAVE", RequestSavePayload>
+  | Envelope<"LOAD_WORLD", LoadWorldPayload>
   | Envelope<"RECYCLE_RENDER_BUFFER", RecycleBufferPayload>
   | Envelope<"RECYCLE_VEGETATION_BUFFER", RecycleBufferPayload>
   | Envelope<"SET_RENDER_STREAM", SetRenderStreamPayload>
@@ -154,6 +188,8 @@ const MAIN_TO_WORKER_TYPES: readonly MainToWorkerType[] = [
   "REQUEST_TREE",
   "REQUEST_HISTORY_RANGE",
   "QUERY_STATE_HASH",
+  "REQUEST_SAVE",
+  "LOAD_WORLD",
   "RECYCLE_RENDER_BUFFER",
   "RECYCLE_VEGETATION_BUFFER",
   "SET_RENDER_STREAM",
@@ -214,6 +250,20 @@ export interface EntityDetailsPayload {
   tick: number;
 }
 
+export interface SnapshotDataPayload {
+  /** The durable snapshot container. Transferred, not copied. */
+  buffer: ArrayBuffer;
+  tick: number;
+  /** Canonical state hash at `tick`; also inside the container's header. */
+  stateHash: string;
+  engineVersion: string;
+  snapshotSchemaVersion: number;
+  configHash: string;
+  seed: number;
+  /** Echoed from the request. */
+  reason: "manual" | "autosave";
+}
+
 export interface StateHashPayload {
   tick: number;
   hash: string;
@@ -248,6 +298,7 @@ export type WorkerToMainMessage =
   | Envelope<"TREE_SNAPSHOT", TreeSnapshotPayload>
   | Envelope<"HISTORY_EVENTS", HistoryEventsPayload>
   | Envelope<"STATE_HASH", StateHashPayload>
+  | Envelope<"SNAPSHOT_DATA", SnapshotDataPayload>
   | Envelope<"ERROR", WorkerErrorDto>;
 
 export type WorkerToMainType = WorkerToMainMessage["type"];
@@ -479,6 +530,46 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
         },
       };
     }
+    case "REQUEST_SAVE": {
+      if (requestId === undefined) {
+        return bad("REQUEST_SAVE requires a requestId so the bytes can be correlated");
+      }
+      const reason = payload["reason"];
+      if (reason !== "manual" && reason !== "autosave") {
+        return bad(`REQUEST_SAVE reason must be "manual" or "autosave", got ${String(reason)}`);
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_SAVE",
+          payload: { reason },
+        },
+      };
+    }
+    case "LOAD_WORLD": {
+      const snapshot = payload["snapshot"];
+      if (!(snapshot instanceof ArrayBuffer)) {
+        return bad("LOAD_WORLD snapshot must be an ArrayBuffer");
+      }
+      const speed = payload["speed"];
+      if (!isSpeed(speed)) {
+        return bad(`LOAD_WORLD speed is invalid: ${String(speed)}`);
+      }
+      const hostRuntime = payload["hostRuntime"];
+      if (hostRuntime !== null && !isRecord(hostRuntime)) {
+        return bad("LOAD_WORLD hostRuntime must be an object or null");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          type: "LOAD_WORLD",
+          payload: { snapshot, hostRuntime, speed },
+        },
+      };
+    }
     case "RECYCLE_RENDER_BUFFER":
     case "RECYCLE_VEGETATION_BUFFER": {
       const buffer = payload["buffer"];
@@ -637,6 +728,7 @@ export function decodeWorkerToMainMessage(data: unknown): DecodeResult<WorkerToM
     case "TREE_SNAPSHOT":
     case "HISTORY_EVENTS":
     case "STATE_HASH":
+    case "SNAPSHOT_DATA":
     case "ERROR":
       return { ok: true, message: data as unknown as WorkerToMainMessage };
     default:

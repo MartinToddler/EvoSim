@@ -215,6 +215,8 @@ describe("TopBar", () => {
         treeOpen={false}
         toolsOpen={false}
         timelineOpen={false}
+        worldsOpen={false}
+        saveState="unsaved"
         onSpeedChange={noop}
         onResume={noop}
         onToggleDebug={noop}
@@ -225,6 +227,7 @@ describe("TopBar", () => {
         onToggleTree={noop}
         onToggleTimeline={noop}
         onToggleTools={noop}
+        onToggleWorlds={noop}
         {...overrides}
       />,
     );

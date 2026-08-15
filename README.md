@@ -99,7 +99,7 @@ pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (
 pnpm --filter @eon/web dev   # run the web app locally
 ```
 
-Current status: Milestones 0–9 complete — workspace, determinism skeleton (hardened after
+Current status: Milestones 0–10 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
 combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), the Worker host, render
@@ -110,9 +110,14 @@ device-independent brush strokes, nine intervention tools (global temperature, w
 wet/dry, fertility, terrain raise/lower with real flooding and draining, biomass add/remove,
 meteor), deterministic biome/capacity/passability recompute after every edit, one
 PlayerIntervention timeline event per command, and command cursor/history in every snapshot so
-saves replay without double-applying (engine 0.7.0, snapshot schema 8, config schema 7,
-protocol 5). The pre-J05 foundation-gate mandate is closed: its six fixes are ported (ADR 0015
-§0).
+saves replay without double-applying, and persistence (ADR 0016): a durable snapshot container
+with magic, versions, checksums and the canonical state hash in its header, an IndexedDB world
+store with manifests, autosave retention and all-or-nothing writes, save/load over protocol 6,
+and a saved-worlds panel in the app. A world saved at tick 2 500 and reloaded into a fresh
+runtime reaches tick 10 000 with the same canonical hash as one that never stopped — that is
+the milestone's acceptance test, and it runs in CI (engine 0.7.0 unchanged, snapshot schema 8,
+config schema 7, protocol 5 → 6). The pre-J05 foundation-gate mandate is closed: its six fixes
+are ported (ADR 0015 §0).
 
 **The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
@@ -123,7 +128,9 @@ population, biomass, birth/death rates and trait drift; flip the world through n
 (biomes, elevation, temperature, moisture, fertility, plant biomass and capacity, organism
 density) without the simulation noticing; open the species panel, the Tree of Life and the
 history timeline to watch detected lineages, splits, extinctions, booms, crashes and the world's
-first predation appear as events. The simulation itself runs in a dedicated Worker and rendering
+first predation appear as events. Press **Worlds** to save the world to the browser, reload the
+page, and load it back exactly where it was — the restored world continues into the same future,
+not merely a similar one. The simulation itself runs in a dedicated Worker and rendering
 never decides anything — the Milestone 8 hash changes are the species/history state itself
 joining the canonical stream, while the organism trajectory reproduces 0.5.0's exactly.
 
@@ -237,6 +244,12 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
 - `0014-milestone-8-review.md` — the independent Milestone 8 review: the twenty-one-point audit,
   the validator-accepted degenerate range that crashed construction (now a constant dimension),
   and the zero-pass candidate save/load assertion.
+- `0016-milestone-10-persistence.md` — persistence: the durable container's header and its two
+  checksums, why the payload is written by one self-describing codec instead of 150 hand-written
+  fields, the shape contract that fails the build when the engine serializes something the format
+  does not know about, transaction-atomic saves that cannot damage the last good one, autosave
+  that arms rather than fires on its own, and why the 10 000-tick acceptance run uses the soak
+  world's geometry.
 - `0012-milestone-7-review.md` — the independent Milestone 7 review: a third finger during a pinch
   that fired a click selection, a pinch that left its surviving finger dead, charts that blocked
   the mobile sheet from scrolling, a one-sheet rule that did not survive rotating to narrow, and
