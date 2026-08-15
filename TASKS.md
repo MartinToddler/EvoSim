@@ -504,10 +504,43 @@ ADR 0013 §9's finding by an order of magnitude.
       version bump plus regenerated goldens.
 
 ## M PWA/mobile
-- [ ] M01 installable/offline app shell.
-- [ ] M02 touch/safe areas.
-- [ ] M03 lifecycle pause/resume.
-- [ ] M04 Capacitor integration.
-- [ ] M05 iOS device test.
-- [ ] M06 Android device test.
-- [ ] M07 save/load validation.
+- [x] M01 installable/offline app shell — manifest, generated icons, a hand-written service worker
+      whose cache generation rides on the build version, and an offline reload verified in a browser.
+- [x] M02 touch/safe areas — the layout landed in M7; M13 adds the mobile *behaviour* that was
+      missing: `overscroll-behavior: none`, landscape safe-area insets, no tap highlight, no text
+      selection on chrome.
+- [x] M03 lifecycle pause/resume — pause when hidden, resume at the user's speed, save on
+      `pagehide`; a pause the USER made is never undone.
+- [x] M04 Capacitor integration — `capacitor.config.ts` wraps this web build; the native projects
+      are deliberately not committed (see below).
+- [ ] M05 iOS device test — **blocked on hardware**, not on code. Needs macOS + Xcode +
+      `npx cap add ios`. What stands between here and it is verified: the app passes all ten
+      docs/07 PART E flows in **WebKit**, the engine iOS uses, plus a phone-sized touch viewport.
+      The remaining risk is native-shell-specific: WKWebView storage under an app wrapper and
+      memory pressure on a real device.
+- [ ] M06 Android device test — **blocked on hardware**. Needs the Android SDK +
+      `npx cap add android`. Remaining risk is the WebView version spread across devices.
+- [x] M07 save/load validation — Milestone 10 made saves durable against failure; M13 addresses the
+      mobile-specific one it could not: IndexedDB is evictable by default and Safari discards
+      script-writable storage after about a week of non-use. The app now requests persistent
+      storage once, after the first save, and reports which of the three answers it got —
+      "no API" is never reported as "declined".
+
+Milestone 13 gate: **PASS WITH NOTES** (engine 0.7.0 and every golden hash unchanged, protocol 8
+unchanged, ADR 0023). Entirely presentation and hosting: docs/02 §20 forbids changing authoritative
+ecology by device class, so there is no mobile code path, no reduced tick and no device-dependent
+constant. Lifecycle pausing changes scheduling, never state, which is why this milestone cannot move
+a hash even in principle.
+
+Verified in a browser (44 browser tests across Chromium, Firefox, WebKit and a phone viewport): the
+manifest is complete and every icon it names is actually served; the worker is served at the
+deployment base and takes control; **the shell opens with the network switched off**, checked by
+reloading an offline context; and lifecycle pause/resume works through a real `visibilitychange`.
+
+One skip, documented in place: Playwright's WebKit build fails `page.reload()` with an internal
+error once the context is offline, before any application code runs. The halves of that scenario
+WebKit can answer are covered by the other tests.
+
+**The note is M05/M06.** They are blocked on hardware this delivery environment does not have, and
+nothing here claims otherwise. The native projects are deliberately absent too: `npx cap add` needs
+Xcode or the Android SDK, and generating scaffolding nobody has built is worse than an honest gap.

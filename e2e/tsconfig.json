@@ -1,0 +1,13 @@
+{
+  // The browser end-to-end suite is the one place in the repository that
+  // legitimately writes code for BOTH runtimes: the test body runs in Node and
+  // every `page.evaluate` callback is serialized and run inside the page. So it
+  // gets the DOM lib, and the root project — which covers `scripts/`, where DOM
+  // types would only ever be a mistake — does not.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts", "../playwright.config.ts"]
+}

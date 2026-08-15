@@ -39,6 +39,7 @@ import {
   type WorldStore as WorldStoreType,
 } from "@eon/persistence";
 import type { WorkerClient } from "../worker/WorkerClient";
+import { requestPersistentStorage, type StoragePersistence } from "./storagePersistence";
 
 /** What the UI shows about storage, as one immutable object. */
 export interface PersistenceStatus {
@@ -56,6 +57,13 @@ export interface PersistenceStatus {
   message: string;
   /** True when {@link message} describes a failure. */
   failed: boolean;
+  /**
+   * Whether the browser exempts saved worlds from eviction (task M07).
+   *
+   * `null` until this session has saved something and asked — the question is
+   * only worth putting to the browser once the user has chosen to keep a world.
+   */
+  storagePersistence: StoragePersistence | null;
 }
 
 const IDLE_STATUS: PersistenceStatus = Object.freeze({
@@ -67,6 +75,7 @@ const IDLE_STATUS: PersistenceStatus = Object.freeze({
   lastSavedAtIso: null,
   message: "Not saved yet",
   failed: false,
+  storagePersistence: null,
 });
 
 /**
@@ -153,6 +162,24 @@ export class WorldPersistence {
     this.#lastAutosaveTick = 0;
     if (!options.keepBinding) {
       this.#update({ ...IDLE_STATUS });
+    }
+  }
+
+  /**
+   * Ask the browser to exempt saved worlds from eviction, at most once per
+   * session (task M07, docs/02 §20).
+   *
+   * Deliberately fire-and-forget: the answer changes what the UI *says*, never
+   * whether the save succeeded, and a browser that never answers must not leave
+   * a save looking unfinished.
+   */
+  async #ensureStoragePersistence(): Promise<void> {
+    if (this.#disposed || this.#status.storagePersistence !== null) {
+      return;
+    }
+    const state = await requestPersistentStorage(globalThis.navigator?.storage);
+    if (!this.#disposed) {
+      this.#update({ ...this.#status, storagePersistence: state });
     }
   }
 
@@ -247,8 +274,13 @@ export class WorldPersistence {
             ? `Autosaved at tick ${result.save.tick.toLocaleString()}`
             : `Saved “${result.manifest.worldName}” at tick ${result.save.tick.toLocaleString()}`,
         failed: false,
+        storagePersistence: this.#status.storagePersistence,
       });
       void this.refresh();
+      // Now that the user has kept something, it is worth asking the browser to
+      // stop evicting it (task M07). Once per session, after the first save,
+      // and never on the critical path of the save itself.
+      void this.#ensureStoragePersistence();
       return true;
     } catch (error) {
       this.#update({
@@ -308,9 +340,14 @@ export class WorldPersistence {
         lastSavedAtIso: result.save.savedAtIso,
         message: `Loaded “${result.manifest.worldName}” at tick ${result.save.tick.toLocaleString()}${fallback}`,
         failed: false,
+        storagePersistence: this.#status.storagePersistence,
       });
       this.#lastAutosaveTick = result.save.tick;
       void this.refresh();
+      // Now that the user has kept something, it is worth asking the browser to
+      // stop evicting it (task M07). Once per session, after the first save,
+      // and never on the critical path of the save itself.
+      void this.#ensureStoragePersistence();
       return true;
     } catch (error) {
       this.#update({
@@ -495,6 +532,10 @@ export class WorldPersistence {
         this.#update({ ...this.#status, message: "Deleted", failed: false });
       }
       void this.refresh();
+      // Now that the user has kept something, it is worth asking the browser to
+      // stop evicting it (task M07). Once per session, after the first save,
+      // and never on the critical path of the save itself.
+      void this.#ensureStoragePersistence();
       return true;
     } catch (error) {
       this.#update({

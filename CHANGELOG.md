@@ -6,6 +6,54 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Milestone 13: installable shell, lifecycle and the Capacitor boundary
+
+EON is now installable, works with the network switched off, and stops running when a phone takes
+the page away. Entirely presentation and hosting: `ENGINE_VERSION` stays **0.7.0**,
+`PROTOCOL_VERSION` stays **8**, and every golden hash is unchanged — docs/02 §20 forbids changing
+authoritative ecology by device class, so there is no mobile code path at all. Decisions in ADR 0023.
+
+### Added
+
+- **An offline app shell** (task M01): a web manifest, a hand-written 120-line service worker
+  (network-first for navigations so a reload always gets today's build, cache-first for
+  content-hashed assets so the simulation Worker and the Pixi chunks are available offline), and a
+  cache generation that rides on the build version — `sw.js` is byte-identical between builds, so
+  without it a user would keep the old worker forever.
+- **Generated PWA icons** (`pnpm icons`): 192, 512, a maskable 512 inset for Android's safe zone and
+  an opaque 180 px iOS icon, rendered from the same shape description as the favicon through a PNG
+  encoder written out longhand. Reproducible byte-for-byte rather than committed as opaque binaries.
+- **Lifecycle pause/resume** (task M03): the world pauses when the page is hidden and resumes at the
+  speed the user chose, `pagehide` pauses and saves, and a pause the _user_ made is never undone.
+  Scheduling only — a world hidden for an hour reaches the same state at the same tick.
+- **A persistent-storage request** (task M07): IndexedDB is evictable by default and Safari discards
+  script-writable storage after about a week of non-use, so the app asks once after the first save
+  and reports which of the three answers it got. "No API" is never reported as "declined".
+- **`capacitor.config.ts`** (task M04), wrapping this web build. The native projects are deliberately
+  not committed: `npx cap add` needs Xcode or the Android SDK, and scaffolding nobody has built is
+  worse than an honest gap.
+- Four browser scenarios covering the above, on every installed browser.
+
+### Changed
+
+- Mobile _behaviour_ the layout work of Milestone 7 did not cover (task M02): `overscroll-behavior:
+none`, so a pan reaching the edge of a sheet cannot trigger pull-to-refresh and discard the running
+  world; landscape safe-area insets, because a notch sits down one side rather than at the top; and
+  no tap highlight or text selection on the chrome, with inputs opting back in.
+- The build identifier lives in one module, so the service worker's cache generation and the build id
+  recorded in every world manifest are provably the same string.
+- The browser suite has its own TypeScript project with the DOM lib, because it is the one place that
+  legitimately writes code for both Node and the page — `scripts/`, where DOM types would only ever
+  be a mistake, keeps the Node-only project.
+
+### Not done, and not claimed
+
+- **M05/M06, real iOS and Android device tests**, are blocked on hardware and native toolchains this
+  environment does not have. What stands between here and them is verified: all ten docs/07 PART E
+  flows pass in **WebKit**, the engine iOS uses, plus a phone-sized touch viewport. The remaining
+  risk is native-shell-specific — WKWebView storage under an app wrapper, memory pressure on a real
+  device, and Android's WebView version spread.
+
 ## [Unreleased] — 2026-08-15 — Milestone 12 review
 
 An adversarial pass over everything Milestone 12 added, against the question a measurement milestone

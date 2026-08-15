@@ -744,6 +744,31 @@ export class WorldSession {
   }
 
   /**
+   * Best-effort save on the way out of the page (task M03, docs/02 §20).
+   *
+   * Only a world that is ALREADY bound to a stored world is saved. Hiding a tab
+   * must not silently create a stored world the user never asked for — the
+   * decision to keep a world is a click on Save, and this is the autosave
+   * cadence being honoured one last time, not a new one.
+   *
+   * Best effort by construction: IndexedDB writes are asynchronous and a mobile
+   * browser may discard the page before one lands. The cost of losing it is the
+   * few seconds since the last autosave; the alternative, blocking teardown, is
+   * not something a web page can do.
+   */
+  saveOnHide(): void {
+    if (this.#persistence.status.worldId === null) {
+      return;
+    }
+    void this.#persistence.save({ kind: "autosave" });
+  }
+
+  /** True while the world is paused, whoever paused it. */
+  get paused(): boolean {
+    return this.#speed === "paused";
+  }
+
+  /**
    * Replace the running world with a stored one.
    *
    * The loaded world resumes at the speed the UI is currently showing, so

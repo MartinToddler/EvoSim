@@ -16,7 +16,7 @@ Milestone 0–11 history.
 | Stage        | Scope                     | Status  | Commit | Verify | Pages |
 | ------------ | ------------------------- | ------- | ------ | ------ | ----- |
 | A22 / M12    | Performance & calibration | **PASS** | `27c5d7c` | PASS | PASS |
-| A23 / review | M12 hostile review        | **PASS** | _below_   | PASS | PASS |
+| A23 / review | M12 hostile review        | **PASS** | `3986950` | PASS | PASS |
 | A24 / M13    | PWA & mobile readiness    | pending | —      | —      | —     |
 | A25 / audit  | Final MVP audit           | pending | —      | —      | —     |
 
@@ -112,11 +112,68 @@ the halved capacity is one seed in four, so "reachable and rare" rather than
 
 ### Status
 
+| Field  | Value                                                         |
+| ------ | ------------------------------------------------------------- |
+| Status | PASS                                                          |
+| Branch | `claude/evosim-a22-a25-delivery-t4itkl`                       |
+| Commit | `398695044ddc7bc61a37edcd4ae1a906007eed4a`                    |
+| Verify | **PASS** — 101 files, 1 270 tests; every golden hash unchanged |
+| Soak   | **PASS** — 1 000 000 ticks, 2 013 sweeps clean                |
+| Pages  | **PASS** — the live bundle carries the A23 SHA                 |
+
+---
+
+## A24 / Milestone 13 — PWA and mobile readiness
+
+Tasks M01–M07. Entirely presentation and hosting: engine 0.7.0 and protocol 8
+unchanged, every golden hash unchanged. docs/02 §20 forbids changing
+authoritative ecology by device class, so there is no mobile code path — and
+lifecycle pausing changes scheduling, never state, which is why this milestone
+cannot move a hash even in principle. Decisions in
+`docs/adr/0023-milestone-13-pwa-and-mobile.md`.
+
+### Delivered
+
+- **Installable, offline app shell** (M01): web manifest, generated icons
+  (192/512/maskable/iOS, rendered from the favicon shape through a longhand PNG
+  encoder), and a hand-written service worker whose cache generation rides on
+  the build version — `sw.js` is byte-identical between builds, so without it a
+  user would keep the old worker forever.
+- **Mobile behaviour** (M02) the M7 layout work did not cover:
+  `overscroll-behavior: none` so a pan at a sheet edge cannot pull-to-refresh
+  and discard the running world, landscape safe-area insets, no tap highlight,
+  no text selection on chrome.
+- **Lifecycle pause/resume** (M03): pause when hidden, resume at the user's
+  speed, save on `pagehide`; a pause the *user* made is never undone.
+- **Capacitor boundary** (M04): `capacitor.config.ts` wraps this web build; the
+  native projects are deliberately not committed.
+- **Storage a phone will keep** (M07): the app asks for persistent storage once
+  after the first save and reports which of the three answers it got.
+
+### Verified
+
+44 browser tests across Chromium, Firefox, WebKit and a phone viewport. The
+manifest is complete and every icon it names is served; the worker is served at
+the deployment base and takes control; **the shell opens with the network
+switched off**; lifecycle pause/resume works through a real `visibilitychange`.
+One documented skip: Playwright's WebKit fails `page.reload()` internally in an
+offline context, before any application code runs.
+
+### Note
+
+**M05 and M06 — real iOS and Android device tests — are not done**, and nothing
+here claims they are. They need hardware and native toolchains this environment
+does not have. What stands between here and them is verified: all ten docs/07
+PART E flows pass in WebKit, the engine iOS uses, plus a phone-sized touch
+viewport. The remaining risk is native-shell-specific.
+
+### Status
+
 | Field  | Value                                                          |
 | ------ | -------------------------------------------------------------- |
-| Status | PASS                                                           |
+| Status | PASS WITH NOTES (M05/M06 blocked on hardware)                  |
 | Branch | `claude/evosim-a22-a25-delivery-t4itkl`                        |
 | Commit | _this commit_                                                  |
-| Verify | **PASS** — 101 files, 1 270 tests; every golden hash unchanged  |
-| Soak   | **PASS** — 1 000 000 ticks, 2 013 sweeps clean                 |
+| Verify | **PASS** — 104 files, 1 294 tests; every golden hash unchanged  |
+| E2E    | **PASS** — 44 tests, Chromium / Firefox / WebKit / phone        |
 | Pages  | _deployed immediately after this commit_                       |

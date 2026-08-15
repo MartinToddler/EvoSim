@@ -45,6 +45,27 @@ body {
     sans-serif;
   font-size: 14px;
   overflow: hidden;
+  /*
+   * Mobile behaviour the desktop layout never needed (task M02, docs/06 §16).
+   *
+   * `overscroll-behavior: none` stops the browser's pull-to-refresh and rubber
+   * band from firing when a pan gesture reaches the edge of a bottom sheet —
+   * on a phone that turns "drag the world" into "reload the page", which
+   * discards the running world.
+   *
+   * The tap highlight is a grey flash Android paints over anything tapped,
+   * including the canvas; and a drag that starts on a label must pan the world
+   * rather than begin selecting text. Inputs opt back in below, because a world
+   * name you cannot select is a worse bug than a flash.
+   */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
 }
 
 .app {
@@ -570,6 +591,10 @@ details.brain summary {
     gap: 0.35rem 0.5rem;
     padding: 0.35rem 0.5rem;
     padding-top: max(0.35rem, env(safe-area-inset-top));
+    /* Landscape on a notched phone puts the cutout down one SIDE, not the top:
+       without these the first control sits under it (docs/06 §16). */
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
   }
 
   /* The stat strip scrolls sideways instead of stacking over the world. */
@@ -600,6 +625,8 @@ details.brain summary {
     border-right: none;
     border-bottom: none;
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    padding-left: max(0.85rem, env(safe-area-inset-left));
+    padding-right: max(0.85rem, env(safe-area-inset-right));
   }
 
   .chart-grid {

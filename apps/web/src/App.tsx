@@ -39,6 +39,9 @@ import {
 } from "./app/WorldPersistence";
 import { toggleViewHref } from "./app/route";
 import { readSeedFromLocation } from "./app/seed";
+import { APP_VERSION } from "./app/appVersion";
+import { attachLifecycle } from "./app/lifecycle";
+import { describeStoragePersistence } from "./app/storagePersistence";
 import "./styles/app.css";
 
 /**
@@ -63,13 +66,6 @@ import "./styles/app.css";
  * The canvas is not a React-managed element; see Milestone 6's note below the
  * session effect.
  */
-
-/**
- * Build identifier recorded in every save manifest, so a stored world can be
- * traced to the app that wrote it. Vite substitutes it at build time; the
- * fallback keeps a dev server honest rather than pretending to know.
- */
-const APP_VERSION: string = (import.meta.env["VITE_APP_VERSION"] as string | undefined) ?? "dev";
 
 /** Panels that compete for the single mobile sheet slot. */
 type PanelId = "stats" | "layers" | "species" | "tree" | "timeline" | "tools" | "worlds";
@@ -347,6 +343,35 @@ export function App(): React.JSX.Element {
     changeSpeed(lastRunSpeedRef.current);
   }, [changeSpeed]);
 
+  /**
+   * Page lifecycle: pause when the page is hidden, resume when it comes back,
+   * and save on the way out (task M03, docs/02 §20).
+   *
+   * The session is the authority on whether the world is paused, not this
+   * component's `speed` state: they agree, but reading the session keeps the
+   * effect out of the speed dependency chain, so it attaches once for the life
+   * of the app rather than re-attaching on every speed change.
+   */
+  useEffect(
+    () =>
+      attachLifecycle(
+        {
+          isHidden: () => globalThis.document.visibilityState === "hidden",
+          isPaused: () => sessionRef.current?.paused ?? true,
+          pause: () => {
+            changeSpeed("paused");
+          },
+          resume,
+          saveOnHide: () => {
+            sessionRef.current?.saveOnHide();
+          },
+        },
+        globalThis.document,
+        globalThis,
+      ),
+    [changeSpeed, resume],
+  );
+
   const toggleDebug = useCallback(() => {
     setDebugOverlay((previous) => {
       const next = !previous;
@@ -614,6 +639,10 @@ export function App(): React.JSX.Element {
       worldName: persistence?.worldName ?? null,
       busy: persistence?.busy ?? false,
       autosaveArmed: persistence?.autosaveArmed ?? false,
+      storageNote:
+        persistence?.storagePersistence == null
+          ? null
+          : describeStoragePersistence(persistence.storagePersistence),
       lastSavedTick: persistence?.lastSavedTick ?? null,
       message: persistence?.message ?? "Not saved yet",
       failed: persistence?.failed ?? false,

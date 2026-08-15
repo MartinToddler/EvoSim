@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { APP_VERSION } from "./app/appVersion";
+import { registerServiceWorker } from "./app/pwa";
 import { readViewFromLocation } from "./app/route";
 import { EnvironmentDebugView } from "./dev/EnvironmentDebugView";
 
@@ -23,3 +25,14 @@ const view = readViewFromLocation(globalThis.location?.search ?? "");
 createRoot(rootElement).render(
   <StrictMode>{view === "generator" ? <EnvironmentDebugView /> : <App />}</StrictMode>,
 );
+
+// The offline app shell (task M01), registered AFTER the first render: a
+// service worker cannot make the first paint faster and must not delay it. In
+// development it is skipped entirely — a worker caching a dev server's modules
+// turns hot reload into a mystery.
+void registerServiceWorker({
+  baseUrl: import.meta.env.BASE_URL,
+  version: APP_VERSION,
+  enabled: import.meta.env.PROD,
+  host: globalThis.navigator?.serviceWorker,
+});

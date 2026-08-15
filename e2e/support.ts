@@ -168,12 +168,9 @@ export async function selectAnyOrganism(page: Page): Promise<boolean> {
 /**
  * The page's vertical scroll offset.
  *
- * Typed explicitly because `globalThis` in this project carries Node's types,
- * where `scrollY` does not exist — and an implicit `any` crossing the
- * browser/Node boundary is exactly what the lint rule is there to catch. A
- * non-zero value means a canvas gesture scrolled the PAGE instead of panning
+ * A non-zero value means a canvas gesture scrolled the PAGE instead of panning
  * the world, which is the failure `touch-action: none` exists to prevent.
  */
 export async function pageScrollY(page: Page): Promise<number> {
-  return page.evaluate<number>(() => (globalThis as unknown as { scrollY: number }).scrollY);
+  return page.evaluate(() => window.scrollY);
 }

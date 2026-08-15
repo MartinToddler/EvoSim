@@ -99,8 +99,12 @@ pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (
 pnpm benchmark:engine --population 5000 --ticks 10000   # engine benchmark (task L01, docs/07 §9)
 pnpm soak:long                   # 1 000 000-tick release soak (task L06, docs/07 §6)
 pnpm e2e                         # browser end-to-end, every installed browser (tasks L08/L09)
+pnpm icons                       # regenerate the PWA icons from the favicon shape (task M01)
 pnpm --filter @eon/web dev   # run the web app locally
 ```
+
+`EON_E2E_BASE_URL=https://…` points `pnpm e2e` at an already-served build instead of starting a
+local `vite preview`, which is how a deployment gets verified without a manual browser session.
 
 Current status: Milestones 0–10 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
@@ -139,7 +143,11 @@ generate, and inspect elevation, biome, climate, fertility and plant capacity wi
 anything — and the **Milestone 6 architecture review** (ADR 0019), whose five fixes and adversarial
 test suite had been left on an unmerged branch.
 
-**The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
+**The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>, and
+installable.** Add it to a home screen and it opens with no network at all: there is no API and no
+server state, so once the bundle is on the device the network was only ever the thing that delivered
+it. Hiding the page pauses the world and resumes it at the speed you left it, and saved worlds ask
+the browser to stop evicting them.
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
 the plants, and the organisms living in it — pan, zoom, run at 1×, 5×, 20×, 100× or MAX. Click an
 organism for the full inspector (vitals, inherited traits, running costs, the last tick's brain
@@ -278,6 +286,11 @@ schema 7, command schema 1, host runtime schema 2. Design decisions are recorded
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0023-milestone-13-pwa-and-mobile.md` — the installable shell: why the service worker is
+  hand-written and why its cache generation rides on the script URL, why the icons are generated
+  rather than committed, why lifecycle pausing cannot move a hash, the eviction problem that
+  Milestone 10's durability work could not address, and exactly what is unverified because it needs
+  real hardware.
 - `0022-milestone-12-review.md` — the independent Milestone 12 review: a long soak that swept twice
   around every cadence boundary, a performance HUD that would have counted the whole-tick total as
   one of its own phases, a memory walker that was drift-proof in only one direction, and an audit of

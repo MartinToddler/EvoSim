@@ -57,6 +57,12 @@ export interface PersistenceStatusView {
   lastSavedTick: number | null;
   message: string;
   failed: boolean;
+  /**
+   * One line about whether the browser will keep saved worlds (task M07), or
+   * null before this session has saved anything and asked. The app owns the
+   * wording; this panel only decides where it goes.
+   */
+  storageNote: string | null;
 }
 
 export interface WorldsPanelProps {
@@ -170,6 +176,7 @@ export function WorldsPanel(props: WorldsPanelProps): React.JSX.Element {
         {status.autosaveArmed && props.autosaveIntervalTicks > 0
           ? `Autosave on, every ${formatInt(props.autosaveIntervalTicks)} ticks.`
           : "Autosave starts once this world has been saved once."}
+        {status.storageNote === null ? null : ` ${status.storageNote}`}
       </p>
 
       {worlds.length === 0 ? (

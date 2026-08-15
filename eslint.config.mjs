@@ -40,7 +40,12 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["eslint.config.mjs", "apps/web/vite.config.ts"],
+          allowDefaultProject: [
+            "eslint.config.mjs",
+            "apps/web/vite.config.ts",
+            "playwright.config.ts",
+            "capacitor.config.ts",
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -127,6 +132,21 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+    },
+  },
+  {
+    // The service worker is plain JS served verbatim from `public/`, so it is
+    // outside every TS project and outside the bundler. Its globals are the
+    // ServiceWorkerGlobalScope ones, which are neither Node's nor a page's.
+    files: ["apps/web/public/sw.js"],
+    languageOptions: {
+      globals: {
+        self: "readonly",
+        caches: "readonly",
+        fetch: "readonly",
+        Response: "readonly",
+        URL: "readonly",
+      },
     },
   },
   {

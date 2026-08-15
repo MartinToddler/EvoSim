@@ -8,7 +8,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "typecheck": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json && tsc --noEmit -p e2e/tsconfig.json",
     "lint": "eslint . --max-warnings 0 && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",
@@ -16,12 +16,15 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "headless": "tsx scripts/headless.ts",
     "benchmark:engine": "tsx scripts/benchmark.ts",
+    "icons": "tsx scripts/generateIcons.ts",
     "soak:long": "tsx scripts/soak.ts",
     "equivalence": "tsx scripts/workerEquivalence.ts",
     "sweep": "tsx scripts/sweep.ts",
     "e2e": "playwright test"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.0",
+    "@capacitor/core": "8.5.0",
     "@eon/engine": "workspace:*",
     "@eon/protocol": "workspace:*",
     "@eslint/js": "10.0.1",

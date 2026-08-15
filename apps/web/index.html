@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
+    <!--
+      Installable shell (task M01). Every href is RELATIVE so the same HTML works
+      at a domain root and under a repository path — the same reason
+      `vite.config.ts` takes its base from the environment, and the failure mode
+      is the same: an absolute path is silent at build time and a 404 at run
+      time.
+    -->
+    <meta name="theme-color" content="#0b0f14" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <!--
+      iOS reads none of the manifest for a home-screen launch: these four are
+      the Safari equivalents. `black-translucent` puts the status bar over the
+      page, which is why the layout uses `viewport-fit=cover` above and
+      safe-area insets throughout (docs/06 §16).
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EON" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <meta
       name="description"
       content="EON — a deterministic artificial-life sandbox. Organisms with inheritable genomes and neural controllers live, feed, compete, reproduce and die in a procedurally generated ecosystem."

@@ -42,6 +42,7 @@ function status(overrides: Partial<PersistenceStatusView> = {}): PersistenceStat
     lastSavedTick: null,
     message: "Not saved yet",
     failed: false,
+    storageNote: null,
     ...overrides,
   };
 }
