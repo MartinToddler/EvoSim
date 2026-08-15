@@ -31,6 +31,7 @@ export {
   type SavedWorldView,
   type WorldsPanelProps,
 } from "./components/WorldsPanel";
+export { HistoryPanel, type HistoryPanelProps } from "./components/HistoryPanel";
 export {
   formatCompact,
   formatFixed,

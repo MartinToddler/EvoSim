@@ -22,6 +22,7 @@ import {
   ToolsPanel,
   TopBar,
   TreePanel,
+  HistoryPanel,
   WorldsPanel,
   type SavedWorldView,
   type ToolSelection,
@@ -29,7 +30,11 @@ import {
 import { ENGINE_VERSION } from "@eon/engine";
 import type { StoredWorld } from "@eon/persistence";
 import { WorldSession } from "./app/WorldSession";
-import { defaultWorldName, type PersistenceStatus } from "./app/WorldPersistence";
+import {
+  defaultWorldName,
+  type HistoricalStatus,
+  type PersistenceStatus,
+} from "./app/WorldPersistence";
 import { readSeedFromLocation } from "./app/seed";
 import "./styles/app.css";
 
@@ -181,6 +186,7 @@ export function App(): React.JSX.Element {
   // --- Persistence state (Milestone 10) ---------------------------------------
   const [storedWorlds, setStoredWorlds] = useState<readonly StoredWorld[]>([]);
   const [persistence, setPersistence] = useState<PersistenceStatus | null>(null);
+  const [historical, setHistorical] = useState<HistoricalStatus | null>(null);
 
   // --- Species and history state (Milestone 8) --------------------------------
   const [tree, setTree] = useState<TreeSnapshotDto | null>(null);
@@ -262,6 +268,9 @@ export function App(): React.JSX.Element {
         },
         onPersistenceStatus: (status) => {
           setPersistence(status);
+        },
+        onHistorical: (status) => {
+          setHistorical(status);
         },
         onWorldsChanged: (worlds) => {
           setStoredWorlds(worlds);
@@ -442,6 +451,22 @@ export function App(): React.JSX.Element {
     sessionRef.current?.saveWorld(name);
   }, []);
 
+  const rewindTo = useCallback((tick: number) => {
+    void sessionRef.current?.rewindTo(tick);
+  }, []);
+
+  const returnToPresent = useCallback(() => {
+    sessionRef.current?.returnToPresent();
+  }, []);
+
+  const branchHere = useCallback((name: string) => {
+    // The new world is written but NOT opened: the preview stays on screen so
+    // the branch point is still visible, and the worlds list is where a world
+    // gets opened. Switching automatically would also discard the charts of the
+    // world you were looking at without asking.
+    void sessionRef.current?.branchHere(name);
+  }, []);
+
   const loadWorld = useCallback(
     (worldId: string) => {
       // A load replaces the world the charts were describing.
@@ -494,6 +519,17 @@ export function App(): React.JSX.Element {
 
   // Derived from world state rather than read off the session during render:
   // a ref holds no value React is allowed to read while rendering.
+  /** Ticks with a stored save for the bound world, and where its timeline starts. */
+  const currentStored = useMemo(
+    () => storedWorlds.find((stored) => stored.manifest.worldId === persistence?.worldId),
+    [storedWorlds, persistence?.worldId],
+  );
+  const currentSaveTicks = useMemo(
+    () => (currentStored?.saves ?? []).map((save) => save.tick).sort((a, b) => a - b),
+    [currentStored],
+  );
+  const currentBranchTick = currentStored?.manifest.branchTick ?? 0;
+
   const suggestedWorldName = world === null ? "New world" : defaultWorldName(world.seed);
 
   // Stored records mapped into the plain view model the panel renders. The UI
@@ -662,6 +698,23 @@ export function App(): React.JSX.Element {
           onLoad={loadWorld}
           onDelete={deleteWorld}
           onRefresh={refreshWorlds}
+        />
+      ) : null}
+
+      {worldsOpen ? (
+        <HistoryPanel
+          mode={historical?.mode ?? "live"}
+          presentTick={telemetry?.tick ?? 0}
+          originTick={currentBranchTick}
+          historicalTick={historical?.tick ?? null}
+          progress={historical?.progress ?? null}
+          saveTicks={currentSaveTicks}
+          message={historical?.message ?? ""}
+          failed={historical?.failed ?? false}
+          canRewind={persistence?.worldId !== null && persistence?.worldId !== undefined}
+          onRewind={rewindTo}
+          onReturnToPresent={returnToPresent}
+          onBranch={branchHere}
         />
       ) : null}
 
