@@ -447,6 +447,13 @@ export class SimulationHost {
     this.#lastRenderAt = Number.NEGATIVE_INFINITY;
     this.#lastVegetationAt = Number.NEGATIVE_INFINITY;
     this.#lastTelemetryAt = Number.NEGATIVE_INFINITY;
+    // `behindTarget` describes a loop, and the loop it described belonged to
+    // the world being replaced. Left standing, a world loaded into a paused
+    // host announces itself as "Behind" about a loop that no longer exists —
+    // and, paused, never runs a slice to correct it. (The Milestone 6 review
+    // found this for a re-INIT and called it unreachable through the app; a
+    // load replaces the world inside the running Worker, so it is reachable.)
+    this.#behindTarget = false;
     // A restored world resumes mid-history: starting this at 0 would make the
     // first tick after a load look like "commands were applied" and re-ship
     // terrain for nothing.

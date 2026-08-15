@@ -254,3 +254,36 @@ describe("LOAD_WORLD", () => {
     expect(headless.computeStateHash()).toBe(workerHash);
   });
 });
+
+describe("a loaded world does not inherit the previous world's host state", () => {
+  /**
+   * The Milestone 6 review found that a replacement world inherited
+   * `behindTarget` and called it "unreachable via the app today (one worker per
+   * world); reachable via the protocol". LOAD_WORLD makes it reachable through
+   * the app: a load replaces the world *inside the running Worker*, so the
+   * flags that describe the old world's loop are still set when the new one is
+   * announced. A restored world that opens paused would then sit there
+   * reporting "Behind" about a loop that no longer exists.
+   */
+  it("reports the restored world's own pacing, not the replaced world's", () => {
+    const { runtime, host } = createReadyHost();
+    runTo(host, runtime, 50);
+    const saved = save(host, runtime);
+
+    // Fall behind: a long stall at a paced speed leaves the loop owing ticks.
+    host.handleMessage(message("SET_RUN_STATE", { speed: "x100" }));
+    runtime.readCostMs = 2;
+    runtime.advance(30_000);
+    expect(runtime.last("TELEMETRY")?.payload.behindTarget).toBe(true);
+
+    host.handleMessage(message("SET_RUN_STATE", { speed: "paused" }));
+    runtime.clearPosted();
+    host.handleMessage(
+      message("LOAD_WORLD", { snapshot: saved.buffer, hostRuntime: null, speed: "paused" }),
+    );
+
+    // The world that just opened is paused at tick 50 and has never run here.
+    expect(runtime.last("WORLD_READY")?.payload.telemetry.behindTarget).toBe(false);
+    expect(runtime.last("WORLD_READY")?.payload.telemetry.tick).toBe(50);
+  });
+});
