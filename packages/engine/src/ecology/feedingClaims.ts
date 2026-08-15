@@ -71,31 +71,50 @@ export function meatBiteUnits(ctx: EngineContext, slot: number, mass: number): n
  * Phase 8 — every organism whose eat intent clears the threshold states one
  * claim, against one food source.
  *
- * ## The food-target policy (docs/04 §20)
+ * ## The food-target policy (docs/04 §20, amended by ADR 0025)
  *
- * > If a carcass is in mouth range and meat efficiency >= plant efficiency,
- * > attempt the carcass; otherwise attempt the plant cell.
+ * The engine compares the **expected obtainable energy** of the two candidate
+ * sources and claims the better one:
  *
- * This is implemented exactly as specified, and the specification asks for it to
- * be documented because it shapes the ecology:
+ * ```text
+ * expectedGain = min(bite, locally available) × sourceEnergyPerUnit × ownDigestionEfficiency
+ * ```
  *
- * - there is one `eat` output, so the *engine* picks the target, not the brain.
- *   A second output would be a brain format change (docs/04 §10);
- * - the comparison is between the organism's own two digestion efficiencies,
- *   which come from the single signed diet gene (docs/03 §24). A herbivore-leaning
- *   organism therefore ignores carrion it is standing on and grazes instead —
- *   even on a stripped cell, where it gets nothing. That is a real cost of
- *   specialization and it is the doc's intent: meat is not a free fallback that
- *   every genome gets to keep;
- * - a carnivore-leaning organism prefers meat when it is under its mouth and
- *   grazes at its poor plant efficiency the rest of the time. Nothing declares it
- *   a carnivore: `dietQ > 0` is what makes `meatEfficiency >= plantEfficiency`
- *   true, and mutation is what moves `dietQ`.
+ * On an exact tie the plant is chosen — an explicit, documented tie-break that
+ * keeps the herbivorous status quo (CLAUDE.md requires ties to be explicit).
+ *
+ * This replaces the original categorical rule ("carcass only when meat
+ * efficiency >= plant efficiency"), which created a measured fitness valley:
+ * a herbivore-leaning organism ignored carrion it was standing on even when the
+ * cell under it was stripped bare, so twelve calibration seeds ate almost no
+ * meat in 10 000 ticks and scavenging intermediates were unreachable
+ * (ADR 0021 §5d). Under the expected-gain rule:
+ *
+ * - there is still one `eat` output, and the *engine* still picks the target,
+ *   not the brain. A second output would be a brain format change (docs/04 §10);
+ * - a herbivore on a rich cell still grazes: its plant gain dwarfs what its
+ *   poor meat digestion could extract from a body. Specialization keeps its
+ *   value — meat is a poor fallback for a herbivore, not a free lunch;
+ * - a herbivore on a stripped cell beside a carcass now scavenges it,
+ *   inefficiently, because a bad meal beats no meal. That is the general rule
+ *   that makes scavenging intermediates evolutionarily reachable without
+ *   declaring anyone a carnivore;
+ * - a carnivore-leaning organism prefers meat exactly when meat is worth more
+ *   to it than the grass underfoot, including abandoning a nearly-empty
+ *   carcass for a rich cell. Nothing declares it a carnivore: mutation moves
+ *   `dietQ`, and `dietQ` moves the two efficiencies.
+ *
+ * The carcass query is gated by an upper bound: a full meat bite at the eater's
+ * own efficiency. When even that ceiling cannot beat the plant gain the spatial
+ * query is skipped — a pure optimization that cannot change the chosen target,
+ * so a herbivore surrounded by grass costs exactly what it did before.
  */
 export function buildFeedingClaims(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, scratch, config } = ctx;
+  const { organisms, phenotypes, environment, carcasses, scratch, config } = ctx;
   const thresholdQ = config.organism.feeding.eatOutputThresholdQ;
   const massScale = config.organism.massScalePerRadiusSquared;
+  const plantEnergyPerUnit = config.plants.plantEnergyPerBiomass;
+  const meatEnergyPerUnit = config.plants.meatEnergyPerUnit;
 
   scratch.clearPlantDemand();
   scratch.clearCarcassDemand();
@@ -116,50 +135,65 @@ export function buildFeedingClaims(ctx: EngineContext): void {
     );
     const mass = massFromRadiusPos(radius, massScale);
 
-    if (
-      (phenotypes.meatEfficiencyQ[slot] as number) >= (phenotypes.plantEfficiencyQ[slot] as number)
-    ) {
-      findCarcassInMouthRange(ctx, slot, radius, mouthCarcass);
-      const carcassSlot = mouthCarcass.slot;
-      if (carcassSlot !== -1) {
-        const request = meatBiteUnits(ctx, slot, mass);
-        if (request > 0) {
-          scratch.feedingRequest[slot] = request;
-          scratch.feedingTargetType[slot] = FeedingTarget.Carcass;
-          scratch.feedingTargetIndex[slot] = carcassSlot;
-          const previousDemand = scratch.carcassDemand[carcassSlot] as number;
-          if (previousDemand === 0) {
-            scratch.noteDemandedCarcass(carcassSlot);
-          }
-          scratch.carcassDemand[carcassSlot] = previousDemand + request;
-          scratch.claimNext[slot] = scratch.carcassClaimHead[carcassSlot] as number;
-          scratch.carcassClaimHead[carcassSlot] = slot;
-        }
-        continue;
-      }
-    }
-
+    // Expected obtainable energy from the cell underfoot. "Obtainable" is
+    // bounded by what the cell actually holds, which is exactly what the old
+    // categorical rule ignored: a stripped cell promises nothing.
     const cell = environment.cellIndexFromPosition(
       organisms.x[slot] as number,
       organisms.y[slot] as number,
     );
-    if ((environment.plantBiomass[cell] as number) <= 0) {
+    const cellBiomass = environment.plantBiomass[cell] as number;
+    const plantBite = plantBiteUnits(ctx, slot, mass);
+    const plantUnits = plantBite < cellBiomass ? plantBite : cellBiomass;
+    const plantGain =
+      plantUnits <= 0
+        ? 0
+        : qmul(plantUnits * plantEnergyPerUnit, phenotypes.plantEfficiencyQ[slot] as number);
+
+    // The meat option's ceiling: a full bite at own efficiency. Only when the
+    // ceiling could beat the plant gain is the mouth-range query worth running;
+    // skipping it below the ceiling cannot change the decision.
+    const meatBite = meatBiteUnits(ctx, slot, mass);
+    const meatEfficiencyQ = phenotypes.meatEfficiencyQ[slot] as number;
+    let carcassSlot = -1;
+    if (meatBite > 0 && qmul(meatBite * meatEnergyPerUnit, meatEfficiencyQ) > plantGain) {
+      findCarcassInMouthRange(ctx, slot, radius, mouthCarcass);
+      if (mouthCarcass.slot !== -1) {
+        const remaining = carcasses.remainingMeat[mouthCarcass.slot] as number;
+        const meatUnits = meatBite < remaining ? meatBite : remaining;
+        const meatGain = qmul(meatUnits * meatEnergyPerUnit, meatEfficiencyQ);
+        if (meatGain > plantGain) {
+          carcassSlot = mouthCarcass.slot;
+        }
+      }
+    }
+
+    if (carcassSlot !== -1) {
+      scratch.feedingRequest[slot] = meatBite;
+      scratch.feedingTargetType[slot] = FeedingTarget.Carcass;
+      scratch.feedingTargetIndex[slot] = carcassSlot;
+      const previousDemand = scratch.carcassDemand[carcassSlot] as number;
+      if (previousDemand === 0) {
+        scratch.noteDemandedCarcass(carcassSlot);
+      }
+      scratch.carcassDemand[carcassSlot] = previousDemand + meatBite;
+      scratch.claimNext[slot] = scratch.carcassClaimHead[carcassSlot] as number;
+      scratch.carcassClaimHead[carcassSlot] = slot;
       continue;
     }
 
-    const request = plantBiteUnits(ctx, slot, mass);
-    if (request <= 0) {
+    if (plantUnits <= 0 || plantBite <= 0) {
       continue;
     }
 
-    scratch.feedingRequest[slot] = request;
+    scratch.feedingRequest[slot] = plantBite;
     scratch.feedingTargetType[slot] = FeedingTarget.Plant;
     scratch.feedingTargetIndex[slot] = cell;
     const previousDemand = scratch.plantDemandPerCell[cell] as number;
     if (previousDemand === 0) {
       scratch.noteDemandedCell(cell);
     }
-    scratch.plantDemandPerCell[cell] = previousDemand + request;
+    scratch.plantDemandPerCell[cell] = previousDemand + plantBite;
     scratch.claimNext[slot] = scratch.plantClaimHead[cell] as number;
     scratch.plantClaimHead[cell] = slot;
   }

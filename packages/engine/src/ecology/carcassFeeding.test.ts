@@ -88,16 +88,99 @@ describe("the food-target policy (docs/04 §20)", () => {
     expect(world.carcasses.remainingMeat[0]).toBe(500);
   });
 
-  it("leaves a herbivore with nothing on a stripped cell it is sharing with a carcass", () => {
+  it("lets a herbivore scavenge a carcass on a stripped cell (the ADR 0025 fitness-valley fix)", () => {
     const world = createTestWorld({ plantBiomass: 0 });
     const eater = spawnTestOrganism(world, { ...world.cellCenter(10, 10), genesQ: HERBIVORE });
     carcassUnder(world, eater, 500);
 
     feed(world);
 
+    // Under the original categorical rule this organism starved while standing
+    // on meat — the fitness valley ADR 0021 §5d measured. Expected-gain choice
+    // makes the bad meal beat the no meal: it eats, at its poor meat efficiency.
+    expect(world.ctx.scratch.feedingTargetType[eater]).toBe(FeedingTarget.Carcass);
+    expect(world.organisms.meatEnergyEaten[eater]).toBeGreaterThan(0);
+    expect(world.organisms.plantEnergyEaten[eater]).toBe(0);
+    expect(world.carcasses.remainingMeat[0]).toBeLessThan(500);
+  });
+
+  it("leaves a herbivore with nothing on a stripped cell when no carcass is in reach", () => {
+    const world = createTestWorld({ plantBiomass: 0 });
+    const eater = spawnTestOrganism(world, { ...world.cellCenter(10, 10), genesQ: HERBIVORE });
+
+    feed(world);
+
     expect(world.ctx.scratch.feedingTargetType[eater]).toBe(FeedingTarget.None);
     expect(world.organisms.plantEnergyEaten[eater]).toBe(0);
     expect(world.organisms.meatEnergyEaten[eater]).toBe(0);
+  });
+
+  it("sends a herbivore to the carcass when the cell holds less than the carcass is worth", () => {
+    const world = createTestWorld();
+    // A full-grown, maximum-size body, so its meat bite is large enough that
+    // even floor-efficiency meat outvalues one biomass unit of grass. The
+    // decision scales with bite size by design: a tiny grazer's mouthful of
+    // meat may genuinely be worth less than one unit of grass.
+    const eater = spawnTestOrganism(world, {
+      ...world.cellCenter(10, 10),
+      genesQ: { ...HERBIVORE, [Gene.AdultSize]: Q },
+      developmentQ: Q,
+    });
+    const cell = world.environment.cellIndexFromPosition(
+      world.organisms.x[eater] as number,
+      world.organisms.y[eater] as number,
+    );
+    world.environment.plantBiomass[cell] = 1;
+    carcassUnder(world, eater, 500);
+
+    feed(world);
+
+    expect(world.ctx.scratch.feedingTargetType[eater]).toBe(FeedingTarget.Carcass);
+    expect(world.organisms.meatEnergyEaten[eater]).toBeGreaterThan(0);
+  });
+
+  it("makes a carnivore abandon a nearly-empty carcass for a rich cell", () => {
+    const world = createTestWorld();
+    // Full-grown and maximum size: one meat unit at full meat efficiency is 45
+    // energy, while this body's large plant bite is worth more even at the
+    // carnivore's floor plant efficiency. The categorical rule would have sent
+    // it to the scrap; expected gain does not.
+    const eater = spawnTestOrganism(world, {
+      ...world.cellCenter(10, 10),
+      genesQ: { ...CARNIVORE, [Gene.AdultSize]: Q },
+      developmentQ: Q,
+    });
+    carcassUnder(world, eater, 1);
+
+    feed(world);
+
+    expect(world.ctx.scratch.feedingTargetType[eater]).toBe(FeedingTarget.Plant);
+    expect(world.carcasses.remainingMeat[0]).toBe(1);
+    expect(world.organisms.plantEnergyEaten[eater]).toBeGreaterThan(0);
+  });
+
+  it("prefers the plant on an exact expected-gain tie (explicit tie-break)", () => {
+    // A mid-diet organism digests both sources equally, so equal raw energy
+    // (units × energyPerUnit) makes the two expected gains exactly equal:
+    // 3 biomass × 30 == 2 meat × 45. The documented tie-break chooses the plant.
+    // Full-grown and large so both bites comfortably cover the tiny amounts.
+    const world = createTestWorld();
+    const eater = spawnTestOrganism(world, {
+      ...world.cellCenter(10, 10),
+      genesQ: { [Gene.Diet]: Q >> 1, [Gene.AdultSize]: Q },
+      developmentQ: Q,
+    });
+    const cell = world.environment.cellIndexFromPosition(
+      world.organisms.x[eater] as number,
+      world.organisms.y[eater] as number,
+    );
+    world.environment.plantBiomass[cell] = 3;
+    carcassUnder(world, eater, 2);
+
+    feed(world);
+
+    expect(world.ctx.scratch.feedingTargetType[eater]).toBe(FeedingTarget.Plant);
+    expect(world.carcasses.remainingMeat[0]).toBe(2);
   });
 
   it("makes a carnivore graze when no carcass is in mouth range", () => {

@@ -516,7 +516,22 @@ Add configurable cooldown only if burst behavior destabilizes ecology.
 
 One `eat` output in MVP.
 
-If carcass in mouth range and meat efficiency >= plant efficiency, attempt carcass; otherwise attempt plant.
+> **Amended by ADR 0025 (engine 0.8.0).** The original categorical rule — carcass only when meat
+> efficiency >= plant efficiency — created a measured fitness valley: a herbivore-leaning organism
+> ignored carrion it was standing on even on a stripped cell, so scavenging intermediates were
+> evolutionarily unreachable (ADR 0021 §5d: 12 seeds, near-zero meat intake, mean diet pinned at
+> the founder value). The engine now compares **expected obtainable energy** and eats the better
+> source:
+>
+> ```text
+> expectedGain(source) = min(bite, locally available) × sourceEnergyPerUnit × ownDigestionEfficiency
+> ```
+>
+> The carcass is chosen only when its expected gain strictly exceeds the plant's; an exact tie
+> chooses the plant (explicit tie-break). A herbivore on a rich cell still grazes; a herbivore on a
+> bare cell scavenges inefficiently rather than starving; a carnivore abandons a nearly-empty
+> carcass for grass it digests badly, because a bad meal beats no meal. No role is declared
+> anywhere: the diet gene moves the efficiencies and the local world moves the availabilities.
 
 This policy is deliberately simple and must be documented because it affects ecology.
 
