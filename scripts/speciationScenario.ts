@@ -23,9 +23,11 @@
  *   pnpm exec tsx scripts/speciationScenario.ts --flat        # noise control
  */
 import {
+  BrushFalloff,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
   Gene,
+  InterventionKind,
   Q,
   SimulationEngine,
   cloneConfig,
@@ -48,6 +50,8 @@ interface Options {
   splitThresholdQ: number;
   continuityQ: number;
   capacityFactorPct: number;
+  /** Tick at which LowerTerrain commands flood an equatorial channel; 0 = never. */
+  channelTick: number;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -62,6 +66,7 @@ function parseArgs(argv: string[]): Options {
     splitThresholdQ: DEFAULT_CONFIG.species.splitDistanceThresholdQ,
     continuityQ: DEFAULT_CONFIG.species.candidateCentroidContinuityThresholdQ,
     capacityFactorPct: 100,
+    channelTick: 0,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
@@ -96,6 +101,9 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--capacity":
         options.capacityFactorPct = next();
+        break;
+      case "--channel":
+        options.channelTick = next();
         break;
       default:
         fail(`unknown argument ${arg}`);
@@ -326,6 +334,82 @@ function hemispheres(engine: SimulationEngine): HemisphereReport {
   return report;
 }
 
+/**
+ * Flood a full-width channel along the equator with ordinary LowerTerrain
+ * commands — the product's own geological intervention, deterministic and
+ * replayable. Repeated hard-falloff passes sink the strip below sea level; the
+ * engine's region recompute turns it into water, splitting one continent into
+ * two isolated demes with the population already living on both sides.
+ */
+function queueChannelCommands(engine: SimulationEngine, targetTick: number): number {
+  const config = engine.config;
+  const sizeLU = config.world.sizeLU;
+  const yLU = Math.floor(sizeLU / 2);
+  const spacing = 16;
+  const radiusLU = 48;
+  const strength = config.interventions.maxTerrainBrushStrengthQ;
+  const maxSamples = config.interventions.maxBrushSamplesPerCommand;
+  // Enough cumulative lowering to sink any plausible land elevation: mountains
+  // sit near Q; sea level is ~0.46 Q; 16 passes x 256 Q covers the whole range.
+  const passes = 16;
+  let queued = 0;
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (let fromLU = 0; fromLU < sizeLU; fromLU += spacing * maxSamples) {
+      const samplesXLU: number[] = [];
+      const samplesYLU: number[] = [];
+      for (let s = 0; s < maxSamples; s += 1) {
+        const x = fromLU + s * spacing;
+        if (x > sizeLU) break;
+        samplesXLU.push(x);
+        samplesYLU.push(yLU);
+      }
+      if (samplesXLU.length === 0) continue;
+      const result = engine.queueCommand({
+        kind: InterventionKind.LowerTerrain,
+        radiusLU,
+        strength,
+        falloff: BrushFalloff.Hard,
+        samplesXLU,
+        samplesYLU,
+        targetTick,
+      });
+      if (!result.accepted) {
+        fail(`channel command rejected: ${result.detail}`);
+      }
+      queued += 1;
+    }
+  }
+  return queued;
+}
+
+/** RMS distance between the two hemispheres' mean gene vectors, in Q. */
+function demeRmsQ(engine: SimulationEngine): number {
+  const organisms = engine.organisms;
+  const genomes = engine.genomes;
+  const halfPos = (engine.config.world.sizeLU / 2) * 256;
+  const dims = GENE_DIMS.length;
+  const sums = [new Array<number>(dims).fill(0), new Array<number>(dims).fill(0)];
+  const counts = [0, 0];
+  for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+    if (organisms.alive[slot] !== 1) continue;
+    const bucket = (organisms.y[slot] as number) < halfPos ? 0 : 1;
+    counts[bucket] = (counts[bucket] as number) + 1;
+    const sum = sums[bucket] as number[];
+    for (let d = 0; d < dims; d += 1) {
+      sum[d] = (sum[d] as number) + geneToQ(genomes.gene(slot, GENE_DIMS[d] as number));
+    }
+  }
+  if (counts[0] === 0 || counts[1] === 0) return 0;
+  let sumSq = 0;
+  for (let d = 0; d < dims; d += 1) {
+    const delta =
+      (sums[0] as number[])[d]! / (counts[0] as number) -
+      (sums[1] as number[])[d]! / (counts[1] as number);
+    sumSq += delta * delta;
+  }
+  return Math.round(Math.sqrt(sumSq / dims));
+}
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const config = scenarioConfig(options);
@@ -339,6 +423,10 @@ function main(): void {
     `species    threshold ${options.splitThresholdQ}/${Q} rms, continuity ${options.continuityQ}, capacity ${options.capacityFactorPct}%`,
   );
   console.log(`seed       0x${options.seed.toString(16).toUpperCase()}`);
+  if (options.channelTick > 0) {
+    const queued = queueChannelCommands(engine, options.channelTick);
+    console.log(`channel    ${queued} LowerTerrain commands queued for tick ${options.channelTick}`);
+  }
 
   for (let done = 0; done < options.ticks; done += options.interval) {
     engine.stepMany(Math.min(options.interval, options.ticks - done));
@@ -350,6 +438,7 @@ function main(): void {
       `| species ${engine.species.activeCount}` +
       ` | N ${String(bands.northPop).padStart(5)} (th ${bands.northThermal}, diet ${bands.northDiet})` +
       ` S ${String(bands.southPop).padStart(5)} (th ${bands.southThermal}, diet ${bands.southDiet})` +
+      ` | deme rms ${String(demeRmsQ(engine)).padStart(4)}Q` +
       (clusters === null
         ? " | clusters n/a"
         : ` | 2-means rms ${String(clusters.separationRmsQ).padStart(4)}Q ` +
