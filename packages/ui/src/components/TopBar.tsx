@@ -56,6 +56,14 @@ export interface TopBarProps {
   timelineOpen: boolean;
   toolsOpen: boolean;
   worldsOpen: boolean;
+  /**
+   * Link to the seed-driven world generator, or null to hide it.
+   *
+   * A link rather than a button because it navigates: the generator is a
+   * separate screen that builds worlds on the main thread, and it must not be
+   * mounted beside a running simulation.
+   */
+  generatorHref?: string | null;
   /** Compact save state, e.g. "saved @ 4,000" or "unsaved" (docs/06 §9). */
   saveState: string;
   onSpeedChange: (speed: SimulationSpeed) => void;
@@ -317,6 +325,15 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
         >
           Worlds
         </button>
+        {props.generatorHref !== null && props.generatorHref !== undefined ? (
+          <a
+            className="topbar__link"
+            href={props.generatorHref}
+            title="Generate and inspect worlds from a seed, without running them"
+          >
+            Generator
+          </a>
+        ) : null}
         <button
           type="button"
           aria-pressed={props.debugOverlay}

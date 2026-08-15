@@ -1,0 +1,281 @@
+/*
+ * Styles for the Milestone 2.5 environment debug view.
+ *
+ * Scoped under `.eon-debug` so the whole tool can be removed with its directory.
+ * Dark by default because a map is easier to read against a dark chrome, and the
+ * layer palettes were chosen against this background.
+ */
+
+.eon-debug {
+  --eon-bg: #11141a;
+  --eon-panel: #191d25;
+  --eon-border: #2c323d;
+  --eon-text: #e6e9ef;
+  --eon-dim: #98a1b0;
+  --eon-accent: #7fb2ff;
+
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 1rem clamp(0.75rem, 2vw, 2rem) 3rem;
+  background: var(--eon-bg);
+  color: var(--eon-text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.eon-debug *,
+.eon-debug *::before,
+.eon-debug *::after {
+  box-sizing: inherit;
+}
+
+.eon-debug__header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  letter-spacing: 0.01em;
+}
+
+.eon-debug__header p {
+  margin: 0 0 1rem;
+  max-width: 70ch;
+  color: var(--eon-dim);
+}
+
+.eon-debug__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--eon-border);
+  border-radius: 8px;
+  background: var(--eon-panel);
+}
+
+.eon-debug__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eon-debug__rowLabel,
+.eon-debug__row > label {
+  min-width: 4.5rem;
+  color: var(--eon-dim);
+}
+
+.eon-debug__seed {
+  min-width: 14rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--eon-border);
+  border-radius: 4px;
+  background: #0d1015;
+  color: var(--eon-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+.eon-debug button {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--eon-border);
+  border-radius: 4px;
+  background: #232936;
+  color: var(--eon-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.eon-debug button:hover:not(:disabled) {
+  border-color: var(--eon-accent);
+}
+
+.eon-debug button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eon-debug button.eon-debug__preset--active {
+  border-color: var(--eon-accent);
+  background: #2c3a52;
+}
+
+.eon-debug__hint,
+.eon-debug__dim {
+  color: var(--eon-dim);
+}
+
+.eon-debug__hint {
+  flex: 1 1 18rem;
+  min-width: 12rem;
+}
+
+.eon-debug__error {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #7a3030;
+  border-radius: 8px;
+  background: #24161a;
+}
+
+.eon-debug__error pre {
+  margin: 0.5rem 0 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+
+.eon-debug__empty {
+  margin-top: 1rem;
+  color: var(--eon-dim);
+}
+
+.eon-debug__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 1100px) {
+  .eon-debug__body {
+    grid-template-columns: minmax(0, 820px) minmax(0, 1fr);
+  }
+}
+
+.eon-debug__map,
+.eon-debug__facts {
+  padding: 0.75rem;
+  border: 1px solid var(--eon-border);
+  border-radius: 8px;
+  background: var(--eon-panel);
+}
+
+.eon-debug__layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--eon-border);
+  border-radius: 6px;
+}
+
+.eon-debug__layers legend {
+  padding: 0 0.35rem;
+  color: var(--eon-dim);
+}
+
+.eon-debug__layerOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.eon-debug__layerDescription {
+  margin: 0 0 0.5rem;
+  max-width: 80ch;
+  color: var(--eon-dim);
+}
+
+.eon-debug-canvas {
+  display: block;
+  width: 100%;
+  max-width: 768px;
+  height: auto;
+  border: 1px solid var(--eon-border);
+  border-radius: 4px;
+  background: #0b0d10;
+  touch-action: none;
+  cursor: grab;
+}
+
+.eon-debug-canvas:active {
+  cursor: grabbing;
+}
+
+.eon-debug__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.eon-debug__legendEntry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.eon-debug__swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 2px;
+}
+
+.eon-debug__facts h2 {
+  margin: 1rem 0 0.35rem;
+  font-size: 1rem;
+}
+
+.eon-debug__facts h2:first-child {
+  margin-top: 0;
+}
+
+.eon-debug__facts dl {
+  margin: 0;
+}
+
+.eon-debug__fact {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 10rem) minmax(0, 1fr);
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.eon-debug__fact dt {
+  color: var(--eon-dim);
+}
+
+.eon-debug__fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.eon-debug code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--eon-accent);
+}
+
+.eon-debug__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.eon-debug__table th,
+.eon-debug__table td {
+  padding: 0.15rem 0.5rem 0.15rem 0;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.eon-debug__table thead th {
+  color: var(--eon-dim);
+  font-weight: 500;
+}
+
+.eon-debug__table td {
+  text-align: right;
+}

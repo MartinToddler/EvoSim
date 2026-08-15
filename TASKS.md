@@ -401,6 +401,16 @@ interventions and saves while it is open, and a superseded rewind is cancelled o
 Limitation recorded in ADR 0018 §7: a world must have a save at or before a tick to be rewound
 there.
 
+## Recovered work (found by branch audit, Milestone 11)
+
+- [x] Milestone 2.5 world generator — built, reviewed, never merged; restored as `?view=generator`
+      (ADR 0020).
+- [x] Milestone 6 architecture review — an entire independent review, never merged; its five fixes
+      and adversarial suite restored (ADR 0019).
+
+Both were found by comparing every remote branch against the trunk. The foundation-gate branch was
+checked too and is genuinely reconciled (ADR 0015 §0), so nothing else is outstanding.
+
 ## L Quality/performance
 - [ ] L01 benchmark CLI.
 - [ ] L02 phase timing.

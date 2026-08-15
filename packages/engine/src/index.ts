@@ -402,3 +402,4 @@ export {
   type ReconstructAtOptions,
   type ReconstructionProgress,
 } from "./replay/reconstruct";
+export { hashEnvironment, ENVIRONMENT_HASH_MAGIC } from "./world/hashEnvironment";

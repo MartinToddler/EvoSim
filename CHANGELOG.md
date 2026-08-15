@@ -6,6 +6,30 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Recovered: the Milestone 2.5 world generator
+
+The seed-driven world generator was built in Milestone 2.5 and never merged. The Milestone 9 notes
+called it "superseded by the M6 renderer + M7 layer views it was reused into"; that was half right.
+The layer views of a _running_ world survived into the Milestone 7 Layers panel — the generator did
+not, and the only way left to choose a seed was a URL parameter. Restored as written, against the
+current engine, and mounted as a route exactly as its own ADR anticipated. Its ADR is restored as
+0020 (it was 0004, which the surviving line had already used for Milestone 3). No hash moved.
+
+### Added
+
+- **`?view=generator`**: type or pick a seed, generate the world, and inspect what generation
+  produced without running it — elevation, biome, temperature, moisture, fertility, plant capacity
+  and current biomass layers, a hover readout, six preset seeds (including one whose first
+  generation attempt is rejected, so the retry path is reachable), and a summary carrying the
+  environment digest, world state hash, config hash, land fraction, climate ranges and founder
+  region.
+- **`hashEnvironment`**: a diagnostic digest of the environment arrays alone, so "is this the same
+  map?" can be asked independently of "is this the same world history?".
+- **`@eon/renderer/debug`**: pure environment → RGBA projections — colour ramps, biome palette,
+  layer descriptors and legends — importing neither Pixi nor the engine, so they run in Node tests.
+- A **Generator** link in the top bar, and a link back, both preserving the seed in the query so a
+  link stays about one world.
+
 ## [Unreleased] — 2026-08-15 — Recovered: the Milestone 6 architecture review
 
 Found by auditing every remote branch against the trunk during Milestone 11. An entire independent

@@ -1,14 +1,25 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { readViewFromLocation } from "./app/route";
+import { EnvironmentDebugView } from "./dev/EnvironmentDebugView";
 
+/**
+ * Composition root.
+ *
+ * Two screens: the simulation, and the seed-driven world generator recovered
+ * with Milestone 11 (see `app/route.ts`). The choice is made here, once, so
+ * neither screen has to know the other exists — the generator in particular
+ * builds worlds synchronously on the main thread and must never be mounted
+ * beside a running Worker.
+ */
 const rootElement = document.getElementById("root");
 if (rootElement === null) {
   throw new Error("Missing #root element in index.html");
 }
 
+const view = readViewFromLocation(globalThis.location?.search ?? "");
+
 createRoot(rootElement).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+  <StrictMode>{view === "generator" ? <EnvironmentDebugView /> : <App />}</StrictMode>,
 );

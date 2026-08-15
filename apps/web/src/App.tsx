@@ -35,6 +35,7 @@ import {
   type HistoricalStatus,
   type PersistenceStatus,
 } from "./app/WorldPersistence";
+import { toggleViewHref } from "./app/route";
 import { readSeedFromLocation } from "./app/seed";
 import "./styles/app.css";
 
@@ -151,6 +152,9 @@ export function App(): React.JSX.Element {
   const [history] = useState(() => new StatsHistory());
   // Resolved once: the URL cannot change under a mounted app, and the banner
   // must name the world actually being generated, not always the default.
+  const [generatorHref] = useState(() =>
+    toggleViewHref(globalThis.location?.search ?? "", "generator"),
+  );
   const [requestedSeed] = useState(() => readSeedFromLocation(globalThis.location?.search ?? ""));
 
   const [world, setWorld] = useState<WorldSummaryDto | null>(null);
@@ -619,6 +623,7 @@ export function App(): React.JSX.Element {
         onToggleTimeline={toggleTimeline}
         onToggleTools={toggleTools}
         onToggleWorlds={toggleWorlds}
+        generatorHref={generatorHref}
       />
 
       {world === null && error === null ? (

@@ -130,6 +130,12 @@ needed save + replay to reconstruct all reach the identical canonical hash, whil
 command diverges the branch and leaves the original untouched (protocol 6 → 7; engine 0.7.0 and
 every golden hash unchanged).
 
+Two screens are recovered work, found by auditing every remote branch against the trunk during
+Milestone 11: the **world generator** at `?view=generator` (ADR 0020) — type or pick a seed,
+generate, and inspect elevation, biome, climate, fertility and plant capacity without running
+anything — and the **Milestone 6 architecture review** (ADR 0019), whose five fixes and adversarial
+test suite had been left on an unmerged branch.
+
 **The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
 the plants, and the organisms living in it — pan, zoom, run at 1×, 5×, 20×, 100× or MAX. Click an

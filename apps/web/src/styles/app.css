@@ -85,6 +85,13 @@ body {
   pointer-events: auto;
 }
 
+/* The Generator link sits among the top bar's buttons and must read as one. */
+.topbar__link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .brand {
   font-weight: 650;
   letter-spacing: 0.04em;

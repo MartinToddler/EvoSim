@@ -31,3 +31,57 @@ export {
 } from "./palette";
 export { findOrganismIndex, pickOrganism, type PickResult } from "./selection/pickOrganism";
 export { SPRITE_FRAME, createRendererTextures, type RendererTextures } from "./textures";
+
+// Environment debug projections (Milestone 2.5, recovered in Milestone 11).
+//
+// Pure environment -> RGBA, importing neither Pixi nor the engine, so they run
+// in Node tests and back the world generator's field views.
+export {
+  type Rgb,
+  type RampStop,
+  type ColorRamp,
+  compactRamp,
+  isAscendingRamp,
+  sampleRamp,
+  rgbToCss,
+} from "./debug/colorRamp";
+export {
+  DEBUG_BIOME_COUNT,
+  DEBUG_BIOME_COLORS,
+  DEBUG_BIOME_NAMES,
+  UNKNOWN_BIOME_COLOR,
+  debugBiomeColor,
+  debugBiomeName,
+} from "./debug/biomePalette";
+export {
+  Q_SCALE,
+  type DebugPixelBuffer,
+  type EnvironmentDebugFields,
+  EnvironmentDebugError,
+  assertDebugFields,
+  debugFieldCellCount,
+  debugCellCoordinates,
+} from "./debug/environmentDebugFields";
+export {
+  ENVIRONMENT_DEBUG_LAYER_IDS,
+  ENVIRONMENT_DEBUG_LAYERS,
+  type EnvironmentDebugLayerId,
+  type EnvironmentDebugLayerDescriptor,
+  type DebugLegendEntry,
+  TEMPERATURE_DISPLAY_MIN_CENTIC,
+  TEMPERATURE_DISPLAY_MAX_CENTIC,
+  TEMPERATURE_RAMP,
+  MOISTURE_RAMP,
+  FERTILITY_RAMP,
+  parseEnvironmentDebugLayerId,
+  paintEnvironmentLayer,
+  createDebugPixelBuffer,
+  describeLayerLegend,
+  formatCellValue,
+  formatQ,
+  formatCentiC,
+} from "./debug/environmentLayers";
+export {
+  type EnvironmentDebugSummary,
+  summarizeEnvironmentFields,
+} from "./debug/environmentDebugSummary";

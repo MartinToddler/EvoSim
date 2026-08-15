@@ -59,6 +59,9 @@ importers:
       '@eon/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer
+      '@eon/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@eon/ui':
         specifier: workspace:*
         version: link:../../packages/ui
