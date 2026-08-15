@@ -398,8 +398,10 @@ export { FIXTURE_COMMANDS } from "./fixtures/fixtureCommands";
 // The soak world and its invariant sweep (tasks E07/L06, docs/07 §§4, 6),
 // shared by the 100 000-tick Vitest soak and the 1 000 000-tick release soak.
 export {
+  GOLDEN_SOAK_HASH,
   NO_SOAK_VIOLATIONS,
   SOAK_CONFIG,
+  SOAK_GOLDEN_TICKS,
   SOAK_FOUNDERS,
   SOAK_GRID_SIZE,
   SOAK_SEED,

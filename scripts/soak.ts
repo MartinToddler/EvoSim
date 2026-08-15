@@ -32,7 +32,9 @@
  */
 import {
   ENGINE_VERSION,
+  GOLDEN_SOAK_HASH,
   SOAK_CONFIG,
+  SOAK_GOLDEN_TICKS,
   SOAK_SEED,
   SimulationEngine,
   checkSoakInvariants,
@@ -152,6 +154,13 @@ interface SoakReport {
   brainClampedFraction: number;
   snapshotRoundTrips: boolean;
   snapshotContinuesIdentically: boolean;
+  /**
+   * Whether this run passed {@link SOAK_GOLDEN_TICKS} and reproduced the hash
+   * the Vitest soak asserts; null when it did not reach that tick, or ran a
+   * different seed. This is what makes the long soak provably the short soak at
+   * scale rather than a similar run.
+   */
+  reproducedGoldenHash: boolean | null;
   checkpoints: Checkpoint[];
   finalHash: string;
   engineBytes: number;
@@ -189,19 +198,26 @@ function run(options: CliOptions): SoakReport {
   let peakGeneration = 0;
   let sweeps = 0;
   let firstViolation: SoakReport["firstViolation"] = null;
+  let reproducedGoldenHash: boolean | null = null;
+
+  // Next tick a sweep is due at, tracked rather than derived from `tick %
+  // checkEvery`: a checkpoint lands the engine on an arbitrary tick, and a
+  // modulo would then sweep twice in quick succession around every multiple.
+  let nextSweep = Math.min(options.checkEvery, options.ticks);
 
   while (engine.tick < options.ticks) {
     // Stop at whichever comes first: the next sweep, or the next checkpoint.
     // Neither may be skipped, and a sweep that ran "near" a checkpoint would
     // report a hash for a tick nobody asked about.
     const nextCheckpoint = pendingCheckpoints[0];
-    const untilSweep =
-      options.checkEvery - (engine.tick % options.checkEvery || options.checkEvery);
-    let target = Math.min(options.ticks, engine.tick + Math.max(1, untilSweep));
+    let target = Math.min(options.ticks, nextSweep);
     if (nextCheckpoint !== undefined && nextCheckpoint < target) {
       target = nextCheckpoint;
     }
     engine.stepMany(target - engine.tick);
+    if (engine.tick >= nextSweep) {
+      nextSweep = Math.min(engine.tick + options.checkEvery, options.ticks);
+    }
 
     const violations = checkSoakInvariants(engine, seenIds);
     sweeps += 1;
@@ -232,6 +248,18 @@ function run(options: CliOptions): SoakReport {
         wallSeconds: Number(((performance.now() - startedAt) / 1000).toFixed(1)),
       };
       checkpoints.push(checkpoint);
+      // The 100 000-tick checkpoint is the Vitest soak's finish line. Comparing
+      // it here costs nothing and turns "these two runs look alike" into
+      // "these two runs are the same run".
+      if (checkpoint.tick === SOAK_GOLDEN_TICKS && options.seed === SOAK_SEED) {
+        reproducedGoldenHash = checkpoint.hash === GOLDEN_SOAK_HASH;
+        if (!reproducedGoldenHash) {
+          console.error(
+            `soak: hash at tick ${SOAK_GOLDEN_TICKS} is ${checkpoint.hash}, ` +
+              `expected ${GOLDEN_SOAK_HASH}`,
+          );
+        }
+      }
       if (!options.json) {
         console.log(
           `tick ${String(checkpoint.tick).padStart(9)} | pop ${String(checkpoint.population).padStart(5)}` +
@@ -294,6 +322,7 @@ function run(options: CliOptions): SoakReport {
     brainClampedFraction: Number(drift.clampedFraction.toFixed(6)),
     snapshotRoundTrips,
     snapshotContinuesIdentically,
+    reproducedGoldenHash,
     checkpoints,
     finalHash,
     engineBytes,
@@ -337,12 +366,21 @@ function main(): void {
       `snapshot        round trip ${report.snapshotRoundTrips ? "exact" : "MISMATCH"}, ` +
         `continuation ${report.snapshotContinuesIdentically ? "identical" : "MISMATCH"}`,
     );
+    console.log(
+      `golden          tick ${SOAK_GOLDEN_TICKS}: ` +
+        (report.reproducedGoldenHash === null
+          ? "not reached by this run"
+          : report.reproducedGoldenHash
+            ? `reproduced ${GOLDEN_SOAK_HASH}`
+            : "MISMATCH"),
+    );
     console.log(`memory          ${formatBytes(report.engineBytes)} engine total`);
     console.log(`final hash      ${report.finalHash}`);
     console.log(`wall            ${(report.wallSeconds / 60).toFixed(1)} min`);
   }
 
   const failed =
+    report.reproducedGoldenHash === false ||
     !report.healthy ||
     !report.snapshotRoundTrips ||
     !report.snapshotContinuesIdentically ||

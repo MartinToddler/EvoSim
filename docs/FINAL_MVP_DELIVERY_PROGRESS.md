@@ -15,8 +15,8 @@ Milestone 0–11 history.
 
 | Stage        | Scope                     | Status  | Commit | Verify | Pages |
 | ------------ | ------------------------- | ------- | ------ | ------ | ----- |
-| A22 / M12    | Performance & calibration | pending | —      | —      | —     |
-| A23 / review | M12 hostile review        | pending | —      | —      | —     |
+| A22 / M12    | Performance & calibration | **PASS** | `27c5d7c` | PASS | PASS |
+| A23 / review | M12 hostile review        | **PASS** | _below_   | PASS | PASS |
 | A24 / M13    | PWA & mobile readiness    | pending | —      | —      | —     |
 | A25 / audit  | Final MVP audit           | pending | —      | —      | —     |
 
@@ -70,8 +70,53 @@ rendered under the top bar and the rewind scrubber was unclickable. Fixed.
 | ------ | ----------------------------------------------------------------- |
 | Status | PASS                                                              |
 | Branch | `claude/evosim-a22-a25-delivery-t4itkl`                           |
-| Commit | _recorded at A23_                                                 |
+| Commit | `27c5d7c9770de3daf9b0fc1d459fc17b765b82ea`                        |
 | Verify | **PASS** — 101 files, 1 269 tests, 3 108 s; every golden hash unchanged |
 | E2E    | **PASS** — 32 tests across Chromium, Firefox, WebKit, mobile      |
-| Pages  | _recorded at A23_                                                 |
+| Pages  | **PASS** — run 31897632182; the live bundle contains the A22 SHA, and the deployed bytes run in a browser (seed 0xE0A12026, ticking, 256 organisms, zero console errors) |
 | URL    | <https://martintoddler.github.io/EvoSim/>                         |
+
+---
+
+## A23 / Milestone 12 review
+
+An adversarial pass over everything M12 added. Full findings in
+`docs/adr/0022-milestone-12-review.md`; the gate is recorded in `TASKS.md`.
+
+**No golden hash could have moved and none did.** Three defects and three gaps
+found and fixed:
+
+1. The long soak swept twice around every cadence boundary — 17 sweeps where 11
+   were due. Same run, same final hash, 11 sweeps.
+2. The performance HUD would have counted the whole-tick total as one of its own
+   phases whenever the phase labels had not arrived yet.
+3. The memory walker was drift-proof only for columns that are *added*, not for
+   one that becomes private.
+4. The browser suite could only ever test a local build — `EON_E2E_BASE_URL` now
+   points it at any served build.
+5. The browser suite was not in CI, which is how the Playwright task stayed open
+   from Milestone 6 to Milestone 12.
+6. The two soaks agreed and nothing checked that they did; the golden soak hash
+   now lives beside the world it describes and the 1M CLI run verifies it in
+   passing.
+
+**The 1 000 000-tick release soak ran to completion during this stage** (68.7 min): 2 013 sweeps all
+clean, 192 376 births / 190 904 deaths fully attributed, 328 generations, population 25–3 223,
+snapshot round trip exact and continuation identical, memory flat at 9.35 MiB, and the hash at tick
+100 000 equal to the Vitest soak's golden `a7e2b5e223c8657a`. Final hash `c0f11ebb61152ef3`.
+
+Every headline number from A22 was re-read against what was actually run. One
+adjustment, recorded in the review rather than the milestone: carnivory under
+the halved capacity is one seed in four, so "reachable and rare" rather than
+"solved".
+
+### Status
+
+| Field  | Value                                                          |
+| ------ | -------------------------------------------------------------- |
+| Status | PASS                                                           |
+| Branch | `claude/evosim-a22-a25-delivery-t4itkl`                        |
+| Commit | _this commit_                                                  |
+| Verify | **PASS** — 101 files, 1 270 tests; every golden hash unchanged  |
+| Soak   | **PASS** — 1 000 000 ticks, 2 013 sweeps clean                 |
+| Pages  | _deployed immediately after this commit_                       |

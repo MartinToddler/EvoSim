@@ -71,6 +71,31 @@ export const SOAK_CONFIG: ReadonlySimulationConfig = (() => {
   return config;
 })();
 
+/**
+ * Ticks the golden soak hash below is stamped at.
+ *
+ * The 100 000-tick Vitest soak asserts it; the 1 000 000-tick CLI soak checks it
+ * in passing at the same tick, which is what makes the two runs provably the
+ * same run at two lengths rather than two similar ones.
+ */
+export const SOAK_GOLDEN_TICKS = 100_000;
+
+/**
+ * State hash of the soak world after {@link SOAK_GOLDEN_TICKS} ticks.
+ *
+ * Regenerate together with the golden fixture whenever ENGINE_VERSION changes.
+ *
+ * Engine 0.7.0 moved it with no ecological change: the founder region and the
+ * (empty) command log joined the canonical stream, event payloads became
+ * signed 32-bit words, and the config digest gained the interventions section.
+ * No command ever runs in this world — the population trajectory is unchanged
+ * from 0.6.0, exactly as 0.6.0's was from 0.5.0. Notable, still: 100 000 ticks
+ * of real evolution end with ONE species — the evolved diversity is a
+ * continuous cloud, and the detector correctly refuses to split a cloud
+ * (docs/05 §7); the synthetic split fixtures prove the other direction.
+ */
+export const GOLDEN_SOAK_HASH = "a7e2b5e223c8657a";
+
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {
   /** A live slot with the invalid entity ID 0, or an ID seen twice. */

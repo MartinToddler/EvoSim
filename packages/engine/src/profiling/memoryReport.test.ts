@@ -151,6 +151,24 @@ describe("estimateEngineMemory (task L03)", () => {
     expect(big.context.bytesPerOrganismSlot).toBeCloseTo(small.context.bytesPerOrganismSlot, 0);
   });
 
+  it("keeps counting the organism columns if the store is refactored", () => {
+    const engine = smallEngine();
+    const { bytes } = estimateEngineMemory(engine);
+    const capacity = SMALL_WORLD.limits.maxOrganisms;
+
+    // The SoA stores are walked generically over their own enumerable
+    // typed-array fields, which is drift-proof for columns that are ADDED and
+    // silently wrong for a column that becomes private. This bound is the
+    // tripwire: the store holds well over twenty columns, the narrowest of
+    // which is one byte, so a walk that found only a handful would fail here
+    // rather than quietly under-report.
+    const MINIMUM_BYTES_PER_SLOT = 40;
+    expect(bytes.organismState).toBeGreaterThan(capacity * MINIMUM_BYTES_PER_SLOT);
+    expect(bytes.phenotypes).toBeGreaterThan(capacity * 20);
+    expect(bytes.scratch).toBeGreaterThan(capacity * 20);
+    expect(bytes.spatialIndex).toBeGreaterThan(capacity * 4);
+  });
+
   it("formats byte counts for human reading", () => {
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(2048)).toBe("2.0 KiB");

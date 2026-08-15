@@ -8,11 +8,12 @@
  *
  * Usage:
  *   pnpm sweep --seeds 1,2,3 --ticks 20000
- *   pnpm sweep --config experiments/mutation-rate.json
+ *   pnpm sweep --config experiments/carrying-capacity.json
  *   pnpm sweep --seeds 1,2,3 --ticks 20000 --set mutation.brain.perWeightMutationProbabilityQ=164
  *   pnpm sweep --seeds 1,2,3 --ticks 20000 --csv
  *
- * An experiment file is JSON:
+ * An experiment file is JSON (`experiments/carrying-capacity.json` is the one the
+ * Milestone 12 calibration conclusion rests on):
  *   {
  *     "name": "mutation-rate",
  *     "seeds": [1, 2, 3],

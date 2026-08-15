@@ -278,6 +278,10 @@ schema 7, command schema 1, host runtime schema 2. Design decisions are recorded
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0022-milestone-12-review.md` — the independent Milestone 12 review: a long soak that swept twice
+  around every cadence boundary, a performance HUD that would have counted the whole-tick total as
+  one of its own phases, a memory walker that was drift-proof in only one direction, and an audit of
+  every headline number against what was actually run.
 - `0021-milestone-12-performance-and-calibration.md` — the measurement milestone: the benchmark CLI
   and why `--population` is a warm-up target, approximate memory accounting and what it refuses to
   pretend about, the performance HUD, the 1M soak sharing one world with the 100k one, the

@@ -421,7 +421,10 @@ checked too and is genuinely reconciled (ADR 0015 §0), so nothing else is outst
 - [x] L05 time-series downsampling — already delivered on both sides (engine `StatisticsStore`
       tiers, UI `StatsHistory`); M12 adds the assertions that tie retention to the memory watch.
 - [x] L06 1M soak — `pnpm soak:long`, sharing one world and one invariant sweep with the
-      100 000-tick Vitest soak.
+      100 000-tick Vitest soak. **Run to completion**: 1 000 000 ticks, 2 013 sweeps all clean,
+      192 376 births / 190 904 deaths fully attributed, 328 generations, population 25–3 223,
+      snapshot round trip exact and continuation identical, memory flat at 9.35 MiB, and the hash at
+      tick 100 000 is the Vitest soak's golden `a7e2b5e223c8657a`. Final hash `c0f11ebb61152ef3`.
 - [x] L07 10+ seed calibration — twelve seeds at 10 000 ticks; findings below.
 - [x] L08 Playwright flows — all ten docs/07 PART E scenarios.
 - [x] L09 Chromium/Firefox/WebKit validation — matrix built by probing installed browsers.
@@ -460,6 +463,40 @@ milestone**: it ends in an `ENGINE_VERSION` bump and regenerated goldens and des
 One real defect found by the new browser suite and fixed: **the History panel had no CSS**, so it
 rendered under the top bar and the rewind scrubber was unclickable on a desktop viewport. No jsdom
 test could have caught it.
+
+Milestone 12 review gate: **PASS** (engine 0.7.0 and every golden hash unchanged, protocol 8
+unchanged, ADR 0022). Everything M12 added was audited against the question a measurement milestone
+has to answer first — can any of it change what it measures, and does any claim outrun its evidence.
+No hash could have moved and none did; every headline number was re-read against what was actually
+run, and the one adjustment is in the review rather than the milestone (carnivory under the halved
+capacity is one seed in four, so "reachable and rare" rather than "solved").
+
+Three defects and three gaps found and fixed:
+
+1. **The long soak swept twice around every cadence boundary** — the next sweep was derived from
+   `tick % checkEvery`, and a checkpoint lands the engine on an arbitrary tick. 17 sweeps where 11
+   were due; nothing skipped, but at a million ticks the sweep is the second most expensive thing in
+   the run. Same run, same final hash, 11 sweeps.
+2. **The performance HUD would have counted the whole-tick total as one of its own phases** whenever
+   the phase labels had not arrived yet, since it excluded the total by name and the fallback names
+   are `phase 0`, `phase 1`, … Excluded by index now.
+3. **The memory walker was drift-proof only for columns that are added**, not for one that becomes
+   private — it would have kept returning a plausible, quietly-too-small number. Now bounded below
+   per category against the organism cap.
+4. **The browser suite could only ever test a local build.** `EON_E2E_BASE_URL` now points it at any
+   served build, which is how a deployment gets verified without a manual browser session.
+5. **The browser suite was not in CI**, which is how the Playwright task stayed open from Milestone 6
+   to Milestone 12. `verify.yml` gains a Chromium + mobile job.
+6. **The two soaks agreed and nothing checked that they did.** The golden soak hash now lives beside
+   the world it describes; the test asserts it and the 1M CLI run verifies it in passing at tick
+   100 000 and exits non-zero on a mismatch.
+
+The release soak ran to completion during the review (68.7 min): every docs/07 §6 requirement
+answered, and three results worth naming — **328 generations** with brains still recognisably
+descended from the founder controller (mean cosine similarity 0.6228, **0.0000%** of weights on the
+mutation clamp, so docs/07 §12's "mutation destroys brain too fast" is not happening); **memory flat**
+at 9.35 MiB after a million ticks and 191 000 slot recycles; and **still one species**, extending
+ADR 0013 §9's finding by an order of magnitude.
 
 - [ ] L10 fold the crowding count into the creature vision scan (the measured hotspot; hashes must
       not move).

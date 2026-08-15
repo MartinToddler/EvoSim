@@ -4,6 +4,8 @@ import {
   NO_SOAK_VIOLATIONS,
   SOAK_CONFIG,
   SOAK_FOUNDERS,
+  GOLDEN_SOAK_HASH,
+  SOAK_GOLDEN_TICKS,
   SOAK_SEED,
   checkSoakInvariants,
   deathsByCauseTotal,
@@ -27,22 +29,7 @@ import { totalPlantBiomass, totalPlantCapacity } from "./world/plants";
  * run checks exactly what this one checks (docs/07 §6 asks for both).
  */
 
-const SOAK_TICKS = 100_000;
-
-/**
- * State hash after 100 000 ticks of the soak world. Regenerate together with the
- * golden fixture whenever ENGINE_VERSION changes.
- *
- * Engine 0.7.0 moved it with no ecological change: the founder region and the
- * (empty) command log joined the canonical stream, event payloads became
- * signed 32-bit words, and the config digest gained the interventions section.
- * No command ever runs in this world — the population trajectory is unchanged
- * from 0.6.0, exactly as 0.6.0's was from 0.5.0. Notable, still: 100 000 ticks
- * of real evolution end with ONE species — the evolved diversity is a
- * continuous cloud, and the detector correctly refuses to split a cloud
- * (docs/05 §7); the synthetic split fixtures prove the other direction.
- */
-const GOLDEN_SOAK_HASH = "a7e2b5e223c8657a";
+const SOAK_TICKS = SOAK_GOLDEN_TICKS;
 
 describe("100k tick evolutionary soak (task E07)", () => {
   // This is a HANG DETECTOR, not a performance assertion: docs/07 §8 forbids

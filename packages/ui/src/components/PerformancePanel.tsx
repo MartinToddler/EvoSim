@@ -72,6 +72,15 @@ function formatMillis(value: number): string {
   return value.toFixed(2);
 }
 
+/**
+ * Byte formatting, deliberately duplicated from the engine's `formatBytes`.
+ *
+ * `@eon/ui` depends on `@eon/protocol` and the renderer's palette and nothing
+ * else — importing the engine to borrow a three-line formatter would put the
+ * whole simulation inside the UI's dependency graph to save three lines. The
+ * shorter precision here is also intentional: a HUD refreshing twice a second
+ * should not jitter its last decimal.
+ */
 function formatBytes(bytes: number): string {
   const KIB = 1024;
   const MIB = KIB * 1024;
@@ -98,9 +107,12 @@ export function PerformancePanel(props: PerformancePanelProps): React.JSX.Elemen
   const meanTickMillis = phases[totalIndex] ?? 0;
   const budget = tickBudgetState(meanTickMillis);
 
+  // Excluded by INDEX, not by name: with no label array the fallback names are
+  // "phase 0", "phase 1", … and a name filter would let the whole-tick total
+  // through as if it were one of its own parts.
   const parts = phases
-    .map((millis, index) => ({ name: phaseNames[index] ?? `phase ${index}`, millis }))
-    .filter((entry) => entry.name !== "total" && entry.millis > 0)
+    .map((millis, index) => ({ name: phaseNames[index] ?? `phase ${index}`, millis, index }))
+    .filter((entry) => entry.index !== totalIndex && entry.millis > 0)
     .sort((a, b) => b.millis - a.millis);
 
   const frameMillis = render !== null && render.fps > 0 ? 1000 / render.fps : 0;

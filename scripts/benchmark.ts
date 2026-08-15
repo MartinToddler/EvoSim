@@ -78,12 +78,6 @@ class BenchProfiler implements TickProfiler {
     this.totalMillis[phase] = (this.totalMillis[phase] as number) + elapsed;
     this.calls[phase] = (this.calls[phase] as number) + 1;
   }
-
-  reset(): void {
-    this.totalMillis.fill(0);
-    this.calls.fill(0);
-    this.#openedAt.fill(0);
-  }
 }
 
 interface CliOptions {

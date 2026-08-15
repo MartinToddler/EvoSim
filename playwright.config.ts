@@ -120,6 +120,17 @@ if (browserInstalled("webkit")) {
   });
 }
 
+/**
+ * Where the suite points.
+ *
+ * `EON_E2E_BASE_URL` runs it against an already-served build — a deployment, a
+ * preview, a device lab — instead of starting one locally. Verifying that what
+ * is actually published works is otherwise a manual browser session, which is
+ * the kind of check that quietly stops happening.
+ */
+const externalBaseUrl = process.env["EON_E2E_BASE_URL"];
+const baseURL = externalBaseUrl ?? "http://127.0.0.1:4173";
+
 export default defineConfig({
   testDir: "./e2e",
   // The app generates a 256x256 world and starts a Worker before anything is
@@ -136,7 +147,7 @@ export default defineConfig({
   workers: 1,
   reporter: process.env["CI"] === undefined ? [["list"]] : [["list"], ["github"]],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -144,10 +155,15 @@ export default defineConfig({
   // `vite preview` serves the production build, which is what deploys — so the
   // suite exercises the same bundle, the same Worker chunking and the same
   // service worker as the published site, not a dev-server approximation.
-  webServer: {
-    command: "pnpm --filter @eon/web preview --port 4173 --strictPort",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: process.env["CI"] === undefined,
-    timeout: 120_000,
-  },
+  // Skipped entirely when EON_E2E_BASE_URL names a server that already exists.
+  ...(externalBaseUrl === undefined
+    ? {
+        webServer: {
+          command: "pnpm --filter @eon/web preview --port 4173 --strictPort",
+          url: baseURL,
+          reuseExistingServer: process.env["CI"] === undefined,
+          timeout: 120_000,
+        },
+      }
+    : {}),
 });

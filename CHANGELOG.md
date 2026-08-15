@@ -6,6 +6,48 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Milestone 12 review
+
+An adversarial pass over everything Milestone 12 added, against the question a measurement milestone
+has to answer first: can any of it change what it measures, and does any claim outrun its evidence.
+No hash could have moved and none did. Decisions in ADR 0022.
+
+### Fixed
+
+- **The long soak swept twice around every cadence boundary.** The next sweep was derived from
+  `tick % checkEvery`, and a checkpoint lands the engine on an arbitrary tick — 17 sweeps where 11
+  were due. Nothing was skipped, but at a million ticks the sweep is the second most expensive thing
+  in the run. Same run, same final hash, 11 sweeps.
+- **The performance HUD would have counted the whole-tick total as one of its own phases** whenever
+  the phase labels had not arrived yet: it excluded the total by name, and the fallback names are
+  `phase 0`, `phase 1`, … Excluded by index now.
+- **The memory walker was drift-proof only for columns that are added**, not for one that becomes
+  private — it would have kept returning a plausible, quietly-too-small number. Bounded below per
+  category against the organism cap.
+- `BenchProfiler.reset()` was dead code; `scripts/sweep.ts` named an experiment file that does not
+  exist.
+
+### Added
+
+- **`EON_E2E_BASE_URL`**: point the browser suite at any already-served build instead of a local
+  `vite preview`, so verifying that what is actually published works stops being a manual browser
+  session.
+- **A browser job in CI** (Chromium plus the mobile viewport), because a suite nobody runs rots —
+  which is how the Playwright task stayed open from Milestone 6 to Milestone 12.
+- **The golden soak hash now lives beside the world it describes**, so the 100 000-tick Vitest soak
+  asserts it and the 1 000 000-tick CLI run verifies it in passing and exits non-zero on a mismatch.
+  "The long soak is the short soak at scale" is enforced rather than asserted in prose.
+
+### Verified
+
+- **The 1 000 000-tick release soak ran to completion** (68.7 min): 2 013 invariant sweeps all clean,
+  192 376 births and 190 904 deaths fully attributed, 328 generations, population between 25 and
+  3 223, a snapshot at tick 1 000 000 that round-trips exactly and continues identically, memory flat
+  at 9.35 MiB, and the hash at tick 100 000 equal to the Vitest soak's golden `a7e2b5e223c8657a`.
+  Final hash `c0f11ebb61152ef3`. After 328 generations the brains are still recognisably descended
+  from the founder controller (mean cosine similarity 0.6228, 0.0000% of weights on the clamp), and
+  the world is still one species.
+
 ## [Unreleased] — 2026-08-15 — Milestone 12: performance, memory, calibration and browser E2E
 
 The measurement milestone. `ENGINE_VERSION` stays **0.7.0** and every golden fixture and soak hash

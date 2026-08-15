@@ -73,6 +73,48 @@ jobs:
       - name: Headless runner smoke test
         run: pnpm exec tsx scripts/headless.ts --ticks 100 --checkpoints 0,100
 
+  browser:
+    name: browser end-to-end (Chromium)
+    needs: verify
+    runs-on: ubuntu-latest
+    # The suite drives a real world through a real Worker ten times over; the
+    # budget is a hang detector, on the same reasoning as the job above.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # Chromium only. docs/07 PART E asks for Firefox and WebKit too, and the
+      # config runs whichever browsers are installed — but three browsers is
+      # three times the minutes for a suite whose job here is to catch a
+      # regression, not to survey engines. The full matrix is a local and
+      # pre-release run.
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # A suite nobody runs rots, and this one earned its keep on its first
+      # run by finding a panel that rendered under the top bar.
+      - run: pnpm e2e --project=chromium --project=mobile-chromium
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   determinism:
     name: determinism (${{ matrix.os }}, Node ${{ matrix.node }})
     needs: verify
