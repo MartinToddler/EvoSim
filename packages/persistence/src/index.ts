@@ -28,6 +28,8 @@ export {
 
 export { PersistenceError, describePersistenceError, type PersistenceErrorKind } from "./errors";
 
+export { worldOriginTick, selectSaveForTick } from "./manifests";
+
 export type {
   SaveKind,
   SnapshotBlob,
@@ -43,6 +45,7 @@ export {
   DEFAULT_AUTOSAVE_RETENTION,
   type WorldStoreOptions,
   type SaveWorldRequest,
+  type BranchOrigin,
   type SaveWorldResult,
   type LoadWorldResult,
   type RejectedSave,

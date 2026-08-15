@@ -35,6 +35,10 @@ describe("decodeMainToWorkerMessage", () => {
       main("RECYCLE_RENDER_BUFFER", { buffer }),
       main("RECYCLE_VEGETATION_BUFFER", { buffer }),
       main("SET_RENDER_STREAM", { enabled: false }),
+      main("REQUEST_SAVE", { reason: "branch" }, 3),
+      main("REQUEST_REWIND", { snapshot: buffer, targetTick: 5000 }, 4),
+      main("RETURN_TO_PRESENT", {}),
+      main("CREATE_BRANCH", { branchTick: 5000 }, 5),
       main("DISPOSE", {}),
     ];
     for (const message of cases) {
@@ -112,6 +116,52 @@ describe("decodeMainToWorkerMessage", () => {
     expect(result.ok).toBe(true);
     if (result.ok && result.message.type === "INIT_NEW_WORLD") {
       expect(result.message.payload.config).toBeNull();
+    }
+  });
+});
+
+describe("Milestone 11 rewind and branch messages", () => {
+  const buffer = new ArrayBuffer(8);
+
+  it("requires a correlation id on every request whose answer can go stale", () => {
+    // A rewind reply that cannot be matched to its request is exactly how an
+    // older reconstruction overwrites a newer one.
+    expect(
+      decodeMainToWorkerMessage(main("REQUEST_REWIND", { snapshot: buffer, targetTick: 1 })).ok,
+    ).toBe(false);
+    expect(decodeMainToWorkerMessage(main("CREATE_BRANCH", { branchTick: 1 })).ok).toBe(false);
+  });
+
+  it("rejects a rewind without real save bytes or a real target tick", () => {
+    expect(
+      decodeMainToWorkerMessage(main("REQUEST_REWIND", { snapshot: {}, targetTick: 5 }, 1)).ok,
+    ).toBe(false);
+    expect(
+      decodeMainToWorkerMessage(main("REQUEST_REWIND", { snapshot: buffer, targetTick: -1 }, 1)).ok,
+    ).toBe(false);
+    expect(
+      decodeMainToWorkerMessage(main("REQUEST_REWIND", { snapshot: buffer, targetTick: 1.5 }, 1))
+        .ok,
+    ).toBe(false);
+  });
+
+  it("rejects a branch point that is not a tick", () => {
+    expect(decodeMainToWorkerMessage(main("CREATE_BRANCH", { branchTick: -3 }, 1)).ok).toBe(false);
+    expect(decodeMainToWorkerMessage(main("CREATE_BRANCH", {}, 1)).ok).toBe(false);
+  });
+
+  it("accepts the branch save reason and keeps the older two", () => {
+    for (const reason of ["manual", "autosave", "branch"]) {
+      expect(decodeMainToWorkerMessage(main("REQUEST_SAVE", { reason }, 9)).ok).toBe(true);
+    }
+    expect(decodeMainToWorkerMessage(main("REQUEST_SAVE", { reason: "whenever" }, 9)).ok).toBe(
+      false,
+    );
+  });
+
+  it("decodes the worker's rewind reports", () => {
+    for (const type of ["REWIND_PROGRESS", "HISTORICAL_MODE_READY"]) {
+      expect(decodeWorkerToMainMessage(main(type, {})).ok).toBe(true);
     }
   });
 });

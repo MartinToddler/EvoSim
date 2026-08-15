@@ -21,13 +21,22 @@
  *
  * ## What is NOT here yet
  *
- * docs/02 §13 also lists REQUEST_REWIND and CREATE_BRANCH. Those address engine
- * features that do not exist yet (Milestone 11), and declaring their wire
- * shapes now would mean inventing payloads for rules nobody has written, so
- * they arrive with their milestone and bump PROTOCOL_VERSION then.
- * QUERY_SPECIES, REQUEST_TREE and REQUEST_HISTORY_RANGE arrived with
- * Milestone 8 (protocol 4); QUEUE_COMMAND with Milestone 9 (protocol 5);
- * REQUEST_SAVE, SNAPSHOT_DATA and LOAD_WORLD with Milestone 10 (protocol 6).
+ * Everything docs/02 §§13-14 lists is now here. QUERY_SPECIES, REQUEST_TREE and
+ * REQUEST_HISTORY_RANGE arrived with Milestone 8 (protocol 4); QUEUE_COMMAND
+ * with Milestone 9 (protocol 5); REQUEST_SAVE, SNAPSHOT_DATA and LOAD_WORLD
+ * with Milestone 10 (protocol 6); REQUEST_REWIND, RETURN_TO_PRESENT,
+ * CREATE_BRANCH, REWIND_PROGRESS and HISTORICAL_MODE_READY with Milestone 11
+ * (protocol 7).
+ *
+ * ## Why rewinding is split across the port
+ *
+ * The database lives on the main thread and the engine lives in the Worker, so
+ * neither can rewind alone. The main thread picks the newest save at or before
+ * the target — it is the only side that can see the saves — and sends the bytes
+ * with REQUEST_REWIND. The Worker restores them into a SECOND engine and
+ * replays it forward, reporting REWIND_PROGRESS per slice and finishing with
+ * HISTORICAL_MODE_READY. The live engine is never touched, which is why
+ * "return to present" is a mode switch and not a reload.
  *
  * ## Why saving is a message and not a storage call
  *
@@ -129,12 +138,38 @@ export interface QueueCommandPayload {
   command: CommandRequestDto;
 }
 
+/**
+ * Why a save was asked for. Echoed back with the bytes so a save started before
+ * an autosave can be told apart from it when both answers arrive.
+ *
+ * `"branch"` is not a third flavour of the same thing: it names bytes that will
+ * become a DIFFERENT world's origin (Milestone 11), so the host must write them
+ * under a new manifest instead of appending them to the current world's saves.
+ */
+export type SaveReason = "manual" | "autosave" | "branch";
+
 export interface RequestSavePayload {
+  reason: SaveReason;
+}
+
+export interface RequestRewindPayload {
   /**
-   * Free-form label the host echoes back with the bytes, so a save started
-   * before an autosave can be told apart from it when both answers arrive.
+   * The durable save the replay starts from — the newest one at or before
+   * `targetTick`. The main thread owns the database and therefore chooses it;
+   * the Worker owns the engine and therefore replays it (docs/02 §3).
    */
-  reason: "manual" | "autosave";
+  snapshot: unknown;
+  /** Exact tick to reconstruct. Landing anywhere else is an error, not a rounding. */
+  targetTick: number;
+}
+
+export interface CreateBranchPayload {
+  /**
+   * Tick the branch starts from. Must equal the tick of the open historical
+   * preview: a branch that claims one tick and carries another is the defect
+   * this field exists to catch.
+   */
+  branchTick: number;
 }
 
 export interface LoadWorldPayload {
@@ -172,6 +207,9 @@ export type MainToWorkerMessage =
   | Envelope<"QUERY_STATE_HASH", QueryStateHashPayload>
   | Envelope<"REQUEST_SAVE", RequestSavePayload>
   | Envelope<"LOAD_WORLD", LoadWorldPayload>
+  | Envelope<"REQUEST_REWIND", RequestRewindPayload>
+  | Envelope<"RETURN_TO_PRESENT", Record<string, never>>
+  | Envelope<"CREATE_BRANCH", CreateBranchPayload>
   | Envelope<"RECYCLE_RENDER_BUFFER", RecycleBufferPayload>
   | Envelope<"RECYCLE_VEGETATION_BUFFER", RecycleBufferPayload>
   | Envelope<"SET_RENDER_STREAM", SetRenderStreamPayload>
@@ -190,6 +228,9 @@ const MAIN_TO_WORKER_TYPES: readonly MainToWorkerType[] = [
   "QUERY_STATE_HASH",
   "REQUEST_SAVE",
   "LOAD_WORLD",
+  "REQUEST_REWIND",
+  "RETURN_TO_PRESENT",
+  "CREATE_BRANCH",
   "RECYCLE_RENDER_BUFFER",
   "RECYCLE_VEGETATION_BUFFER",
   "SET_RENDER_STREAM",
@@ -261,7 +302,27 @@ export interface SnapshotDataPayload {
   configHash: string;
   seed: number;
   /** Echoed from the request. */
-  reason: "manual" | "autosave";
+  reason: SaveReason;
+}
+
+export interface RewindProgressPayload {
+  targetTick: number;
+  /** Tick of the save the replay started from. */
+  fromTick: number;
+  currentTick: number;
+  ticksReplayed: number;
+  ticksTotal: number;
+}
+
+export interface HistoricalModeReadyPayload {
+  /** Tick now being previewed, read-only. */
+  tick: number;
+  /** Tick the live world is paused at, so the UI can say "3 548 of 7 097". */
+  presentTick: number;
+  /** Canonical hash of the reconstructed state, for verification and display. */
+  stateHash: string;
+  /** Whether this world can be rewound below `tick` (false at a branch origin). */
+  earliestTick: number;
 }
 
 export interface StateHashPayload {
@@ -299,6 +360,8 @@ export type WorkerToMainMessage =
   | Envelope<"HISTORY_EVENTS", HistoryEventsPayload>
   | Envelope<"STATE_HASH", StateHashPayload>
   | Envelope<"SNAPSHOT_DATA", SnapshotDataPayload>
+  | Envelope<"REWIND_PROGRESS", RewindProgressPayload>
+  | Envelope<"HISTORICAL_MODE_READY", HistoricalModeReadyPayload>
   | Envelope<"ERROR", WorkerErrorDto>;
 
 export type WorkerToMainType = WorkerToMainMessage["type"];
@@ -535,8 +598,10 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
         return bad("REQUEST_SAVE requires a requestId so the bytes can be correlated");
       }
       const reason = payload["reason"];
-      if (reason !== "manual" && reason !== "autosave") {
-        return bad(`REQUEST_SAVE reason must be "manual" or "autosave", got ${String(reason)}`);
+      if (reason !== "manual" && reason !== "autosave" && reason !== "branch") {
+        return bad(
+          `REQUEST_SAVE reason must be "manual", "autosave" or "branch", got ${String(reason)}`,
+        );
       }
       return {
         ok: true,
@@ -567,6 +632,56 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
           protocolVersion: PROTOCOL_VERSION,
           type: "LOAD_WORLD",
           payload: { snapshot, hostRuntime, speed },
+        },
+      };
+    }
+    case "REQUEST_REWIND": {
+      if (requestId === undefined) {
+        return bad("REQUEST_REWIND requires a requestId so a stale reply can be discarded");
+      }
+      const snapshot = payload["snapshot"];
+      if (!(snapshot instanceof ArrayBuffer)) {
+        return bad("REQUEST_REWIND snapshot must be an ArrayBuffer");
+      }
+      const targetTick = payload["targetTick"];
+      if (!isSafeIndex(targetTick)) {
+        return bad(`REQUEST_REWIND targetTick must be a non-negative safe integer`);
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_REWIND",
+          payload: { snapshot, targetTick },
+        },
+      };
+    }
+    case "RETURN_TO_PRESENT": {
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          type: "RETURN_TO_PRESENT",
+          payload: {},
+        },
+      };
+    }
+    case "CREATE_BRANCH": {
+      if (requestId === undefined) {
+        return bad("CREATE_BRANCH requires a requestId so the bytes can be correlated");
+      }
+      const branchTick = payload["branchTick"];
+      if (!isSafeIndex(branchTick)) {
+        return bad("CREATE_BRANCH branchTick must be a non-negative safe integer");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "CREATE_BRANCH",
+          payload: { branchTick },
         },
       };
     }
@@ -729,6 +844,8 @@ export function decodeWorkerToMainMessage(data: unknown): DecodeResult<WorkerToM
     case "HISTORY_EVENTS":
     case "STATE_HASH":
     case "SNAPSHOT_DATA":
+    case "REWIND_PROGRESS":
+    case "HISTORICAL_MODE_READY":
     case "ERROR":
       return { ok: true, message: data as unknown as WorkerToMainMessage };
     default:

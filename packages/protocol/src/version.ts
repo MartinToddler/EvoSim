@@ -38,9 +38,16 @@
  * hands a stored container back to the Worker to resume from. No existing
  * message changed shape; the union simply grew.
  *
+ * Protocol 7 (Milestone 11) adds rewind and branching: `REQUEST_REWIND` hands
+ * the Worker a stored save and a target tick, `REWIND_PROGRESS` and
+ * `HISTORICAL_MODE_READY` report the replay, `RETURN_TO_PRESENT` leaves the
+ * preview, and `CREATE_BRANCH` asks for the bytes that become a new world's
+ * origin — carried by the existing `SNAPSHOT_DATA` with the new `"branch"`
+ * reason. Only that reason union widened; no existing message changed shape.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;

@@ -391,3 +391,14 @@ export { SimulationEngine, type SimulationEngineOptions, MAX_TICK } from "./Simu
 export { computeStateHash, STATE_HASH_MAGIC } from "./hashState";
 export { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
 export { engineFromSnapshot } from "./snapshot/deserialize";
+
+// Historical reconstruction and branch origins (Milestone 11, K07–K10).
+export {
+  Reconstruction,
+  ReconstructionError,
+  reconstructAt,
+  prepareBranchSnapshot,
+  type ReconstructionOptions,
+  type ReconstructAtOptions,
+  type ReconstructionProgress,
+} from "./replay/reconstruct";

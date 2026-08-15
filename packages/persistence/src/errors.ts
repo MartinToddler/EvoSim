@@ -21,7 +21,9 @@ export type PersistenceErrorKind =
   /** The requested world or snapshot is not there. */
   | "not-found"
   /** Stored bytes failed validation; see the cause for the specific code. */
-  | "corrupt";
+  | "corrupt"
+  /** The caller asked for something contradictory; storage is fine, the request is not. */
+  | "invalid-request";
 
 export class PersistenceError extends Error {
   readonly kind: PersistenceErrorKind;

@@ -80,6 +80,13 @@ export interface WorldStoreOptions {
 }
 
 /** What a caller must supply to record a save. */
+/** Provenance for a save that creates a NEW world from an existing one's past. */
+export interface BranchOrigin {
+  parentWorldId: string;
+  /** Tick the branch diverges at; must equal the tick inside the save bytes. */
+  branchTick: number;
+}
+
 export interface SaveWorldRequest {
   /** Omitted for the first save of a world; a new manifest is created. */
   worldId?: string;
@@ -89,6 +96,13 @@ export interface SaveWorldRequest {
   bytes: Uint8Array;
   appVersion: string;
   configSchemaVersion: number;
+  /**
+   * Present only when this save creates a branch (task K10). It is an error to
+   * combine it with an existing `worldId`: a branch is a new world, and writing
+   * a branch origin over a running world would destroy the world it branched
+   * from — the one thing branching must never do.
+   */
+  branchedFrom?: BranchOrigin;
 }
 
 export interface SaveWorldResult {
@@ -302,6 +316,23 @@ export class WorldStore {
       throw new PersistenceError("not-found", `world ${worldId} is not stored`);
     }
 
+    const branchedFrom = request.branchedFrom;
+    if (branchedFrom !== undefined) {
+      if (request.worldId !== undefined) {
+        throw new PersistenceError(
+          "invalid-request",
+          "a branch save must create a new world; passing an existing worldId would write the " +
+            "branch origin over the world it branched from",
+        );
+      }
+      if (branchedFrom.branchTick !== header.tick) {
+        throw new PersistenceError(
+          "invalid-request",
+          `branch point ${branchedFrom.branchTick} does not match the save's tick ${header.tick}`,
+        );
+      }
+    }
+
     const record: SnapshotRecord = {
       snapshotId,
       worldId,
@@ -349,6 +380,14 @@ export class WorldStore {
       latestTick: header.tick,
       latestSnapshotId: snapshotId,
       latestStateHash: header.stateHash,
+      // Provenance is written once, by the save that creates the branch, and
+      // carried forward unchanged by every later save of that world: where a
+      // world came from cannot change after it exists.
+      ...(branchedFrom !== undefined
+        ? { parentWorldId: branchedFrom.parentWorldId, branchTick: branchedFrom.branchTick }
+        : existing?.parentWorldId !== undefined && existing.branchTick !== undefined
+          ? { parentWorldId: existing.parentWorldId, branchTick: existing.branchTick }
+          : {}),
       status: "ok",
       statusDetail: "",
     };

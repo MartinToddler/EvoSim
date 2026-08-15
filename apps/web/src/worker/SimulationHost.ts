@@ -296,9 +296,24 @@ export class SimulationHost {
       case "QUERY_STATE_HASH":
         this.#answerStateHashQuery(message.payload.targetTick, message.requestId ?? 0);
         return;
-      case "REQUEST_SAVE":
-        this.#answerSaveRequest(message.payload.reason, message.requestId ?? 0);
+      case "REQUEST_SAVE": {
+        const reason = message.payload.reason;
+        if (reason === "branch") {
+          // A branch save is not this world's save. It becomes ANOTHER world's
+          // origin, and it must have this world's queued future stripped first
+          // or the branch would inherit commands the player never asked it to
+          // run. That is CREATE_BRANCH's job, and only it can do it.
+          this.#reportError(
+            "a branch origin cannot be produced by REQUEST_SAVE; use CREATE_BRANCH",
+            false,
+            "REQUEST_SAVE",
+            message.requestId ?? null,
+          );
+          return;
+        }
+        this.#answerSaveRequest(reason, message.requestId ?? 0);
         return;
+      }
       case "LOAD_WORLD":
         this.#loadWorld(
           message.payload.snapshot as ArrayBuffer,
