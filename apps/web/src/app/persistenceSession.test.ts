@@ -72,7 +72,11 @@ class FakeWorker implements SessionWorker {
 class FakeRenderer implements SessionRenderer {
   // The session frames the world through the camera once the renderer exists.
   readonly camera = { fitWorld: (): void => undefined };
-  applyTerrain(): void {}
+  readonly calls: string[] = [];
+  destroyed = false;
+  applyTerrain(): void {
+    this.calls.push("applyTerrain");
+  }
   applyVegetation(): void {}
   applyRenderSnapshot(): void {}
   setSelected(): void {}
@@ -85,7 +89,9 @@ class FakeRenderer implements SessionRenderer {
     return true;
   }
   resize(): void {}
-  destroy(): void {}
+  destroy(): void {
+    this.destroyed = true;
+  }
 }
 
 /** A real durable container for a real (tiny) world — no hand-made bytes. */
@@ -197,6 +203,8 @@ function telemetryFixture(tick: number): TelemetryDto {
 interface Harness {
   session: WorldSession;
   worker: FakeWorker;
+  /** Every renderer the session created, in order. */
+  renderers: FakeRenderer[];
   errors: string[];
   statuses: PersistenceStatus[];
   worlds: (readonly StoredWorld[])[];
@@ -217,6 +225,7 @@ function createHarness(): Harness {
   const statuses: PersistenceStatus[] = [];
   const errors: string[] = [];
   const worlds: (readonly StoredWorld[])[] = [];
+  const renderers: FakeRenderer[] = [];
 
   const session = WorldSession.start({
     canvas: {} as HTMLCanvasElement,
@@ -241,7 +250,11 @@ function createHarness(): Harness {
       },
     },
     createWorker: () => worker,
-    createRenderer: () => Promise.resolve(new FakeRenderer()),
+    createRenderer: () => {
+      const renderer = new FakeRenderer();
+      renderers.push(renderer);
+      return Promise.resolve(renderer);
+    },
     createWorldStore: () =>
       new WorldStore({
         indexedDb: indexedDb as unknown as never,
@@ -263,6 +276,7 @@ function createHarness(): Harness {
   return {
     session,
     worker,
+    renderers,
     errors,
     statuses,
     worlds,
@@ -485,6 +499,47 @@ describe("loading from the app shell", () => {
     await harness.ready();
     expect(harness.status().worldId).toBeNull();
     expect(harness.status().autosaveArmed).toBe(false);
+    harness.session.destroy();
+  });
+
+  it("rebuilds the renderer for the loaded world instead of leaving the old picture", async () => {
+    // A load replaces the world, and with it the renderer: the previous one's
+    // WebGL context belongs to a world that is gone, and a canvas whose context
+    // was destroyed cannot host a new one. Without this the loaded world shows
+    // as a blank canvas — which is exactly what the first deployed build did.
+    const harness = createHarness();
+    await harness.ready();
+    const first = harness.renderers[0];
+    expect(first).toBeDefined();
+
+    harness.session.saveWorld("Eden");
+    await harness.answerSave(900);
+    harness.session.loadWorld(harness.status().worldId as string);
+    await harness.flush();
+    await harness.ready({ telemetryTick: 900 });
+
+    expect(harness.renderers).toHaveLength(2);
+    expect(first?.destroyed).toBe(true);
+    expect(harness.renderers[1]?.destroyed).toBe(false);
+    // The new renderer was handed the restored world's terrain.
+    expect(harness.renderers[1]?.calls).toContain("applyTerrain");
+    harness.session.destroy();
+  });
+
+  it("drops the previous world's selection and event cursor on load", async () => {
+    const harness = createHarness();
+    await harness.ready();
+    harness.session.saveWorld("Eden");
+    await harness.answerSave(900);
+
+    harness.session.loadWorld(harness.status().worldId as string);
+    await harness.flush();
+    await harness.ready({ telemetryTick: 900 });
+
+    // A restored world re-pulls its own history from the beginning rather than
+    // from the replaced world's watermark.
+    const request = harness.worker.last("REQUEST_HISTORY_RANGE");
+    expect(request?.payload["sinceEventId"] ?? 0).toBe(0);
     harness.session.destroy();
   });
 

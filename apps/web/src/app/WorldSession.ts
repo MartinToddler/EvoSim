@@ -236,6 +236,16 @@ export class WorldSession {
   readonly #options: WorldSessionOptions;
   #renderer: SessionRenderer | null = null;
   #resizeObserver: ResizeObserver | null = null;
+  /**
+   * The canvas the renderer draws into.
+   *
+   * Owned rather than borrowed because a world can now be *replaced* mid-session
+   * (Milestone 10's LOAD_WORLD). Destroying a renderer destroys its WebGL
+   * context, and a canvas whose context has been destroyed cannot reliably host
+   * a new one — so a replacement world gets a fresh element in the same
+   * viewport. The initial element still comes from the caller.
+   */
+  #canvas: HTMLCanvasElement;
 
   /**
    * A snapshot that arrived before the renderer finished initializing.
@@ -286,6 +296,7 @@ export class WorldSession {
 
   private constructor(options: WorldSessionOptions) {
     this.#options = options;
+    this.#canvas = options.canvas;
     this.#speed = options.initialSpeed;
     this.#worker =
       options.createWorker !== undefined
@@ -696,6 +707,11 @@ export class WorldSession {
     this.#renderer?.destroy();
     this.#renderer = null;
     this.#pendingSnapshot = null;
+    // Only a canvas this session created is removed here; the caller's own
+    // element stays its to manage.
+    if (this.#canvas !== this.#options.canvas) {
+      this.#canvas.remove();
+    }
     this.#persistence.dispose();
     // `dispose` sends DISPOSE and then terminates, so the host stops its loop
     // cleanly instead of being killed mid-tick.
@@ -711,12 +727,26 @@ export class WorldSession {
   ): Promise<void> {
     const frozenWorld = freezeWorld(world);
     this.#world = frozenWorld;
+
+    // A second WORLD_READY means the world was replaced — a load, in practice.
+    // The old renderer and its canvas go with the old world: keeping them would
+    // leave the previous world's picture on screen (or a dead context painting
+    // nothing), and the new world may not even have the same dimensions.
+    if (this.#renderer !== null) {
+      this.#resizeObserver?.disconnect();
+      this.#resizeObserver = null;
+      this.#renderer.destroy();
+      this.#renderer = null;
+      this.#replaceCanvas();
+      this.#resetPerWorldState();
+    }
+
     const create =
       this.#options.createRenderer ??
       ((rendererOptions: RendererFactoryOptions): Promise<SessionRenderer> =>
         EonRenderer.create(rendererOptions));
     const renderer = await create({
-      canvas: this.#options.canvas,
+      canvas: this.#canvas,
       worldSizeLU: world.worldSizeLU,
       gridSize: world.gridSize,
       maxOrganisms: world.maxOrganisms,
@@ -774,6 +804,47 @@ export class WorldSession {
     });
     this.#loadingStoredWorld = false;
     this.#options.callbacks.onWorldReady(frozenWorld, Object.freeze(hostRuntime));
+  }
+
+  /**
+   * Swap in a fresh canvas element for a replacement world.
+   *
+   * A no-op where there is no DOM to swap in — Node tests drive the session
+   * with a canvas stand-in, and world adoption must not depend on a document
+   * existing.
+   */
+  #replaceCanvas(): void {
+    const previous = this.#canvas;
+    const document = previous.ownerDocument as Document | undefined;
+    if (document === undefined || typeof document.createElement !== "function") {
+      return;
+    }
+    const parent = previous.parentNode ?? this.#options.viewport;
+    const next = document.createElement("canvas");
+    next.className = previous.className;
+    previous.remove();
+    parent.appendChild(next);
+    this.#canvas = next;
+  }
+
+  /**
+   * Forget what belonged to the world being replaced.
+   *
+   * The selection points at an entity of the old world, and the history cursor
+   * at its event log — carried over, they would select a stranger and hide the
+   * restored world's events behind an ID watermark that world never issued.
+   */
+  #resetPerWorldState(): void {
+    this.#pendingSnapshot = null;
+    this.#selectedEntityId = null;
+    this.#followedEntityId = null;
+    this.#selectedSpeciesId = null;
+    this.#treeRevision = "";
+    this.#lastFetchedEventId = 0;
+    this.#events = [];
+    this.#eventsDroppedBeforeOldest = 0;
+    this.#options.callbacks.onSelectionChange(null);
+    this.#options.callbacks.onHistoryEvents?.(Object.freeze([]), 0);
   }
 
   #handleRenderSnapshot(buffer: ArrayBuffer): void {
