@@ -63,6 +63,42 @@ describe("world tiers", () => {
     }
     expect(stats.worldSampleCount).toBe(30_000);
   });
+
+  it("reports a byte total that does not grow with the sample count (task L03)", () => {
+    const stats = new StatisticsStore();
+    const empty = stats.approximateBytes();
+    expect(empty).toBeGreaterThan(0);
+
+    for (let i = 0; i < 50_000; i += 1) {
+      stats.pushWorldSample(i * 100, worldSample(50, 1));
+    }
+
+    // docs/07 §11 lists "unbounded stats" as a memory bug class, and this is
+    // the assertion that would catch it: fifty thousand samples occupy exactly
+    // the same buffers as none, because the tiers are allocated up front and
+    // compact in place.
+    expect(stats.approximateBytes()).toBe(empty);
+  });
+
+  it("charges each sampled species one ring, and only once (task L03)", () => {
+    const stats = new StatisticsStore();
+    const before = stats.approximateBytes();
+
+    const speciesSample = new Array<number>(SPECIES_STAT_METRIC_COUNT).fill(1);
+    stats.pushSpeciesSample(1, 100, speciesSample);
+    const afterOne = stats.approximateBytes();
+    expect(afterOne).toBeGreaterThan(before);
+
+    // More samples for the same species reuse its ring.
+    for (let i = 0; i < SPECIES_SERIES_CAPACITY * 3; i += 1) {
+      stats.pushSpeciesSample(1, 200 + i * 100, speciesSample);
+    }
+    expect(stats.approximateBytes()).toBe(afterOne);
+
+    // A second species costs exactly one more ring.
+    stats.pushSpeciesSample(2, 100, speciesSample);
+    expect(stats.approximateBytes()).toBe(afterOne + (afterOne - before));
+  });
 });
 
 describe("species series ring", () => {

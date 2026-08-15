@@ -384,6 +384,22 @@ export class RenderBufferPool {
   }
 
   /**
+   * Bytes this pool has allocated, idle and in flight together (docs/07 §11
+   * "render buffers").
+   *
+   * Every buffer in a pool has the same layout, so this is exact: the pool
+   * never holds a buffer of a different size — `release` refuses one — and it
+   * never allocates past {@link maxBuffers}. A growing number here would mean
+   * the bound had been broken.
+   */
+  get allocatedBytes(): number {
+    return (
+      this.#created *
+      computeRenderSnapshotLayout(this.organismCapacity, this.carcassCapacity).totalBytes
+    );
+  }
+
+  /**
    * Take a buffer to fill, or `null` when the consumer holds them all.
    *
    * A `null` result is a normal, expected outcome under back-pressure, not an

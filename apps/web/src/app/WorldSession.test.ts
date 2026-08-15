@@ -93,6 +93,16 @@ class FakeRenderer implements SessionRenderer {
   setFollowed(entityId: number | null): void {
     this.followed = entityId;
   }
+  stats() {
+    return {
+      drawnOrganisms: 0,
+      drawnCarcasses: 0,
+      detailedOrganisms: 0,
+      snapshotTick: 0,
+      zoom: 1,
+      fps: 60,
+    };
+  }
   setDebugOverlay(): void {
     this.calls.push("setDebugOverlay");
   }
@@ -161,6 +171,7 @@ function worldFixture(): WorldSummaryDto {
       temperatureDisplayMinC: -25,
       temperatureDisplayMaxC: 35,
       capacityDisplayReference: 4000,
+      tickPhaseLabels: ["total", "environment", "sensing", "brain"],
     },
   };
 }
@@ -201,6 +212,13 @@ function telemetryFixture(tick: number): TelemetryDto {
     renderBuffersInFlight: 0,
     droppedRenderSnapshots: 0,
     phaseMillis: [],
+    memory: {
+      engineTotalBytes: 0,
+      engineBytesByCategory: [],
+      renderPoolBytes: 0,
+      organismCapacity: 0,
+      bytesPerOrganismSlot: 0,
+    },
   };
 }
 

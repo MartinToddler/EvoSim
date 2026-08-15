@@ -205,6 +205,29 @@ export class StatisticsStore {
     return this.#worldSampleCount;
   }
 
+  /**
+   * Approximate resident bytes of this store's buffers (task L03, docs/07 §11).
+   *
+   * The tiers and the species rings own their `Float64Array`s outright, and
+   * those are private, so the store reports its own size rather than exposing
+   * the buffers to a walker. Only the typed arrays are counted: the handful of
+   * wrapper objects around them is noise beside a tier's 240 × 12 doubles.
+   *
+   * Diagnostic only — nothing authoritative reads this.
+   */
+  approximateBytes(): number {
+    let bytes = 0;
+    for (const tier of this.#tiers) {
+      bytes += tier.values.byteLength + tier.ticks.byteLength;
+    }
+    for (const series of this.#speciesSeries) {
+      if (series !== null) {
+        bytes += series.values.byteLength + series.ticks.byteLength;
+      }
+    }
+    return bytes;
+  }
+
   /** Append one world sample; values indexed by WorldStatMetric. */
   pushWorldSample(tick: number, values: readonly number[]): void {
     assert(

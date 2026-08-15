@@ -45,9 +45,16 @@
  * origin — carried by the existing `SNAPSHOT_DATA` with the new `"branch"`
  * reason. Only that reason union widened; no existing message changed shape.
  *
+ * Protocol 8 (Milestone 12) adds performance and memory observability, with no
+ * new message types: `TelemetryDto` gains a `memory` block carrying the engine's
+ * approximate per-category byte totals (docs/07 §11) and the render buffer
+ * pool's allocated bytes. It is a diagnostic stream for the development
+ * performance HUD; nothing authoritative reads it, and no existing message
+ * changed shape.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;

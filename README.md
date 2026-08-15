@@ -96,6 +96,9 @@ pnpm test            # Vitest across all packages
 pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000
 pnpm sweep --seeds 0xE0A12026,1,2 --ticks 20000   # multi-seed calibration report (task E08)
 pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (Milestone 6)
+pnpm benchmark:engine --population 5000 --ticks 10000   # engine benchmark (task L01, docs/07 §9)
+pnpm soak:long                   # 1 000 000-tick release soak (task L06, docs/07 §6)
+pnpm e2e                         # browser end-to-end, every installed browser (tasks L08/L09)
 pnpm --filter @eon/web dev   # run the web app locally
 ```
 
@@ -182,9 +185,10 @@ controller that steers at what it senses. A handcrafted predator in
 `packages/engine/src/predationSimulation.test.ts` detects a prey animal, closes the distance, kills
 it, is credited the kill and then eats the carcass — all through the ordinary tick loop.
 
-**Three known calibration issues**, all deliberately left untuned because docs/08 §24 requires the
-defaults to be implemented faithfully first and docs/07 §14 requires 10–30 seeds before a tuning
-conclusion. All three are input for task **L07**, and `pnpm sweep` is the harness.
+**Three known calibration issues.** Milestone 12 has now run the twelve-seed study docs/07 §14 asks
+for, and the summary is below the original statement of each; the full tables are in ADR 0021 §5.
+They remain untuned: the lever is identified and demonstrated, and applying it is an
+`ENGINE_VERSION`-bumping change that gets its own gate (ADR 0021 §0).
 
 1. **The world's carrying capacity is far above the 8 192 organism safety cap.** Across six seeds at
    10 000 ticks all six survive, but **three are pinned at the cap** with 5.5–6.1 million refused
@@ -202,6 +206,26 @@ conclusion. All three are input for task **L07**, and `pnpm sweep` is the harnes
    deterministic skip plus a hashed diagnostics counter, never an eviction — but it suppresses the
    carrion supply predation depends on. ADR 0008 §5b.
 
+**Milestone 12's verdict on all three** (twelve seeds, 10 000 ticks each, ADR 0021 §5): 12/12
+survive with a median final population of 5 156, right on the docs/07 §7 target of 5 000 — but
+**4 of 12 reach the 8 192 cap** and population is still rising at tick 10 000 in 8 of 12, so the
+docs/01 §12 release gate is not met and 4/12 is a lower bound. Capped seeds carry **30% less trait
+diversity** than uncapped ones, confirming the cap-bias warning at n = 12. All twelve saturate the
+carcass cap. Only **2 of 12 ate any meat at all** — carnivory is marginal rather than impossible.
+
+The three are one finding: the world is too productive. `experiments/carrying-capacity.json`
+demonstrates the lever — halving base plant capacity takes cap refusals to **zero** on every
+previously-capped seed, cuts carcass overflow 2.5–4×, and produces 17 294 units of meat eaten on a
+seed that had eaten none. A factor of 0.5 overshoots (the reference seed lands at 1 118 organisms),
+so the remaining work is a calibration pass over roughly 0.6–0.8 and then the config change itself.
+
+**Performance, measured** (ADR 0021 §3): the tick's hotspot is **sensing, at 52%, in both Node and a
+browser** — three independent spatial range scans per organism per tick. Render buffer pooling and
+LOD measure clean (zero dropped snapshots, zero organisms on the detail layer at world zoom), so
+particle-layer culling was deliberately not added: docs/07's "if justified" is not met and CLAUDE.md
+says to optimize measured hotspots only.
+
+
 Two configurations, deliberately separated (ADR 0002 §4):
 
 - `SimulationConfig` (`@eon/engine`) — authoritative constants only. It is hashed into the
@@ -213,8 +237,8 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 3, snapshot schema 6, config
-schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
+entry (see `CLAUDE.md`). Current versions: engine 0.7.0, protocol 8, snapshot schema 8, config
+schema 7, command schema 1, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
 - `0002-milestone-1-hardening.md` — state encapsulation, config immutability, the
@@ -254,6 +278,11 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0021-milestone-12-performance-and-calibration.md` — the measurement milestone: the benchmark CLI
+  and why `--population` is a warm-up target, approximate memory accounting and what it refuses to
+  pretend about, the performance HUD, the 1M soak sharing one world with the 100k one, the
+  twelve-seed calibration study and the carrying-capacity experiment behind it, the browser suite
+  and the History panel defect it found on its first run.
 - `0013-milestone-8-species-history.md` — species and history: the phenotype-space trait vector,
   deterministic 2-means with the swap-unambiguity validator rule, extinction at the death tick,
   one-emission-site-per-fact event detection, the hashed/derived statistics split, protocol 4's

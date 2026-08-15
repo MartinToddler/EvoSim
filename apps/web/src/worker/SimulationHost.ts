@@ -19,11 +19,14 @@ import {
   SimulationEngine,
   TEMPERATURE_DISPLAY_MAX_CENTI_C,
   TEMPERATURE_DISPLAY_MIN_CENTI_C,
+  TICK_PHASE_NAMES,
   TRAIT_DIM_NAMES,
   TickPhase,
   WORLD_EVENT_TYPE_NAMES,
   capacityDisplayReference,
   collectTelemetryAggregates,
+  estimateEngineMemory,
+  memoryCategories,
   queryEntity,
   queryHistory,
   querySpecies,
@@ -65,6 +68,7 @@ import {
   type HistorySliceDto,
   type HostRuntimeConfig,
   type MainToWorkerMessage,
+  type MemoryTelemetryDto,
   type SimulationSpeed,
   type SpeciesDetailsDto,
   type SpeciesSummaryDto,
@@ -496,6 +500,7 @@ export class SimulationHost {
         speciesEndReasonLabels: [...SPECIES_END_REASON_NAMES],
         traitDimensionLabels: [...TRAIT_DIM_NAMES],
         interventionKindLabels: [...INTERVENTION_KIND_NAMES],
+        tickPhaseLabels: [...TICK_PHASE_NAMES],
         temperatureDisplayMinC: TEMPERATURE_DISPLAY_MIN_CENTI_C / 100,
         temperatureDisplayMaxC: TEMPERATURE_DISPLAY_MAX_CENTI_C / 100,
         capacityDisplayReference: capacityDisplayReference(engine.config),
@@ -990,6 +995,25 @@ export class SimulationHost {
       renderBuffersInFlight: this.#renderPool?.inFlight ?? 0,
       droppedRenderSnapshots: this.#renderPool?.droppedSnapshots ?? 0,
       phaseMillis: this.#profiler.meanMillis(),
+      memory: this.#memoryTelemetry(engine),
+    };
+  }
+
+  /**
+   * Worker-side memory occupancy for the development HUD (docs/07 §11).
+   *
+   * Measured at telemetry cadence, which is ~2 Hz — the walk over species
+   * records, retained events and the command log is bounded by the engine's own
+   * caps, and this is off the tick path entirely.
+   */
+  #memoryTelemetry(engine: SimulationEngine): MemoryTelemetryDto {
+    const estimate = estimateEngineMemory(engine);
+    return {
+      engineTotalBytes: estimate.bytes.total,
+      engineBytesByCategory: memoryCategories(estimate.bytes),
+      renderPoolBytes: this.#renderPool?.allocatedBytes ?? 0,
+      organismCapacity: estimate.context.organismCapacity,
+      bytesPerOrganismSlot: Math.round(estimate.context.bytesPerOrganismSlot),
     };
   }
 

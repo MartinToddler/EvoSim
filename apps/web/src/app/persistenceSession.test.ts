@@ -82,6 +82,16 @@ class FakeRenderer implements SessionRenderer {
   setSelected(): void {}
   setFollowed(): void {}
   setDebugOverlay(): void {}
+  stats() {
+    return {
+      drawnOrganisms: 0,
+      drawnCarcasses: 0,
+      detailedOrganisms: 0,
+      snapshotTick: 0,
+      zoom: 1,
+      fps: 60,
+    };
+  }
   setToolCapture(): void {}
   setWorldLayer(): void {}
   setLayerOpacity(): void {}
@@ -151,6 +161,7 @@ function worldFixture(): WorldSummaryDto {
       temperatureDisplayMinC: -20,
       temperatureDisplayMaxC: 40,
       capacityDisplayReference: 1000,
+      tickPhaseLabels: ["total", "environment", "sensing", "brain"],
       interventions: {
         brushSampleSpacingLU: 8,
         maxBrushSamplesPerCommand: 64,
@@ -190,6 +201,13 @@ function telemetryFixture(tick: number): TelemetryDto {
     meanEnergyFraction: 0.5,
     traitMeans: [],
     phaseMillis: [],
+    memory: {
+      engineTotalBytes: 0,
+      engineBytesByCategory: [],
+      renderPoolBytes: 0,
+      organismCapacity: 0,
+      bytesPerOrganismSlot: 0,
+    },
     activeSpeciesCount: 1,
     extinctSpeciesCount: 0,
     totalSpeciesCount: 1,

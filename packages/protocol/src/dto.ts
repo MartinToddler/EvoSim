@@ -92,6 +92,14 @@ export interface WorldDisplayDto {
   interventionKindLabels: readonly string[];
   /** Intervention tool bounds, copied from the authoritative config (Milestone 9). */
   interventions: InterventionDisplayDto;
+  /**
+   * Tick phase names, indexed like `TelemetryDto.phaseMillis` (Milestone 12).
+   *
+   * The names live in the engine, and the UI cannot import the engine — so they
+   * travel with every other label array, which is what makes `phaseMillis`
+   * readable by something that only speaks the protocol.
+   */
+  tickPhaseLabels: readonly string[];
 }
 
 /** Identity of the world currently loaded in the Worker. */
@@ -221,6 +229,41 @@ export interface TelemetryDto {
    * ran in the window.
    */
   phaseMillis: readonly number[];
+
+  /** Approximate resident bytes on the Worker side (docs/07 §11, task L03). */
+  memory: MemoryTelemetryDto;
+}
+
+/**
+ * Approximate memory occupancy, measured where the memory actually lives
+ * (docs/07 §11, task L03).
+ *
+ * This is a *diagnostic*, and it crosses the wire for one reason: docs/07 §11
+ * asks for a watch on organism state, brains, the environment, carcasses,
+ * species, render buffers and chart/event history, and those live in three
+ * different places. The Worker owns the engine and the render buffer pool, so
+ * it reports both; the main thread adds its own chart history at the point of
+ * display. Nothing authoritative reads any of it — a rule that decided
+ * anything from a byte count would make behaviour depend on the storage
+ * layout rather than on the simulation.
+ *
+ * Sent at telemetry cadence (~2 Hz), never per frame or per tick.
+ */
+export interface MemoryTelemetryDto {
+  /** Sum of every engine category below. */
+  engineTotalBytes: number;
+  /**
+   * Engine categories in `estimateEngineMemory` order, as `[name, bytes]`
+   * pairs so the HUD can render whatever the engine reports without the
+   * protocol having to name each category. Excludes the total.
+   */
+  engineBytesByCategory: readonly (readonly [string, number])[];
+  /** Bytes held by the render buffer pool, idle and in flight together. */
+  renderPoolBytes: number;
+  /** Organism slots the engine has allocated storage for. */
+  organismCapacity: number;
+  /** Bytes charged to one organism slot. */
+  bytesPerOrganismSlot: number;
 }
 
 /**

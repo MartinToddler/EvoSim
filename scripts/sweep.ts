@@ -40,11 +40,10 @@ import {
   validateConfig,
 } from "@eon/engine";
 import { summarizePopulation, traitStdDevFraction } from "./populationStats";
+import { makeFail, parseIntStrict } from "./cliArgs";
 
-function fail(message: string): never {
-  console.error(`sweep: ${message}`);
-  process.exit(1);
-}
+/* See `benchmark.ts`: the annotation is what makes `fail` narrow control flow. */
+const fail: (message: string) => never = makeFail("sweep");
 
 interface Variant {
   label: string;
@@ -56,21 +55,6 @@ interface Experiment {
   seeds: number[];
   ticks: number;
   variants: Variant[];
-}
-
-const DECIMAL_PATTERN = /^-?\d+$/;
-const HEX_PATTERN = /^0[xX][0-9a-fA-F]+$/;
-
-function parseIntStrict(raw: string, name: string): number {
-  const isHex = HEX_PATTERN.test(raw);
-  if (!isHex && !DECIMAL_PATTERN.test(raw)) {
-    fail(`invalid ${name}: ${JSON.stringify(raw)} is not an integer (use 123 or 0x7B)`);
-  }
-  const value = isHex ? Number.parseInt(raw.slice(2), 16) : Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(value)) {
-    fail(`invalid ${name}: ${raw} is outside the safe integer range`);
-  }
-  return value;
 }
 
 /**
@@ -115,7 +99,7 @@ function parseSetArgument(raw: string): [string, number] {
   if (eq <= 0) {
     fail(`--set expects path=value, got ${JSON.stringify(raw)}`);
   }
-  return [raw.slice(0, eq), parseIntStrict(raw.slice(eq + 1), `--set ${raw.slice(0, eq)}`)];
+  return [raw.slice(0, eq), parseIntStrict(raw.slice(eq + 1), `--set ${raw.slice(0, eq)}`, fail)];
 }
 
 function loadExperiment(path: string): Experiment {
@@ -187,7 +171,7 @@ function parseArgs(argv: string[]): CliOptions {
         const raw = argv[++i];
         if (raw === undefined) fail("--seeds requires a comma-separated list");
         seeds = raw.split(",").map((part) => {
-          const seed = parseIntStrict(part.trim(), "seed");
+          const seed = parseIntStrict(part.trim(), "seed", fail);
           if (seed < 0 || seed > 0xffffffff) {
             fail(`--seeds entries must be uint32 values, got ${seed}`);
           }
@@ -198,7 +182,7 @@ function parseArgs(argv: string[]): CliOptions {
       case "--ticks": {
         const raw = argv[++i];
         if (raw === undefined) fail("--ticks requires a value");
-        ticks = parseIntStrict(raw, "ticks");
+        ticks = parseIntStrict(raw, "ticks", fail);
         if (ticks < 0) fail("--ticks must be >= 0");
         break;
       }

@@ -81,6 +81,7 @@ const display: WorldDisplayDto = {
   temperatureDisplayMinC: -25,
   temperatureDisplayMaxC: 35,
   capacityDisplayReference: 4000,
+  tickPhaseLabels: ["total", "environment", "sensing", "brain"],
 };
 
 function summary(overrides: Partial<SpeciesSummaryDto>): SpeciesSummaryDto {

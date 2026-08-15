@@ -1094,7 +1094,9 @@ details.brain summary {
   left: 0.75rem;
   top: 6.5rem;
   width: min(26rem, calc(100vw - 1.5rem));
-  max-height: calc(100vh - 8rem);
+  /* Capped so the History panel below it (they open together) has room and the
+     two never overlap; the list scrolls inside instead of growing. */
+  max-height: min(calc(100vh - 8rem), 44vh);
   overflow: auto;
   background: var(--eon-panel);
   border: 1px solid var(--eon-panel-border);
@@ -1220,4 +1222,253 @@ details.brain summary {
 .world-actions button.danger {
   border-color: var(--eon-danger, #ff8080);
   color: var(--eon-danger, #ff8080);
+}
+
+/* --- Performance HUD (tasks L02-L04, docs/06 §18, docs/07 §§8, 11) ---------- */
+
+/*
+ * Anchored bottom-right so it never covers the top bar's controls or the
+ * inspector's left column, and capped in height so a long phase list scrolls
+ * inside the panel rather than growing over the world. It appears only with the
+ * development overlay.
+ */
+.perf-panel {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  width: min(20rem, calc(100vw - 1.5rem));
+  max-height: min(60vh, 34rem);
+  overflow: auto;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.78rem;
+  padding-bottom: max(0.7rem, env(safe-area-inset-bottom));
+}
+
+.perf-panel h2 {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--eon-text-dim);
+  margin: 0 0 0.5rem;
+}
+
+.perf-section + .perf-section {
+  margin-top: 0.7rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--eon-panel-border);
+}
+
+.perf-section h3 {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--eon-text-dim);
+  margin: 0 0 0.35rem;
+}
+
+.perf-headline {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Budget colour is never the only signal: the headline always spells out
+ * "within target" / "above target" / "over budget" beside it (docs/06 §17,
+ * "color not sole status signal").
+ */
+.perf-ok {
+  color: #55c96a;
+}
+
+.perf-warn {
+  color: var(--eon-warn);
+}
+
+.perf-over {
+  color: var(--eon-danger, #ff8080);
+}
+
+.perf-note {
+  font-size: 0.7rem;
+  color: var(--eon-text-dim);
+  font-weight: normal;
+}
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 0.6rem;
+  margin: 0;
+}
+
+.perf-grid dt {
+  font-size: 0.68rem;
+  color: var(--eon-text-dim);
+}
+
+.perf-grid dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-phases,
+.perf-memory {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.perf-phases li {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr 6rem;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.perf-memory li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+}
+
+.perf-phase-name {
+  color: var(--eon-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-phase-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-bar {
+  display: block;
+  height: 0.4rem;
+  border-radius: 3px;
+  background: var(--eon-meter-track);
+  overflow: hidden;
+}
+
+.perf-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--eon-accent);
+}
+
+/* On a narrow viewport the HUD becomes a bottom sheet like every other panel,
+   and yields the full width so the numbers stay readable. */
+@media (max-width: 720px) {
+  .perf-panel {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 48vh;
+    border-radius: 12px 12px 0 0;
+    border-left: none;
+    border-right: none;
+  }
+}
+
+/* --- History / rewind panel (Milestone 11, docs/06 §§8, 21) ----------------- */
+
+/*
+ * This had no positioning at all until Milestone 12's browser suite clicked it:
+ * as a plain in-flow section inside the positioned app root it rendered at the
+ * document origin, *underneath* the absolutely-positioned top bar, whose buttons
+ * intercepted every pointer event over the scrubber. The rewind control was
+ * therefore unreachable with a mouse on a desktop viewport. It opens together
+ * with the Worlds panel, so it takes the bottom half of the same left column.
+ */
+.history-panel {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  width: min(26rem, calc(100vw - 1.5rem));
+  max-height: min(38vh, 24rem);
+  overflow: auto;
+  background: var(--eon-panel);
+  border: 1px solid var(--eon-panel-border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  z-index: 20;
+}
+
+.history-panel h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.history-panel__scrubber input[type="range"] {
+  width: 100%;
+  /* 44px+ touch target (docs/06 §16): a 1-pixel-tall track is not draggable
+     with a finger. */
+  min-height: 2.75rem;
+}
+
+.history-panel__range,
+.history-panel__message,
+.history-panel__notice {
+  font-size: 0.75rem;
+  color: var(--eon-text-dim);
+}
+
+.history-panel__range {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-panel__message--failed {
+  font-size: 0.75rem;
+  color: var(--eon-danger, #ff8080);
+}
+
+.history-panel__badge,
+.history-panel__badge--live {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--eon-text-dim);
+}
+
+.history-panel__badge {
+  color: var(--eon-warn);
+}
+
+.history-panel__actions,
+.history-panel__branch {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* Narrow viewports: the two halves of the Worlds feature stack as sheets, the
+   history scrubber closest to the thumb. Together they leave the world visible. */
+@media (max-width: 760px) {
+  .worlds-panel {
+    max-height: 30vh;
+  }
+
+  .history-panel {
+    left: 0;
+    right: 0;
+    bottom: 30vh;
+    width: 100%;
+    max-height: 26vh;
+    border-radius: 12px 12px 0 0;
+    border-left: none;
+    border-right: none;
+  }
 }

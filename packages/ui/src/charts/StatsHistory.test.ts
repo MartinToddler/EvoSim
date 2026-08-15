@@ -44,6 +44,13 @@ function telemetryAt(tick: number, overrides: Partial<TelemetryDto> = {}): Telem
     renderBuffersInFlight: 1,
     droppedRenderSnapshots: 0,
     phaseMillis: [],
+    memory: {
+      engineTotalBytes: 0,
+      engineBytesByCategory: [],
+      renderPoolBytes: 0,
+      organismCapacity: 0,
+      bytesPerOrganismSlot: 0,
+    },
     ...overrides,
   };
   return telemetry;

@@ -28,6 +28,10 @@ import {
   totalPlantCapacity,
 } from "@eon/engine";
 import { summarizePopulation } from "./populationStats";
+import { makeFail, parseIntStrict } from "./cliArgs";
+
+/* See `benchmark.ts`: the annotation is what makes `fail` narrow control flow. */
+const fail: (message: string) => never = makeFail("headless");
 
 interface CliOptions {
   seed: number;
@@ -38,34 +42,6 @@ interface CliOptions {
 }
 
 const FIXTURE_SEED = 0xe0a12026;
-
-function fail(message: string): never {
-  console.error(`headless: ${message}`);
-  process.exit(1);
-}
-
-const DECIMAL_PATTERN = /^-?\d+$/;
-const HEX_PATTERN = /^0[xX][0-9a-fA-F]+$/;
-
-/**
- * Strictly parse a CLI integer.
- *
- * `Number.parseInt` is deliberately NOT trusted on its own: it accepts trailing
- * garbage ("100abc" -> 100) and silently truncates ("1.5" -> 1). This CLI feeds
- * golden fixtures, benchmarks and sweeps, so malformed input must fail loudly
- * rather than quietly run a different experiment than the operator asked for.
- */
-function parseIntStrict(raw: string, name: string): number {
-  const isHex = HEX_PATTERN.test(raw);
-  if (!isHex && !DECIMAL_PATTERN.test(raw)) {
-    fail(`invalid ${name}: ${JSON.stringify(raw)} is not an integer (use 123 or 0x7B)`);
-  }
-  const value = isHex ? Number.parseInt(raw.slice(2), 16) : Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(value)) {
-    fail(`invalid ${name}: ${raw} is outside the safe integer range`);
-  }
-  return value;
-}
 
 /**
  * Practical ceiling for a single headless run.
@@ -100,7 +76,7 @@ function parseArgs(argv: string[]): CliOptions {
       case "--seed": {
         const raw = argv[++i];
         if (raw === undefined) fail("--seed requires a value");
-        const seed = parseIntStrict(raw, "seed");
+        const seed = parseIntStrict(raw, "seed", fail);
         // The engine coerces seeds with >>> 0; rejecting out-of-range values
         // here keeps "the seed I typed" and "the seed that ran" identical.
         if (seed < 0 || seed > 0xffffffff) {
@@ -112,7 +88,7 @@ function parseArgs(argv: string[]): CliOptions {
       case "--ticks": {
         const raw = argv[++i];
         if (raw === undefined) fail("--ticks requires a value");
-        options.ticks = checkTickBound(parseIntStrict(raw, "ticks"), "--ticks");
+        options.ticks = checkTickBound(parseIntStrict(raw, "ticks", fail), "--ticks");
         break;
       }
       case "--checkpoints": {
@@ -120,7 +96,9 @@ function parseArgs(argv: string[]): CliOptions {
         if (raw === undefined) fail("--checkpoints requires a comma-separated list");
         options.checkpoints = raw
           .split(",")
-          .map((part) => checkTickBound(parseIntStrict(part.trim(), "checkpoint"), "checkpoint"));
+          .map((part) =>
+            checkTickBound(parseIntStrict(part.trim(), "checkpoint", fail), "checkpoint"),
+          );
         break;
       }
       case "--fixture-commands":

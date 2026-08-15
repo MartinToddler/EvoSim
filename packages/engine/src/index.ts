@@ -280,6 +280,16 @@ export {
   type TickProfiler,
 } from "./profiling/TickProfiler";
 
+// Approximate memory accounting (task L03, docs/07 §11). Diagnostic only.
+export {
+  estimateEngineMemory,
+  formatBytes,
+  memoryCategories,
+  type EngineMemoryEstimate,
+  type EngineMemoryReport,
+  type EngineMemoryContext,
+} from "./profiling/memoryReport";
+
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
 export {
   SpeciesStore,
@@ -384,6 +394,21 @@ export {
 } from "./commands/CommandLog";
 export { applyCommandsForTick } from "./commands/applyCommands";
 export { FIXTURE_COMMANDS } from "./fixtures/fixtureCommands";
+
+// The soak world and its invariant sweep (tasks E07/L06, docs/07 §§4, 6),
+// shared by the 100 000-tick Vitest soak and the 1 000 000-tick release soak.
+export {
+  NO_SOAK_VIOLATIONS,
+  SOAK_CONFIG,
+  SOAK_FOUNDERS,
+  SOAK_GRID_SIZE,
+  SOAK_SEED,
+  checkSoakInvariants,
+  deathsByCauseTotal,
+  measureBrainDrift,
+  soakIsHealthy,
+  type SoakViolations,
+} from "./fixtures/soakWorld";
 export { recomputeDerivedRegion } from "./world/recomputeRegion";
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG
 // must stay unreachable from outside this package (see internal.ts).

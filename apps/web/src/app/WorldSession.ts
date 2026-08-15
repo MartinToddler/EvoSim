@@ -1,4 +1,4 @@
-import { EonRenderer } from "@eon/renderer";
+import { EonRenderer, type RendererStats } from "@eon/renderer";
 import type { WorldLayerId } from "@eon/renderer/palette";
 import {
   viewRenderSnapshot,
@@ -140,6 +140,8 @@ export interface SessionRenderer {
   setLayerOpacity(opacity: number): void;
   focusEntity(entityId: number): boolean;
   resize(widthPx: number, heightPx: number): void;
+  /** Frame-rate and draw counts for the development performance HUD (task L04). */
+  stats(): RendererStats;
   destroy(): void;
 }
 
@@ -179,6 +181,11 @@ function freezeTelemetry(telemetry: TelemetryDto): TelemetryDto {
   Object.freeze(telemetry.deathsByCause);
   Object.freeze(telemetry.phaseMillis);
   Object.freeze(telemetry.traitMeans);
+  for (const entry of telemetry.memory.engineBytesByCategory) {
+    Object.freeze(entry);
+  }
+  Object.freeze(telemetry.memory.engineBytesByCategory);
+  Object.freeze(telemetry.memory);
   return Object.freeze(telemetry);
 }
 
@@ -454,6 +461,19 @@ export class WorldSession {
   setDebugOverlay(enabled: boolean): void {
     this.#debugOverlay = enabled;
     this.#renderer?.setDebugOverlay(enabled);
+  }
+
+  /**
+   * Current renderer frame-rate and draw counts, or null before a renderer
+   * exists (task L04, docs/07 §8).
+   *
+   * A pull, not a push: frame rate changes 60 times a second and React must
+   * never see that stream (CLAUDE.md React boundary). The performance HUD polls
+   * this at its own low cadence while it is open, and nothing polls it at all
+   * while it is closed.
+   */
+  rendererStats(): RendererStats | null {
+    return this.#renderer?.stats() ?? null;
   }
 
   /**

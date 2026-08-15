@@ -30,6 +30,7 @@ export {
   type SimulationSpeed,
   type SpeciesDetailsDto,
   type SpeciesSummaryDto,
+  type MemoryTelemetryDto,
   type TelemetryDto,
   type TraitMeansDto,
   type TreeSnapshotDto,

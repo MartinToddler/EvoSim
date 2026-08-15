@@ -19,6 +19,11 @@ export {
 } from "./charts/TimeSeriesChart";
 export { InspectorPanel, type InspectorPanelProps } from "./components/InspectorPanel";
 export { LayersPanel, type LayersPanelProps } from "./components/LayersPanel";
+export {
+  PerformancePanel,
+  type PerformancePanelProps,
+  type RenderPerformanceView,
+} from "./components/PerformancePanel";
 export { SpeciesPanel, speciesName, type SpeciesPanelProps } from "./components/SpeciesPanel";
 export { StatsPanel, type StatsPanelProps } from "./components/StatsPanel";
 export { TimelinePanel, type TimelinePanelProps } from "./components/TimelinePanel";

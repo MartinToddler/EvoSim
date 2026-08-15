@@ -15,6 +15,7 @@ import type { WorldLayerId } from "@eon/renderer/palette";
 import {
   InspectorPanel,
   LayersPanel,
+  PerformancePanel,
   SpeciesPanel,
   StatsHistory,
   StatsPanel,
@@ -24,6 +25,7 @@ import {
   TreePanel,
   HistoryPanel,
   WorldsPanel,
+  type RenderPerformanceView,
   type SavedWorldView,
   type ToolSelection,
 } from "@eon/ui";
@@ -144,6 +146,15 @@ function useNarrowViewport(setPanels: React.Dispatch<React.SetStateAction<Panels
   return narrow;
 }
 
+/**
+ * How often the performance HUD re-reads the renderer's counters.
+ *
+ * Matched to the Worker's telemetry cadence so every number on the panel comes
+ * from roughly the same moment, and slow enough that reading them is not itself
+ * a cost worth measuring.
+ */
+const PERFORMANCE_POLL_MS = 500;
+
 export function App(): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const sessionRef = useRef<WorldSession | null>(null);
@@ -168,6 +179,10 @@ export function App(): React.JSX.Element {
   const [following, setFollowing] = useState(false);
   const [error, setError] = useState<WorkerErrorDto | null>(null);
   const [debugOverlay, setDebugOverlay] = useState(false);
+  // Renderer counters are pulled, never pushed: frame rate changes 60 times a
+  // second and React must never see that stream (CLAUDE.md React boundary).
+  // Polled only while the performance HUD is open, at telemetry cadence.
+  const [renderStats, setRenderStats] = useState<RenderPerformanceView | null>(null);
   const [worldLayer, setWorldLayer] = useState<WorldLayerId>("terrain");
   const [layerOpacity, setLayerOpacity] = useState(0.85);
   // One state object for every panel, because the one-sheet rule is a joint
@@ -339,6 +354,36 @@ export function App(): React.JSX.Element {
       return next;
     });
   }, []);
+
+  // Poll the renderer's own counters while the HUD is open, and only then. The
+  // interval is torn down when the overlay closes, so a closed HUD costs
+  // nothing at all — which is the point of measuring at all.
+  useEffect(() => {
+    if (!debugOverlay) {
+      return;
+    }
+    // The first sample arrives with the first interval rather than
+    // synchronously: a setState in an effect body would re-render before the
+    // browser had painted, for a panel that updates twice a second anyway.
+    const handle = globalThis.setInterval(() => {
+      const stats = sessionRef.current?.rendererStats() ?? null;
+      setRenderStats(
+        stats === null
+          ? null
+          : {
+              fps: stats.fps,
+              drawnOrganisms: stats.drawnOrganisms,
+              drawnCarcasses: stats.drawnCarcasses,
+              detailedOrganisms: stats.detailedOrganisms,
+              zoom: stats.zoom,
+            },
+      );
+    }, PERFORMANCE_POLL_MS);
+    return () => {
+      globalThis.clearInterval(handle);
+      setRenderStats(null);
+    };
+  }, [debugOverlay]);
 
   const fitWorld = useCallback(() => {
     sessionRef.current?.fitWorld();
@@ -642,6 +687,15 @@ export function App(): React.JSX.Element {
           display={world?.display ?? null}
           onSelect={selectLayer}
           onOpacity={changeLayerOpacity}
+        />
+      ) : null}
+
+      {debugOverlay ? (
+        <PerformancePanel
+          telemetry={telemetry}
+          render={renderStats}
+          display={world?.display ?? null}
+          chartSamples={history.length}
         />
       ) : null}
 

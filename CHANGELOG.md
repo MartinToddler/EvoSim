@@ -6,6 +6,63 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Milestone 12: performance, memory, calibration and browser E2E
+
+The measurement milestone. `ENGINE_VERSION` stays **0.7.0** and every golden fixture and soak hash
+is reproduced unchanged — this milestone adds no simulation rule and moves no authoritative
+constant. `PROTOCOL_VERSION` 7 → 8 for two diagnostics: `TelemetryDto.memory` and
+`WorldDisplayDto.tickPhaseLabels`. Decisions in ADR 0021.
+
+### Added
+
+- **`pnpm benchmark:engine`** (task L01, docs/07 §9): version and config digest, runtime and
+  hardware metadata, ticks/s, mean/p50/p95/max tick, phase totals, peak population, final hash and
+  estimated memory. `--population` is a warm-up target, not a spawn count, and the header says so
+  when the target is not reached.
+- **`estimateEngineMemory`** (task L03, docs/07 §11): twelve engine categories, exact for
+  TypedArrays and modelled for the JS-object stores, plus `RenderBufferPool.allocatedBytes` and the
+  main thread's chart retention. A test asserts that measuring a world every tick cannot change its
+  state hash.
+- **A performance HUD** on the development overlay (tasks L02/L04): mean tick against the docs/07 §8
+  budgets, the phase profile sorted by cost, frame rate and draw counts, transport health and the
+  memory report. Renderer counters are polled at telemetry cadence while it is open and not at all
+  while it is closed.
+- **`pnpm soak:long`** (task L06, docs/07 §6): the 1 000 000-tick release soak, sharing one world
+  definition and one invariant sweep with the 100 000-tick Vitest soak via
+  `packages/engine/src/fixtures/soakWorld.ts`. Prints a state hash at every power-of-ten tick and
+  exits non-zero on any violation.
+- **A Playwright browser suite** (tasks L08/L09, docs/07 PART E): all ten scenarios, on Chromium,
+  Firefox, WebKit and a mobile viewport, against the production build.
+- **`experiments/carrying-capacity.json`** — the named tuning experiment behind the L07 conclusion.
+
+### Fixed
+
+- **The History panel had no CSS.** It rendered as an in-flow section at the document origin,
+  underneath the absolutely-positioned top bar, whose buttons intercepted every pointer event over
+  the rewind scrubber — so rewinding was impossible with a mouse on a desktop viewport. Found by the
+  new browser suite on its first run; no jsdom test could have seen it, because jsdom has no layout.
+  The scrubber track is now 44 px tall as well (docs/06 §16).
+
+### Changed
+
+- The soak's environment invariants (per-cell capacity, growth remainder range, vegetated water) now
+  run on **every** sweep instead of once at the end, so a cell that overfilled mid-run and drained
+  again can no longer pass.
+- `scripts/` share one strict CLI argument parser (`scripts/cliArgs.ts`) instead of three copies.
+
+### Measured
+
+- **The tick's hotspot is sensing, at 52%, in both Node and a browser** — three independent spatial
+  range scans per organism per tick. Render pooling and LOD measure clean, so particle-layer culling
+  was deliberately **not** added (docs/07's "if justified"; CLAUDE.md's "optimize measured hotspots
+  only").
+- **Twelve-seed calibration** (task L07): 12/12 survive, median final population 5 156 against a
+  5 000 target, but 4/12 reach the 8 192 cap and 8/12 are still rising at tick 10 000; capped seeds
+  carry 30% less trait diversity; 12/12 saturate the carcass cap; 2/12 ate any meat. Halving base
+  plant capacity zeroes cap refusals on every capped seed and produces the project's first emergent
+  carnivory, but overshoots population. The tuning pass itself is deliberately left as its own
+  gated change.
+
 ## [Unreleased] — 2026-08-15 — Recovered: the Milestone 2.5 world generator
 
 The seed-driven world generator was built in Milestone 2.5 and never merged. The Milestone 9 notes

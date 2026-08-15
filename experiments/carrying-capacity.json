@@ -1,0 +1,18 @@
+{
+  "name": "carrying-capacity",
+  "seeds": [3768655910, 3768663829, 3768671748, 3768679667],
+  "ticks": 10000,
+  "variants": [
+    { "label": "baseline", "set": {} },
+    {
+      "label": "capacity-half",
+      "set": {
+        "plants.baseCapacityByBiome.1": 18000,
+        "plants.baseCapacityByBiome.2": 26000,
+        "plants.baseCapacityByBiome.3": 3500,
+        "plants.baseCapacityByBiome.4": 5000,
+        "plants.baseCapacityByBiome.5": 2000
+      }
+    }
+  ]
+}

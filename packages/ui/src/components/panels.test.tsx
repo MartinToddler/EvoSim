@@ -90,6 +90,7 @@ const display: WorldDisplayDto = {
   temperatureDisplayMinC: -25,
   temperatureDisplayMaxC: 35,
   capacityDisplayReference: 4000,
+  tickPhaseLabels: ["total", "environment", "sensing", "brain"],
 };
 
 function worldFixture(): WorldSummaryDto {
@@ -149,6 +150,13 @@ function telemetryFixture(overrides: Partial<TelemetryDto> = {}): TelemetryDto {
     renderBuffersInFlight: 1,
     droppedRenderSnapshots: 0,
     phaseMillis: [],
+    memory: {
+      engineTotalBytes: 0,
+      engineBytesByCategory: [],
+      renderPoolBytes: 0,
+      organismCapacity: 0,
+      bytesPerOrganismSlot: 0,
+    },
     ...overrides,
   };
 }

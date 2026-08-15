@@ -7,6 +7,9 @@ dist/
 
 # Test output
 coverage/
+test-results/
+playwright-report/
+.playwright/
 
 # Tooling caches
 .eslintcache

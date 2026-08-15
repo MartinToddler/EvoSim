@@ -412,15 +412,59 @@ Both were found by comparing every remote branch against the trunk. The foundati
 checked too and is genuinely reconciled (ADR 0015 §0), so nothing else is outstanding.
 
 ## L Quality/performance
-- [ ] L01 benchmark CLI.
-- [ ] L02 phase timing.
-- [ ] L03 memory diagnostics.
-- [ ] L04 render performance pass.
-- [ ] L05 time-series downsampling.
-- [ ] L06 1M soak.
-- [ ] L07 10+ seed calibration.
-- [ ] L08 Playwright flows.
-- [ ] L09 Chromium/Firefox/WebKit validation.
+- [x] L01 benchmark CLI — `pnpm benchmark:engine`, every field docs/07 §9 asks for.
+- [x] L02 phase timing — engine hooks and host timing existed since M6; M12 adds the Node profiler
+      in the benchmark and the browser performance HUD that finally displays `phaseMillis`.
+- [x] L03 memory diagnostics — `estimateEngineMemory` (twelve engine categories),
+      `RenderBufferPool.allocatedBytes`, chart retention, all surfaced in the HUD.
+- [x] L04 render performance pass — measured in a real browser; see the finding below.
+- [x] L05 time-series downsampling — already delivered on both sides (engine `StatisticsStore`
+      tiers, UI `StatsHistory`); M12 adds the assertions that tie retention to the memory watch.
+- [x] L06 1M soak — `pnpm soak:long`, sharing one world and one invariant sweep with the
+      100 000-tick Vitest soak.
+- [x] L07 10+ seed calibration — twelve seeds at 10 000 ticks; findings below.
+- [x] L08 Playwright flows — all ten docs/07 PART E scenarios.
+- [x] L09 Chromium/Firefox/WebKit validation — matrix built by probing installed browsers.
+
+Milestone 12 gate: **PASS** (engine 0.7.0 and every golden hash unchanged, protocol 7 → 8,
+ADR 0021). This milestone measures; it changes no simulation rule and moves no authoritative
+constant. Protocol 8 adds `TelemetryDto.memory` and `WorldDisplayDto.tickPhaseLabels`, both
+diagnostics.
+
+**Performance.** The hotspot is **sensing, at 52% of the tick, in both Node and a browser** —
+5 000-organism benchmark on the delivery container: mean tick 61 ms (p50 62.5, p95 75.8), sensing
+52.1% / movement 21.8% / brain 20.0%; Chromium at MAX with 1 226 organisms: mean tick 5.6 ms,
+sensing 52% / movement 25% / brain 14% / render snapshot 10%. Three independent spatial range scans
+per organism per tick are the mechanism. Render pooling and LOD measured clean (0 dropped
+snapshots, 1 buffer in flight, 0 organisms on the detail layer at world zoom), so **particle-layer
+culling is deliberately not implemented** — docs/07's "if justified" was not met, and CLAUDE.md says
+to optimize measured hotspots only. The named next step is folding the crowding count into the
+creature scan, behind a "golden hashes must not move" gate.
+
+**Calibration (L07), twelve seeds at 10 000 ticks.** 12/12 survive; median final population 5 156
+against the docs/07 §7 target of 5 000. But **4 of 12 reach the 8 192 cap**, refusing 22 537 to
+1 640 091 births, and population is still rising at tick 10 000 in 8 of 12 — so 4/12 is a lower
+bound and docs/01 §12's release gate is not met. Capped seeds carry **30% less trait diversity**
+(mean sd 0.0357 vs 0.0509), confirming ADR 0006's one-seed cap-bias finding at n = 12. All 12
+saturate the carcass cap. Only 2 of 12 ate any meat at all.
+
+The three findings share one cause — the world is too productive — and the named experiment
+`experiments/carrying-capacity.json` demonstrates the lever: halving base plant capacity takes cap
+refusals to **zero on all three previously-capped seeds**, cuts carcass overflow 2.5–4×, and makes
+carnivory appear where it never had (17 294 meat units on a seed that ate none). 0.5 overshoots —
+the reference seed lands at 1 118 organisms — so the factor needs its own calibration pass over
+roughly 0.6–0.8 across all twelve seeds. **That pass is deliberately not folded into a measurement
+milestone**: it ends in an `ENGINE_VERSION` bump and regenerated goldens and deserves its own gate
+(ADR 0021 §0).
+
+One real defect found by the new browser suite and fixed: **the History panel had no CSS**, so it
+rendered under the top bar and the rewind scrubber was unclickable on a desktop viewport. No jsdom
+test could have caught it.
+
+- [ ] L10 fold the crowding count into the creature vision scan (the measured hotspot; hashes must
+      not move).
+- [ ] L11 carrying-capacity calibration pass over 0.6–0.8 on twelve seeds, then apply — engine
+      version bump plus regenerated goldens.
 
 ## M PWA/mobile
 - [ ] M01 installable/offline app shell.
