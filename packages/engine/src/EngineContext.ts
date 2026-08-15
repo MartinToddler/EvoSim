@@ -1,6 +1,11 @@
 import type { ReadonlySimulationConfig } from "./config/cloneConfig";
 import type { CarcassStore } from "./ecology/CarcassStore";
 import type { EngineScratch } from "./EngineScratch";
+import type { SpeciesStore } from "./evolution/SpeciesStore";
+import type { TraitRanges } from "./evolution/traitVector";
+import type { EventStore } from "./history/EventStore";
+import type { EventDetectors } from "./history/eventDetection";
+import type { StatisticsStore } from "./history/StatisticsStore";
 import type { GenomeStore } from "./organisms/GenomeStore";
 import type { OrganismStore } from "./organisms/OrganismStore";
 import type { PhenotypeStore } from "./organisms/phenotype";
@@ -31,6 +36,16 @@ export interface EngineContext {
   readonly phenotypes: PhenotypeStore;
   /** Authoritative carrion (docs/03 §23). */
   readonly carcasses: CarcassStore;
+  /** Authoritative species registry and split-candidate state (docs/05 §5). */
+  readonly species: SpeciesStore;
+  /** Authoritative timeline event log (docs/05 §12). */
+  readonly events: EventStore;
+  /** Authoritative event-detector state (docs/02 §9). */
+  readonly detectors: EventDetectors;
+  /** Derived statistics time series — serialized, never hashed (docs/05 §11). */
+  readonly stats: StatisticsStore;
+  /** Derived trait normalization table, a pure function of the config. */
+  readonly traitRanges: TraitRanges;
   /** Spatial index as of before movement; sensing reads it. */
   readonly spatialPre: SpatialGrid;
   /** Spatial index as of after movement; feeding and combat read it. */

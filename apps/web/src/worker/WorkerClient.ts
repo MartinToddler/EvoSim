@@ -1,13 +1,22 @@
 import {
   PROTOCOL_VERSION,
   decodeWorkerToMainMessage,
+  type CommandRequestDto,
+  type CommandResultPayload,
   type EntityDetailsPayload,
+  type HistoryEventsPayload,
   type HostRuntimeConfig,
   type MainToWorkerMessage,
   type RenderSnapshotPayload,
   type SimulationSpeed,
+  type SpeciesDetailsPayload,
+  type SnapshotDataPayload,
+  type RewindProgressPayload,
+  type HistoricalModeReadyPayload,
   type StateHashPayload,
   type TelemetryDto,
+  type TerrainSnapshotPayload,
+  type TreeSnapshotPayload,
   type VegetationSnapshotPayload,
   type WorkerErrorDto,
   type WorkerToMainMessage,
@@ -51,7 +60,17 @@ export interface WorkerClientHandlers {
   onWorldReady?: (payload: WorldReadyPayload) => void;
   onRenderSnapshot?: (payload: RenderSnapshotPayload) => void;
   onVegetationSnapshot?: (payload: VegetationSnapshotPayload) => void;
+  /** Terrain re-shipped after a player command edited the world (Milestone 9). */
+  onTerrainSnapshot?: (payload: TerrainSnapshotPayload) => void;
   onTelemetry?: (payload: TelemetryDto) => void;
+  /**
+   * Replay progress while a rewind is in flight (Milestone 11).
+   *
+   * A stream, not an answer: a reconstruction reports many times and resolves
+   * once, so progress must not consume the pending request. `requestId` lets a
+   * caller ignore reports from a rewind it has already superseded.
+   */
+  onRewindProgress?: (payload: RewindProgressPayload, requestId: number) => void;
   onError?: (payload: WorkerErrorDto) => void;
   /** Reported when a message could not be decoded — a protocol-level fault. */
   onProtocolViolation?: (reason: string) => void;
@@ -60,7 +79,15 @@ export interface WorkerClientHandlers {
 interface PendingRequest {
   resolve: (value: never) => void;
   reject: (error: Error) => void;
-  kind: "ENTITY_DETAILS" | "STATE_HASH";
+  kind:
+    | "ENTITY_DETAILS"
+    | "SPECIES_DETAILS"
+    | "TREE_SNAPSHOT"
+    | "HISTORY_EVENTS"
+    | "STATE_HASH"
+    | "HISTORICAL_MODE_READY"
+    | "SNAPSHOT_DATA"
+    | "COMMAND_RESULT";
 }
 
 export class WorkerClient {
@@ -159,12 +186,55 @@ export class WorkerClient {
 
   // --- Requests --------------------------------------------------------------
 
+  /**
+   * Queue one player command (Milestone 9). Resolves with the engine's
+   * verdict — acceptance carries the stamped (id, tick, sequence) identity,
+   * rejection a deterministic reason — and never rejects for a mere refusal:
+   * a promise rejection here means the Worker itself failed.
+   */
+  queueCommand(command: CommandRequestDto): Promise<CommandResultPayload> {
+    return this.#request<CommandResultPayload>("COMMAND_RESULT", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "QUEUE_COMMAND",
+      payload: { command },
+    }));
+  }
+
   queryEntity(entityId: number): Promise<EntityDetailsPayload> {
     return this.#request<EntityDetailsPayload>("ENTITY_DETAILS", (requestId) => ({
       protocolVersion: PROTOCOL_VERSION,
       requestId,
       type: "QUERY_ENTITY",
       payload: { entityId },
+    }));
+  }
+
+  querySpecies(speciesId: number): Promise<SpeciesDetailsPayload> {
+    return this.#request<SpeciesDetailsPayload>("SPECIES_DETAILS", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "QUERY_SPECIES",
+      payload: { speciesId },
+    }));
+  }
+
+  requestTree(): Promise<TreeSnapshotPayload> {
+    return this.#request<TreeSnapshotPayload>("TREE_SNAPSHOT", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "REQUEST_TREE",
+      payload: {},
+    }));
+  }
+
+  /** Fetch retained events newer than `sinceEventId` plus the world series. */
+  requestHistory(sinceEventId: number): Promise<HistoryEventsPayload> {
+    return this.#request<HistoryEventsPayload>("HISTORY_EVENTS", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "REQUEST_HISTORY_RANGE",
+      payload: { sinceEventId },
     }));
   }
 
@@ -182,6 +252,101 @@ export class WorkerClient {
       type: "QUERY_STATE_HASH",
       payload: { targetTick },
     }));
+  }
+
+  /**
+   * Ask the Worker to serialize its world into durable snapshot bytes
+   * (Milestone 10).
+   *
+   * The client does not store anything: it hands the bytes back to its caller,
+   * which owns the database. Saving cannot change the simulation, so this is
+   * safe to call while the world is running at any speed.
+   */
+  requestSave(reason: "manual" | "autosave" = "manual"): Promise<SnapshotDataPayload> {
+    return this.#request<SnapshotDataPayload>("SNAPSHOT_DATA", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "REQUEST_SAVE",
+      payload: { reason },
+    }));
+  }
+
+  /**
+   * Replace the Worker's world with one restored from durable bytes.
+   *
+   * The buffer is transferred, so the caller must not touch it afterwards —
+   * pass a copy if the save is still needed on this side. Success is announced
+   * by the ordinary WORLD_READY handler, exactly as a new world is; failure
+   * arrives as a non-fatal ERROR, and the world already running keeps running.
+   */
+  /**
+   * Reconstruct `targetTick` from `snapshot` and enter historical mode.
+   *
+   * The caller supplies the save because only the main thread can see the
+   * database. Resolves with the preview's identity once the replay lands;
+   * progress arrives through `onRewindProgress` in the meantime.
+   */
+  requestRewind(
+    snapshot: ArrayBuffer,
+    targetTick: number,
+    /**
+     * Called synchronously with the id this request was issued under, so the
+     * caller can match the progress stream to it. Without it the caller would
+     * have to guess, and progress from a superseded rewind would be
+     * indistinguishable from progress on the current one.
+     */
+    onIssued?: (requestId: number) => void,
+  ): Promise<HistoricalModeReadyPayload> {
+    return this.#request<HistoricalModeReadyPayload>("HISTORICAL_MODE_READY", (requestId) => {
+      onIssued?.(requestId);
+      return {
+        protocolVersion: PROTOCOL_VERSION,
+        requestId,
+        type: "REQUEST_REWIND",
+        payload: { snapshot, targetTick },
+      };
+    });
+  }
+
+  /** Leave historical mode. Fire-and-forget: the present never stopped existing. */
+  returnToPresent(): void {
+    this.#send({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "RETURN_TO_PRESENT",
+      payload: {},
+    });
+  }
+
+  /**
+   * Ask for the bytes that become a branch's origin, taken from the open
+   * preview at `branchTick`.
+   */
+  createBranch(branchTick: number): Promise<SnapshotDataPayload> {
+    return this.#request<SnapshotDataPayload>("SNAPSHOT_DATA", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "CREATE_BRANCH",
+      payload: { branchTick },
+    }));
+  }
+
+  loadWorld(options: {
+    snapshot: ArrayBuffer;
+    speed: SimulationSpeed;
+    hostRuntime?: Partial<HostRuntimeConfig>;
+  }): void {
+    this.#send(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        type: "LOAD_WORLD",
+        payload: {
+          snapshot: options.snapshot,
+          hostRuntime: options.hostRuntime ?? null,
+          speed: options.speed,
+        },
+      },
+      [options.snapshot],
+    );
   }
 
   /** Stop the Worker and fail every outstanding request. */
@@ -231,6 +396,14 @@ export class WorkerClient {
     }
     const message: WorkerToMainMessage = decoded.message;
 
+    // Progress is correlated but is not the answer: routing it through the
+    // pending map would either resolve the rewind early or reject it for
+    // arriving as the wrong type.
+    if (message.type === "REWIND_PROGRESS") {
+      this.#handlers.onRewindProgress?.(message.payload, message.requestId ?? 0);
+      return;
+    }
+
     if (message.requestId !== undefined) {
       const pending = this.#pending.get(message.requestId);
       if (pending === undefined) {
@@ -276,6 +449,9 @@ export class WorkerClient {
       case "VEGETATION_SNAPSHOT":
         this.#handlers.onVegetationSnapshot?.(message.payload);
         return;
+      case "TERRAIN_SNAPSHOT":
+        this.#handlers.onTerrainSnapshot?.(message.payload);
+        return;
       case "TELEMETRY":
         this.#handlers.onTelemetry?.(message.payload);
         return;
@@ -300,9 +476,25 @@ export class WorkerClient {
   }
 }
 
-/** Adapt a real `Worker` to {@link ClientPort}. */
-export function workerPort(worker: Worker): ClientPort {
-  let listener: ((event: MessageEvent) => void) | null = null;
+/**
+ * The slice of `Worker` the adapter needs. Structural, so a Node test can pass
+ * a fake and a browser passes the real thing; the session's `SessionWorker`
+ * is the same shape.
+ */
+export interface RawWorker {
+  // Two call shapes rather than one optional parameter, mirroring the real
+  // `Worker.postMessage` overloads — a single `transfer?:` signature is not
+  // satisfiable by the DOM type, whose transfer-list overload is required.
+  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer: ArrayBuffer[]): void;
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  removeEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  terminate(): void;
+}
+
+/** Adapt a real `Worker` (or a test fake) to {@link ClientPort}. */
+export function workerPort(worker: RawWorker): ClientPort {
+  let listener: ((event: { data: unknown }) => void) | null = null;
   return {
     post(message, transfer): void {
       if (transfer !== undefined && transfer.length > 0) {
@@ -315,7 +507,7 @@ export function workerPort(worker: Worker): ClientPort {
       if (listener !== null) {
         worker.removeEventListener("message", listener);
       }
-      listener = (event: MessageEvent): void => {
+      listener = (event: { data: unknown }): void => {
         next(event.data);
       };
       worker.addEventListener("message", listener);

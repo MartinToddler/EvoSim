@@ -1,6 +1,6 @@
 import { assert } from "@eon/shared";
 import { HASH_TAG, type StateHash } from "../math/hash";
-import { POS_SCALE, clamp } from "../math/fixed";
+import { POS_SCALE, Q, clamp } from "../math/fixed";
 import { Biome } from "./biomes";
 
 /**
@@ -42,8 +42,17 @@ export class EnvironmentStore {
    */
   readonly plantGrowthRemainderQ: Uint16Array;
 
-  /** Persistent world-wide temperature offset set by the player (docs/03 §25). */
-  globalTemperatureOffsetCentiC = 0;
+  /**
+   * Persistent world-wide temperature offset set by the player (docs/03 §25).
+   *
+   * A private field with a getter: the store instance is frozen (see the
+   * constructor), so a public mutable field could not work, and an assignable
+   * offset was exactly the foundation-gate ADR §1 defect — authoritative state
+   * writable from outside any tick. Writers go through
+   * {@link setGlobalTemperatureOffsetCentiC}, which only engine-internal code
+   * (the phase-0 command applier and snapshot restore) may call.
+   */
+  #globalTemperatureOffsetCentiC = 0;
 
   // --- Derived caches (recomputed, never serialized) -------------------------
   /** 1 where a terrestrial organism can walk, 0 in water. */
@@ -75,6 +84,37 @@ export class EnvironmentStore {
     this.plantGrowthRemainderQ = new Uint16Array(this.cellCount);
 
     this.passable = new Uint8Array(this.cellCount);
+
+    // Freeze the instance (foundation-gate ADR §1): an array reference cannot
+    // be swapped for a shorter or aliased buffer, and no field can be added or
+    // reassigned. Element writes through the TypedArrays remain possible —
+    // Object.freeze cannot stop those — so the write boundary is the type
+    // surface plus the lint rule banning deep engine imports, plus the fact
+    // that every out-of-process consumer only ever sees copies (snapshots and
+    // packed render buffers cross the worker boundary by structured clone or
+    // transfer, never as live references). The private #global offset lives in
+    // an internal slot that freeze does not touch.
+    Object.freeze(this);
+  }
+
+  /** Current world-wide player temperature offset in centi-°C. */
+  get globalTemperatureOffsetCentiC(): number {
+    return this.#globalTemperatureOffsetCentiC;
+  }
+
+  /**
+   * Set the world-wide player temperature offset.
+   *
+   * Engine-internal: the only legitimate callers are the phase-0 command
+   * applier (SET_GLOBAL_TEMPERATURE_OFFSET) and snapshot restore. Anything
+   * else writing this would change authoritative state outside a tick.
+   */
+  setGlobalTemperatureOffsetCentiC(offsetCentiC: number): void {
+    assert(
+      Number.isSafeInteger(offsetCentiC),
+      `global temperature offset must be an integer, got ${offsetCentiC}`,
+    );
+    this.#globalTemperatureOffsetCentiC = offsetCentiC;
   }
 
   /** Cell index from grid coordinates. Coordinates are clamped to the grid. */
@@ -103,14 +143,14 @@ export class EnvironmentStore {
     return (
       (this.baseTemperatureCentiC[index] as number) +
       (this.temperatureOffsetCentiC[index] as number) +
-      this.globalTemperatureOffsetCentiC
+      this.#globalTemperatureOffsetCentiC
     );
   }
 
   /** Effective moisture including the player offset, clamped to [0, Q]. */
   getMoistureQ(index: number): number {
     const value = (this.baseMoistureQ[index] as number) + (this.moistureOffsetQ[index] as number);
-    return clamp(value, 0, 4096);
+    return clamp(value, 0, Q);
   }
 
   getPlantBiomass(index: number): number {

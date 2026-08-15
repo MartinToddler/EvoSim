@@ -174,7 +174,7 @@ export function buildFeedingClaims(ctx: EngineContext): void {
  * than a carnivore does, and the reverse holds for meat.
  */
 export function resolveFeedingClaims(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, carcasses, scratch, config } = ctx;
+  const { organisms, phenotypes, environment, carcasses, species, scratch, config } = ctx;
   const plantEnergyPerUnit = config.plants.plantEnergyPerBiomass;
   const meatEnergyPerUnit = config.plants.meatEnergyPerUnit;
   const massScale = config.organism.massScalePerRadiusSquared;
@@ -219,10 +219,15 @@ export function resolveFeedingClaims(ctx: EngineContext): void {
       environment.plantBiomass[index] = (environment.plantBiomass[index] as number) - allocated;
       gained = qmul(allocated * plantEnergyPerUnit, phenotypes.plantEfficiencyQ[slot] as number);
       organisms.plantEnergyEaten[slot] = (organisms.plantEnergyEaten[slot] as number) + gained;
+      // Species-level intake mirrors the per-organism counter exactly; the
+      // carnivore-lineage detector reads OBSERVED intake, never the diet gene
+      // (docs/05 §§5, 15).
+      species.recordConsumption(organisms.speciesId[slot] as number, gained, 0);
     } else {
       carcasses.consume(index, allocated);
       gained = qmul(allocated * meatEnergyPerUnit, phenotypes.meatEfficiencyQ[slot] as number);
       organisms.meatEnergyEaten[slot] = (organisms.meatEnergyEaten[slot] as number) + gained;
+      species.recordConsumption(organisms.speciesId[slot] as number, 0, gained);
     }
 
     const radius = currentRadiusPos(

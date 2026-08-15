@@ -6,6 +6,416 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Milestone 11: rewind, historical mode and branching
+
+Versions: `PROTOCOL_VERSION` 6 → **7**. `ENGINE_VERSION` stays 0.7.0 and every golden hash is
+unmoved — this milestone reads history, it does not change what history is. Decisions in
+`docs/adr/0018-milestone-11-rewind-and-branching.md`.
+
+### Added
+
+- **Historical reconstruction** (K07): newest save at or before the target, plus the command log
+  that save carries, plus deterministic forward simulation. Resumable in slices so the Worker keeps
+  answering messages and can report progress; the stepping stays inside the engine, so yielding
+  cannot change where a replay lands.
+- **Historical preview** (K08): a second engine, never the live one. Read-only projections follow
+  the previewed world, so the inspector, tree and event feed describe the tick on screen. The host
+  refuses interventions and saves while previewing and ignores time controls.
+- **Return to present** (K09): a mode switch, not a reload — the live engine was never stepped.
+- **Branching** (K10): a branch is a new world with its own manifest, saves and future, inheriting
+  its parent's history only through the branch point. `prepareBranchSnapshot` drops the pending
+  command suffix (the parent's queued future) and keeps the identity counters so a branch's own
+  commands cannot collide with inherited ones.
+- **Branch equivalence suite** (K11) on the populated world: control to 10 000 ticks equals a
+  branch taken at 5 000 with no new commands, and equals a branch taken at 6 234 that had to be
+  reconstructed from the 5 000 save plus 1 234 replayed ticks. A branch-only command diverges the
+  branch and leaves the original's hash untouched.
+- **Protocol 7**: `REQUEST_REWIND`, `RETURN_TO_PRESENT`, `CREATE_BRANCH`, `REWIND_PROGRESS`,
+  `HISTORICAL_MODE_READY`, and the `"branch"` save reason. Rewinding is split across the port
+  because neither side can do it alone: the main thread owns the saves and picks one, the Worker
+  owns the engine and replays it.
+- **Manifest provenance**: `parentWorldId` and `branchTick`, plus `worldOriginTick` and
+  `selectSaveForTick` (newest save at or before a tick, ties on the lowest id so two clients cannot
+  replay from different bytes). Branch origins are retained like manual saves, never pruned.
+- **History panel**: a scrubber over the world's own range with stored saves marked, replay
+  progress, an unmistakable read-only preview state, return to present, and branch from this tick.
+  Dragging selects; releasing rewinds (docs/06 §13).
+
+### Changed
+
+- `REQUEST_SAVE` refuses the `"branch"` reason: a branch origin needs the parent's queued future
+  stripped, which only `CREATE_BRANCH` can do.
+- A superseded rewind is cancelled in the Worker and discarded on the main thread, on both the
+  answer and the progress channel, so a scrubber burst cannot install an older state.
+
+### Known limitation
+
+- A world can only be rewound to a tick that has a save at or before it. Reconstruction replays
+  _from_ a save, so an unsaved world has no earliest point and a tick older than the oldest save is
+  unreachable. Both are refused explicitly and explained in the panel (ADR 0018 §7).
+
+## [Unreleased] — 2026-08-15 — Milestone 10 review: persistence
+
+Independent release-critical review of K01–K06 (ADR 0017). **No P0 defects; four P2s fixed**, none
+able to move a hash: engine 0.7.0, snapshot schema 8, config schema 7 and protocol 6 all unchanged,
+every golden hash reproduced. The completeness audit was re-derived from the store classes rather
+than from the shape table meant to describe them; every future-affecting field is captured,
+restored and — where two worlds could differ — hashed.
+
+### Fixed
+
+- **The manifest kept advertising a save nobody could read.** After a load fell back past a damaged
+  save, the manifest still pointed at the damaged one with status `ok`, so the world list showed a
+  tick and state hash that Load would never deliver. The manifest is now repointed at the save that
+  actually opened, with `corrupt`/`legacy` status and the failing tick in the detail; nothing is
+  deleted, and a later healthy save clears it.
+- **`load` took the highest tick instead of the manifest's save.** Those orders agree only while
+  every save advances the clock — which rewind and branch will end. The manifest's pointer is tried
+  first, the rest follow as fallbacks.
+- **A manual save could be silently swallowed by an autosave**, discarding the click _and_ the
+  rename it carried. Autosaves still skip when busy; a manual save now waits its turn.
+- **A connection closed by another tab's schema upgrade stayed closed forever**, failing every
+  later call with `InvalidStateError`. The dead handle is dropped so the next call reopens, and a
+  `VersionError` is reported as a version problem ("another tab upgraded this; reload") rather than
+  as missing IndexedDB.
+
+### Added
+
+- **Independent acceptance run** (`reviewAcceptance.test.ts`): control to tick 10 000 against
+  save-at-2 500 → destroy → fresh load → continue, on a world carrying six interventions, with the
+  meteor aimed at the save tick so the snapshot straddles the command cursor.
+- **An off-lattice save at tick 2 503.** Every save tick in the shipped suite is a multiple of
+  `environmentInterval` (20), so phase 1 ran on the first tick after every load and would have
+  hidden a mis-restored environment cache. 2 503 is a multiple of none of the four scheduled
+  intervals.
+- **Statistics round-trip through the engine**, which the canonical hash deliberately cannot police.
+- Storage probes for manifest truthfulness, manifest-ordered loads, and the closed-connection path;
+  header guards pinning that an over-long or non-ASCII engine version fails at save time rather
+  than being truncated into a false identity.
+
+## [Unreleased] — 2026-08-14 — Milestone 10: persistence
+
+Engine **0.7.0 unchanged**, snapshot schema **8 unchanged**, config schema **7 unchanged**,
+protocol **5 → 6**, new `SNAPSHOT_CONTAINER_VERSION` **1**, new IndexedDB schema
+`eon-worlds-v1` version **1** (ADR 0016). **No golden hash changed**, and none could: this
+milestone adds no phase, no constant and no authoritative rule. It writes state down and reads it
+back.
+
+### Added
+
+- **Durable snapshot container** (`@eon/persistence`, task K03): 96-byte header — magic
+  `EONSNAP\0`, container version, state-schema version, engine version, config hash, canonical
+  state hash, seed, 64-bit tick, payload length, payload CRC-32, reserved bits, header CRC-32 —
+  followed by a canonically encoded payload. Header and payload are checksummed separately so
+  listing worlds validates a header without reading megabytes behind it.
+- **Self-describing value codec** (`valueCodec.ts`): numbers, strings, booleans, arrays, plain
+  objects and all eight typed-array kinds, little-endian on every host, object keys sorted so the
+  same state always encodes to the same bytes. Capture and encode cannot drift apart — the whole
+  `EngineCoreSnapshot` graph is written as it stands.
+- **Durable shape contract and completeness audit** (`snapshotShape.ts`): the declared shape of a
+  stored snapshot, validated before the engine sees a payload (rebuilding plain objects, dropping
+  undeclared fields, rejecting forbidden keys). `snapshotShape.test.ts` walks a real snapshot and
+  fails if the engine serializes anything the shape does not describe, so a future milestone
+  cannot add authoritative state and silently leave it out of saves.
+- **IndexedDB adapter** (`db.ts`, `WorldStore.ts`, tasks K01/K02/K04/K05): database
+  `eon-worlds-v1` v1 with `worlds` manifests, `snapshots` metadata (indexed by world and by
+  `[world, tick]`) and `snapshotBlobs` payloads; ordered migration list; manual save, autosave,
+  list, load, delete; newest-N autosave retention that never prunes a manual save.
+- **Save/load over the wire** (protocol 6): `REQUEST_SAVE` → `SNAPSHOT_DATA` (bytes transferred,
+  not copied) and `LOAD_WORLD`. The Worker serializes and restores; the main thread stores and
+  reports. `SimulationHost` now shares one `#adoptEngine` path between a new world and a loaded
+  one.
+- **Saved-worlds UI** (`@eon/ui` `WorldsPanel`, docs/06 §§8, 19–20): name, Save, Refresh, the
+  stored-world list with tick, state hash, size, save count and time, Load, two-step Delete, and a
+  status line that keeps showing failures instead of flashing them. The top bar's save-state slot
+  (docs/06 §9) is no longer a placeholder.
+- **Autosave** (task K05): every `autosaveCheckInterval` ticks — measured in authoritative ticks,
+  so it means the same at 1× and at MAX — and armed only once a world has been saved or loaded,
+  so opening the page never fills storage with worlds nobody asked to keep.
+- **Acceptance test** (task K06, docs/06 §25): a control run to tick 10 000 against the same world
+  saved at 2 500, encoded to bytes, dropped, decoded into a fresh engine and continued to 10 000 —
+  identical canonical hashes; plus a second continuation from a carcass-rich save at tick 4 000, a
+  reference-world (`DEFAULT_CONFIG`) continuation, a command-history continuation that straddles
+  the command cursor, and eight consecutive save/load cycles.
+- **Robustness tests**: wrong magic, unknown container version, reserved bits set, foreign engine
+  version, unsupported state schema, truncation, damaged header, damaged payload, payload/header
+  disagreement, tampered config, wrong state hash; an aborted write leaving the previous save and
+  manifest intact; an autosave racing a manual save; a damaged newest save falling back to an
+  older one with the world marked and nothing deleted; and IndexedDB missing entirely.
+
+### Changed
+
+- `TopBarProps` gains `worldsOpen`, `saveState` and `onToggleWorlds`; `WorldSessionCallbacks`
+  gains `onPersistenceStatus` and `onWorldsChanged`.
+- `LOAD_WORLD` failures are non-fatal by construction: the container is validated, the engine
+  rebuilt and its state hash checked against the one recorded at save time _before_ the running
+  world is replaced, so a corrupt or foreign save leaves the current world running.
+- The Pages build records `VITE_APP_VERSION` (the deployed commit) in every world manifest it
+  writes.
+
+## [Unreleased] — 2026-08-14 — Milestone 9: player interventions and the command log
+
+Engine **0.6.0 → 0.7.0**, snapshot schema **7 → 8**, config schema **6 → 7**, protocol **4 → 5**,
+new `COMMAND_SCHEMA_VERSION` **1** (ADR 0015). **Every golden hash regenerated** (10k fixture,
+both 100k soaks): the canonical stream gained the founder region and the player command log,
+event payloads became signed 32-bit words, the config gained the `interventions` section — and
+the mandatory fixture now RUNS a fixed nine-command log (one command of every kind), so its
+trajectory legitimately diverges once the first command applies at tick 50. A no-command world
+reproduces 0.6.0's organism trajectory exactly.
+
+### Added
+
+- **Authoritative command log** (`commands/CommandLog.ts`, task J01): immutable, engine-stamped
+  `(id, tick, sequence)` identity, `(tick, sequence)` application order, deterministic rejection
+  (past tick / malformed / out of bounds), hashed and serialized with its application cursor so a
+  restored world neither re-applies nor skips a command. Duplicate ids/sequences and disordered
+  logs are unrepresentable live and typed errors on restore.
+- **Phase 0: applyCommands** (`commands/applyCommands.ts`, docs/03 §7): the only write path from
+  player input to authoritative state; pure integer math, no PRNG draws, row-major affected-cell
+  order, at most one application per cell per command (max falloff over stroke samples).
+- **All documented interventions** (docs/03 §25): global temperature offset, warm/cool brush,
+  wet/dry brush, fertility brush, terrain raise/lower with real flooding/draining, biomass
+  add/remove with the docs/03 §27 bounded transient overfill, and the meteor (lethal-core radial
+  damage, biomass loss, crater, scorched soil, Major event). Deterministic
+  biome/capacity/passability recompute for every affected region (`world/recomputeRegion.ts`),
+  generation-parity pinned by test. `DeathCause.Meteor` is now reachable.
+- **Canonical stroke resampling** (`@eon/protocol` `resampleStroke`, task J02, docs/02 §16):
+  fixed world-distance resampling plus whole-LU quantization; the same stroke at 2, 17 and 500
+  pointer events is the same command. Pointer event rate never reaches history.
+- **Protocol 5**: `QUEUE_COMMAND` → `COMMAND_RESULT` (structural decode; value judgements are the
+  engine's, answered as deterministic rejections), `TERRAIN_SNAPSHOT` terrain re-ship after an
+  applied command, `TelemetryDto.pendingCommandCount`, intervention labels and config-derived
+  tool bounds in `WorldDisplayDto`.
+- **Tools UI** (docs/06 §10): grouped palette (Climate/Ecology/Terrain/Catastrophe) with
+  radius/strength bounded by the shipped config limits, persistence notes and pressure-language
+  descriptions; renderer tool-capture mode (brush ring, paint-not-pan, click-select suppressed,
+  pinch cancels a stroke); timeline names the tool of every `PlayerIntervention` event;
+  "queued — applies when the simulation runs" honesty while paused.
+- **Fixture command log** (`fixtures/fixtureCommands.ts`): nine commands, every kind, inside the
+  golden regression net; `pnpm headless --fixture-commands` regenerates.
+- 96 new tests across engine, protocol, host and UI: same-stream hash equality, ordering,
+  multi-command ticks, duplicate handling, past-tick rejection, per-kind appliers, brush
+  frequency invariance, snapshot cursor round-trips, exactly-once application, full-session
+  replay equality, worker-vs-headless determinism with commands.
+
+### Changed
+
+- **Event payloads are signed 32-bit integers** by contract (asserted at append, validated at
+  restore, hashed as words): a cooling brush legitimately logs a negative strength.
+- `TickPhase` gains `Commands` (15 phases; profiling captures phase 0).
+
+### Fixed (foundation-gate port — closes the ADR 0006 §0 → ADR 0013 §10 pre-J05 mandate)
+
+- **Exact config shape**: unknown fields, missing fields and host values in the authoritative
+  config fail construction instead of silently entering the world hash.
+- **World geometry bounds**: `envGridSize ≤ 4096`; `sizeLU` bounded so Int32 positions cannot
+  wrap.
+- **Snapshot value validation**: field ranges, biome enum, growth carry, founder-region
+  consistency, biomass within the overfill ceiling — corrupt payloads fail loudly at load.
+- **Restore without regeneration**: `fromSnapshot` adopts the snapshot's environment, founder
+  region and stored `generationAttempt` through a forge-proof module-private channel; a save
+  whose config can no longer generate any world still loads.
+- **Founder region hashed** (four words after the environment arrays).
+- **Sealed environment store**: frozen instance; the global temperature offset is writable only
+  through the engine-internal setter.
+- `deepCloneJson` defines `__proto__` as an own property; dead per-octave noise salts removed;
+  `getMoistureQ` magic `4096` → `Q`.
+
+## [Unreleased] — 2026-08-14 — Milestone 8 review: species and history
+
+Independent review of Milestone 8 (ADR 0014) against the twenty-one-point audit brief. All
+versions unchanged — engine 0.6.0, snapshot schema 7, protocol 4 — and **every golden hash
+unchanged**: the one engine fix is unreachable from any config that could previously construct.
+
+### Fixed
+
+- **A validator-accepted degenerate gene range crashed engine construction** (P1,
+  `evolution/traitVector.ts`). `validateConfig` accepts `min == max` ranges (the "fix this
+  trait" experiment); `buildTraitRanges` then threw on the zero span. A zero span is now a
+  constant dimension contributing exactly zero to every clustering distance — the correct
+  semantics for a trait that cannot vary. Same class as ADR 0007 §2 / ADR 0009 §1. Regression
+  test added; unreachable from `DEFAULT_CONFIG`, so no hash moved.
+- **A zero-pass split candidate would be silently dropped by save/load** (P2,
+  `evolution/SpeciesStore.ts`). The snapshot encodes "has candidate" as `passes > 0`; today
+  candidates always start at one pass, but the invariant was enforced nowhere. `capture()` now
+  asserts it, so a future violation fails loudly at save time instead of silently delaying a
+  split after restore.
+
+## [Unreleased] — 2026-08-14 — Milestone 8: species and history
+
+Engine **0.5.0 → 0.6.0**, snapshot schema **6 → 7**, protocol **3 → 4**, config schema unchanged
+(6). **Every golden hash regenerated** (10k fixture, both 100k soaks): the canonical stream gained
+the species registry, the world event log and the event-detector state, and a new world now
+carries a founder species record plus a `WorldCreated` event. The organism trajectory itself is
+**unchanged from 0.5.0** — the fixture reproduces 0.5.0's population/generation/diet numbers
+exactly (ADR 0013).
+
+### Added
+
+- **Species registry** (`evolution/SpeciesStore.ts`, docs/05 §5): permanent records with parent,
+  origin/end ticks, end reason (active/split/extinct), live population maintained at every birth,
+  death and split, lifetime birth/death/kill/intake accumulators, current + origin centroids and
+  split-candidate state. IDs are dense, monotonic and never reused; parents always precede
+  children, so the Tree of Life is acyclic by construction.
+- **Deterministic speciation** (`evolution/speciation.ts`, phase 16, docs/05 §§6–7): a versioned
+  fifteen-dimension normalized phenotype trait vector (hue and brain weights excluded), seeded
+  deterministic 2-means with entity-ID tie-breaks, minimum daughter population, an RMS split
+  threshold compared without division, and a five-interval stability requirement with A/B-swap
+  centroid continuity and a reset-on-failure policy. One outlier cannot split; a temporary
+  separation cannot accumulate. New validator rule: the split threshold must exceed twice the
+  continuity threshold, or swap-matching could be ambiguous.
+- **Extinction** (docs/05 §8): marked by death finalization at the exact tick a species empties,
+  with the event emitted there; split parents are not extinct; records are permanent.
+- **World event log** (`history/EventStore.ts`, docs/05 §§12–13): numeric-only records bounded by
+  `limits.maxTimelineEventsInMemoryBeforeChunk` (oldest dropped and counted — detection never
+  reads the log, so dropping cannot change future events). Event types: WorldCreated,
+  SpeciesSplit, SpeciesExtinct, PopulationBoom/Crash, FirstPredation, CarnivoreLineageDetected,
+  MassExtinction, PopulationCapReached (closing task E06), PlayerIntervention reserved for M9.
+- **Deterministic event detection** (`history/eventDetection.ts`, phase 17, docs/05 §§14–17):
+  first predation latched at the kill with attacker/victim/species/position; carnivore lineages
+  from observed intake with a persistence streak and an adequate-observation floor; boom/crash
+  against a rolling baseline with relative + absolute thresholds and a shared debounce; mass
+  extinction over a non-overlapping window; population-cap events once per pressure episode.
+  Detector state is authoritative: hashed, serialized, restored exactly.
+- **Statistics store** (`history/StatisticsStore.ts`, docs/05 §§10–11): world samples every
+  `statisticsInterval` ticks in three 10:1 tiers of 240 buckets (mean/sum/last per metric kind)
+  and a frozen-on-end 120-sample ring per species — bounded memory forever. Serialized for
+  reload continuity, deliberately NOT hashed (derived history; retention is presentation
+  capacity), with byte-exact round-trip and continuous-vs-restored equality tests instead.
+- **Protocol 4**: `QUERY_SPECIES` → `SPECIES_DETAILS`, `REQUEST_TREE` → `TREE_SNAPSHOT`,
+  `REQUEST_HISTORY_RANGE` → `HISTORY_EVENTS`; telemetry gains species counts and
+  `latestEventId` (the pull signal — no event push stream); display labels for event types,
+  severities, end reasons and trait dimensions.
+- **UI** (docs/06 §§12–14): species panel with living/ended list and a full inspector
+  (status, lineage links, observed diet fractions, pending-split progress, population and trait
+  charts, centroid bars with origin notches); Tree of Life as plain SVG with a year axis, zoom,
+  native-scroll pan, status distinction beyond colour and click-to-inspect; history timeline
+  with a severity-coded marker strip, filtering and expandable events. The top-bar species
+  placeholder is now the live count; the organism inspector links to its species. Panel state
+  generalized to five panels under the one-sheet mobile rule.
+- **Tests**: 61 new across engine fixtures (single cloud never splits; two clouds split at
+  exactly the fifth analysis; an outlier never splits; temporary separation resets; minimum
+  daughter population; parent/daughter records; extinction; stable IDs across save/load;
+  deterministic ties incl. a hand-built exact tie; pending-split snapshot/restore to an
+  identical future; no duplicate events per detector; acyclic tree; species invariants swept
+  through the 100k soak), statistics tiering/serialization, host round-trips and UI panels.
+  Browser-verified end to end (15/15 headless-Chromium checks, zero console/page errors).
+
+### Changed
+
+- `finalizeDeaths` and `resolveCombatSimultaneously` take the current tick (extinction marking
+  and first-predation capture need it).
+- `TickPhase` gains `Statistics` (13); the species-analysis slot reserved since M6 is live.
+- Golden hashes: fixture checkpoints, populated soak (`0c68f8d29c69c142`, ends with one species —
+  evolved diversity is a continuous cloud, and the detector correctly refuses to split clouds)
+  and lifeless environment soak (`3ec8fef25a0a3e86`).
+
+## [Unreleased] — 2026-08-14 — Milestone 7 review: observation UI
+
+Independent review of the observation UI (ADR 0012). All versions unchanged — engine 0.5.0,
+protocol 3, field layout 2 — and **every golden hash untouched**: nothing under
+`packages/engine`, `packages/protocol` or the Worker host moved. Verified statically, through the
+fake-driven session tests, and in a scripted headless-Chromium pass (25/25 checks, zero console
+and page errors).
+
+### Fixed
+
+- **A third finger during a pinch fired a click selection** (`EonRenderer`). Only exactly-two
+  active pointers were treated as a pinch, so a steadying third finger became a zero-travel drag
+  whose lift read as a tap — selecting or deselecting whatever it rested on, tearing down follow
+  and retargeting the inspector mid-gesture. Two or more pointers are now always a pinch, and no
+  finger of a pinch can end as a click.
+- **A pinch that ended with one finger still down left that finger dead.** It now continues the
+  gesture as a pan, with its click suppressed — the standard map-app behaviour.
+- **Charts blocked the mobile stats sheet from scrolling.** `.chart-plot` demanded
+  `touch-action: none`, and the chart grid is most of the sheet's touch surface; a vertical swipe
+  starting on a chart went nowhere. Now `pan-y`: swipes scroll the sheet, horizontal movement
+  still drives the hover crosshair.
+- **Two bottom sheets could stack on a viewport that became narrow** with both panels open (a
+  tablet rotating, a window shrinking) — the docs/06 §16 one-sheet rule was enforced only at
+  toggle time. Panel visibility is one state object now, and the narrow-viewport media-query
+  subscription settles the conflict on entry (stats stays, layers closes).
+- **Speed tooltips hardcoded the default tick rates** instead of deriving them from
+  `hostRuntime.targetTicksPerSecond1x`; a re-paced host would have advertised rates it never
+  targets. Now computed from `SPEED_MULTIPLIER` and the runtime's real 1× rate (test-pinned
+  against a non-default rate).
+- **Layer radios carried `aria-pressed` alongside `role="radio"`** — the toggle-button attribute
+  contradicts the radio role for assistive tech. They expose `aria-checked` alone, with the
+  stylesheet highlighting either shape.
+- **The seed-copy confirmation timer leaked**: a rapid second copy let the first timer cut the
+  new confirmation short, and unmounting mid-confirmation left the timer firing afterwards. It is
+  cleared on re-click and on unmount.
+
+## [Unreleased] — 2026-08-14 — Milestone 7: Observation UI
+
+Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `PROTOCOL_VERSION` 2 → **3**,
+`FIELD_SNAPSHOT_LAYOUT_VERSION` 1 → **2**, everything else unchanged. **No golden hash changed**,
+and the suite reproduced every one — this milestone is observation: projections got richer, no
+authoritative rule moved. Decisions in `docs/adr/0011-milestone-7-observation-ui.md`.
+
+### Added
+
+- **World layers (H05).** The terrain snapshot grew four static byte-per-cell display planes —
+  temperature, moisture, fertility, plant capacity (field layout 2) — written once with
+  WORLD_READY by the extended `writeTerrainFields`. The renderer composes nine selectable views
+  (terrain, biomes, elevation, temperature, moisture, fertility, plant biomass, plant capacity,
+  organism density) from planes already on the main thread, blended over the composed terrain with
+  an opacity control. Switching layers sends the Worker nothing — a session test counts posted
+  messages to keep it that way. Density is derived from render snapshots only while its layer is
+  active. Legend ranges (temperature span, capacity reference) are engine constants published via
+  `WorldSummaryDto.display`, so the legend cannot disagree with the writer.
+- **Global statistics and charts (H04).** `collectTelemetryAggregates` now also returns alive-
+  population trait means (diet, top speed, adult radius, vision, attack, armor, metabolic pace,
+  thermal optimum), total organism mass and mean energy fraction — still one ascending pass at
+  telemetry cadence. `@eon/ui`'s `StatsHistory` accumulates the 2 Hz stream into the docs/05 §11
+  multiresolution tiers: recent history raw, older history geometrically coarser, hard
+  `bucketsPerTier × maxTiers` retention bound, whole run always on the chart. Hand-rolled SVG
+  time-series charts (population, plant biomass, births/deaths per 1 000 ticks, mean diet with a
+  zero reference, mean speed/vision/radius, mean energy) plot against the authoritative tick —
+  never the sample index — with hover crosshairs and numeric summaries (docs/06 §17).
+- **Full organism inspector (H03).** Overview, vitals with meters, inherited traits, running
+  costs (basal upkeep with thermal multiplier, movement cost of the last tick's realized effort,
+  thermal stress), a collapsible brain view — the last tick's 20 sensor inputs and 5 intents read
+  from retained scratch, labelled from the world's own label list, never re-inferred and never a
+  400-weight dump — plus lifetime tallies and surroundings. `EntityDetailsDto` gained the cost,
+  brain and reproduction-cooldown fields.
+- **Follow mode (H03).** The camera tracks the selected organism each frame; following ends
+  explicitly — cleared, replaced by a new selection, taken back by a drag, or the target died —
+  and the UI is told which. Death on a paused world (no further snapshots) is caught through the
+  inspector's query path.
+- **Top bar (H01/H02).** World name/seed with copy-to-clipboard, simulated year, tick, population
+  with a cap-pressure warning driven by `capRejectedBirths` (docs/01 §11), a species placeholder
+  that says why it is one (Milestone 8), plant biomass, generation, an honest run-state chip
+  (Paused/Running/Max/Behind), measured TPS, play/pause and the 1×–100×/MAX speed buttons, and
+  panel toggles.
+- **Responsive layout (H06).** Desktop: layers panel left, inspector right, charts bottom, canvas
+  dominant. Under 760 px the panels become bottom sheets and only one major sheet opens at a time
+  (docs/06 §16); the stat strip scrolls sideways; Esc deselects; touch targets stay ≥44 px.
+- **`@eon/ui` is real (docs/10 §1).** The M6 components moved out of `apps/web`; charts live in
+  `packages/ui/src/charts/`. The package depends on `@eon/protocol` and the new pixi-free
+  `@eon/renderer/palette` subpath only. React-hooks linting now covers it.
+
+### Changed
+
+- **DTOs are frozen at the session boundary.** `WorldSession` deep-freezes world summary,
+  telemetry and entity details before React sees them, turning "the UI cannot mutate authoritative
+  state" into a thrown `TypeError`. Tests assert frozenness end to end.
+- **`WorldSession` grew test seams.** The Worker and renderer are injectable, so selection,
+  stale-query dropping, follow lifecycles, layer isolation and teardown are unit-tested in Node
+  with fakes; `workerPort` accepts a structural worker.
+- **`WorldSummaryDto` carries a `display` block** (brain input/intent labels, death-cause labels,
+  temperature display range, capacity reference) copied from engine constants by the host — the
+  one module that imports both packages.
+- **Telemetry additions:** `organismMass`, `meanEnergyFraction`, `traitMeans`.
+
+### Known limitations
+
+- Species count and save state are placeholders until Milestones 8 and 10.
+- Charts begin at page load; there is no engine-side statistics history yet, so a reloaded world
+  starts its charts fresh (`REQUEST_HISTORY_RANGE` remains future work, docs/02 §13).
+- The Playwright suite is still task L08; this milestone was verified with a scripted manual
+  browser pass (Chromium) recorded in the session notes.
+
 ## [Unreleased] — 2026-08-13 — Milestone 6: Worker host, render transport and PixiJS renderer
 
 Versions: `ENGINE_VERSION` **unchanged at 0.5.0**, `CONFIG_SCHEMA_VERSION` unchanged (6),

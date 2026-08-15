@@ -1,6 +1,14 @@
-import { assert, deepFreezeJson } from "@eon/shared";
+import { EonAssertionError, assert, deepFreezeJson } from "@eon/shared";
 import { runBrainsAndBuildIntents } from "./brain/intents";
 import { senseAll } from "./brain/sensors";
+import { applyCommandsForTick } from "./commands/applyCommands";
+import { CommandLog } from "./commands/CommandLog";
+import {
+  CommandRejectReason,
+  validateCommandInput,
+  type CommandInput,
+  type CommandQueueResult,
+} from "./commands/SimulationCommand";
 import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 import { hashConfig } from "./config/hashConfig";
 import { validateConfig } from "./config/validateConfig";
@@ -12,8 +20,15 @@ import { buildFeedingClaims, resolveFeedingClaims } from "./ecology/feedingClaim
 import { resolveReproduction } from "./ecology/reproduction";
 import type { EngineContext } from "./EngineContext";
 import { EngineScratch } from "./EngineScratch";
+import { SpeciesEndReason, SpeciesStore } from "./evolution/SpeciesStore";
+import { analyzeSpecies } from "./evolution/speciation";
+import { TRAIT_DIMENSIONS, buildTraitRanges, writeTraitVector } from "./evolution/traitVector";
+import { EventSeverity, EventStore, WorldEventType } from "./history/EventStore";
+import { EventDetectors, collectStatisticsAndDetectEvents } from "./history/eventDetection";
+import { StatisticsStore } from "./history/StatisticsStore";
 import { computeStateHash } from "./hashState";
 import { attachEngineInternals } from "./internal";
+import { POS_SCALE } from "./math/fixed";
 import { GenomeStore } from "./organisms/GenomeStore";
 import { OrganismStore } from "./organisms/OrganismStore";
 import { finalizeDeaths } from "./organisms/death";
@@ -41,6 +56,31 @@ export interface SimulationEngineOptions {
    * never affect this engine.
    */
   config: ReadonlySimulationConfig;
+}
+
+/**
+ * Module-private restore channel (foundation-gate ADR §2).
+ *
+ * `fromSnapshot` used to run the full constructor — noise fields, dilation
+ * passes, flood fill, ~90 ms — and then overwrite every array from the
+ * snapshot. Wasteful, and wrong twice over: the stored founder region was
+ * discarded in favour of the regenerated one, and a snapshot could fail to
+ * load because `createWorld` threw on a payload that needed no generation at
+ * all. Since Milestone 9 the environment can be EDITED, so "regenerate and
+ * overwrite" stops being merely wasteful — the snapshot is the only truth.
+ *
+ * The channel is a second constructor argument guarded by a module-level
+ * Symbol that is never exported, so it cannot be forged even by JavaScript
+ * callers who ignore the types: the single validated restore door of
+ * `fromSnapshot` stays single.
+ */
+const RESTORE_WORLD = Symbol("eon-engine-restore-world");
+
+interface RestoredWorld {
+  channel: typeof RESTORE_WORLD;
+  environment: EnvironmentStore;
+  founderRegion: FounderRegion;
+  generationAttempt: number;
 }
 
 /**
@@ -88,6 +128,16 @@ export class SimulationEngine {
   readonly genomes: GenomeStore;
   /** Authoritative carrion left by deaths (docs/03 §23). */
   readonly carcasses: CarcassStore;
+  /** Authoritative species registry and split-candidate state (docs/05 §5). */
+  readonly species: SpeciesStore;
+  /** Authoritative timeline event log (docs/05 §12). */
+  readonly events: EventStore;
+  /** Authoritative event-detector state (docs/02 §9). */
+  readonly detectors: EventDetectors;
+  /** Derived statistics time series — serialized, never hashed (docs/05 §11). */
+  readonly stats: StatisticsStore;
+  /** Authoritative player command log with its application cursor (task J01). */
+  readonly commands: CommandLog;
   /** Deterministically chosen region where founders spawn (docs/03 §26). */
   readonly founderRegion: FounderRegion;
   /** Which generation attempt produced this world; 0 means the seed worked directly. */
@@ -108,7 +158,7 @@ export class SimulationEngine {
    */
   #profiler: TickProfiler | null = null;
 
-  constructor(options: SimulationEngineOptions) {
+  constructor(options: SimulationEngineOptions, restored?: RestoredWorld) {
     assert(
       Number.isInteger(options.seed),
       `seed must be an integer, got ${options.seed}. Non-integer seeds would silently collapse ` +
@@ -127,19 +177,37 @@ export class SimulationEngine {
 
     this.#rng = Xoshiro128.fromSeed(this.seed);
 
-    // World generation is a pure function of (seed, config) and deliberately
-    // does not touch the PRNG, so the generator's state after construction is
-    // exactly its seeded state whatever the world turned out to look like.
-    const world = createWorld(this.config, this.seed);
-    this.environment = world.environment;
-    this.founderRegion = world.founderRegion;
-    this.generationAttempt = world.attempt;
+    if (restored !== undefined) {
+      if (restored.channel !== RESTORE_WORLD) {
+        throw new EonAssertionError(
+          "the restore channel cannot be forged; use SimulationEngine.fromSnapshot",
+        );
+      }
+      // The snapshot's world is the truth: no generation, no founders, no
+      // WorldCreated event — fromSnapshot restores all of that state wholesale.
+      this.environment = restored.environment;
+      this.founderRegion = { ...restored.founderRegion };
+      this.generationAttempt = restored.generationAttempt;
+    } else {
+      // World generation is a pure function of (seed, config) and deliberately
+      // does not touch the PRNG, so the generator's state after construction is
+      // exactly its seeded state whatever the world turned out to look like.
+      const world = createWorld(this.config, this.seed);
+      this.environment = world.environment;
+      this.founderRegion = world.founderRegion;
+      this.generationAttempt = world.attempt;
+    }
 
     const capacity = this.config.limits.maxOrganisms;
     const carcassCapacity = this.config.limits.maxCarcasses;
     this.organisms = new OrganismStore(capacity);
     this.genomes = new GenomeStore(capacity);
     this.carcasses = new CarcassStore(carcassCapacity);
+    this.species = new SpeciesStore();
+    this.events = new EventStore(this.config.limits.maxTimelineEventsInMemoryBeforeChunk);
+    this.detectors = new EventDetectors();
+    this.stats = new StatisticsStore();
+    this.commands = new CommandLog();
 
     this.#context = {
       seed: this.seed,
@@ -149,6 +217,11 @@ export class SimulationEngine {
       genomes: this.genomes,
       phenotypes: new PhenotypeStore(capacity),
       carcasses: this.carcasses,
+      species: this.species,
+      events: this.events,
+      detectors: this.detectors,
+      stats: this.stats,
+      traitRanges: buildTraitRanges(this.config),
       spatialPre: new SpatialGrid(
         this.config.world.sizeLU,
         this.config.world.spatialCellSizeLU,
@@ -168,9 +241,56 @@ export class SimulationEngine {
       rng: this.#rng,
     };
 
-    // The founder population is part of the world's initial state, so it exists
-    // before tick 0 is hashed. It is the only PRNG consumer in Milestone 3.
-    spawnFounderPopulation(this.#context, this.founderRegion);
+    // The founder bootstrap belongs to a NEW world only. A restored engine
+    // receives its species registry, population and event log from the
+    // snapshot; bootstrapping first would consume entity IDs and append an
+    // event that the restore would then have to unwind.
+    if (restored === undefined) {
+      // All founders begin Species 1 (docs/05 §5). The record must exist before
+      // the first founder spawns, because spawning is what counts membership;
+      // its founder is the entity ID the first spawn will be issued.
+      this.species.createSpecies({
+        parentSpeciesId: 0,
+        originTick: 0,
+        centroid: new Int32Array(TRAIT_DIMENSIONS),
+        founderEntityId: this.organisms.nextEntityId,
+        generationAtOrigin: 0,
+      });
+
+      // The founder population is part of the world's initial state, so it
+      // exists before tick 0 is hashed. It is the only PRNG consumer in
+      // Milestone 3.
+      const spawned = spawnFounderPopulation(this.#context, this.founderRegion);
+
+      // Founders share one genome, so the species' representative phenotype is
+      // any founder's trait vector — frozen as the origin centroid too.
+      if (spawned > 0) {
+        const founderSpecies = this.species.get(1);
+        writeTraitVector(
+          founderSpecies.centroidTraits,
+          0,
+          this.#context.phenotypes,
+          0,
+          this.#context.traitRanges,
+        );
+        founderSpecies.originCentroid.set(founderSpecies.centroidTraits);
+      }
+
+      // The world's first timeline entry (docs/05 §13). Emitted before tick 0
+      // is hashed, exactly like the founders it describes.
+      const cellSizePos = this.environment.cellSizeLU * POS_SCALE;
+      this.events.append({
+        tick: 0,
+        type: WorldEventType.WorldCreated,
+        severity: EventSeverity.Info,
+        speciesIds: [1],
+        regionXPos: this.founderRegion.centerGridX * cellSizePos + (cellSizePos >> 1),
+        regionYPos: this.founderRegion.centerGridY * cellSizePos + (cellSizePos >> 1),
+        regionRadiusPos: this.config.world.founderSpawnRadiusLU * POS_SCALE,
+        payloadVersion: 1,
+        payload: [spawned],
+      });
+    }
 
     attachEngineInternals(this, { rng: this.#rng, context: this.#context });
 
@@ -208,20 +328,33 @@ export class SimulationEngine {
         `snapshot tick must be a non-negative safe integer, got ${snapshot.tick}`,
       );
     }
+    if (!Number.isSafeInteger(snapshot.generationAttempt) || snapshot.generationAttempt < 0) {
+      throw new SnapshotCompatibilityError(
+        `snapshot generationAttempt must be a non-negative integer, got ${snapshot.generationAttempt}`,
+      );
+    }
 
-    const engine = new SimulationEngine({ seed: snapshot.seed, config: snapshot.config });
+    // Validate the config FIRST, then restore the environment against the
+    // validated copy, then construct through the restore channel. No world is
+    // generated: the snapshot's environment, founder region and generation
+    // attempt are adopted as-is (foundation-gate ADR §2) — the world may have
+    // been edited by commands since generation, and only the snapshot knows.
+    const config = cloneConfig(snapshot.config);
+    validateConfig(config);
+    const environment = restoreEnvironment(snapshot.environment, config);
+
+    const engine = new SimulationEngine(
+      { seed: snapshot.seed, config },
+      {
+        channel: RESTORE_WORLD,
+        environment,
+        founderRegion: snapshot.environment.founderRegion,
+        generationAttempt: snapshot.generationAttempt,
+      },
+    );
     engine.#tick = snapshot.tick;
     engine.#rng.restoreState(snapshot.rngState);
 
-    // The saved environment wins over the freshly generated one: the world may
-    // have grown, been grazed or been edited since generation, and only the
-    // snapshot knows that history.
-    const restored = restoreEnvironment(snapshot.environment, engine.config);
-    engine.#adoptEnvironment(restored);
-
-    // Likewise the saved population replaces the founders the constructor just
-    // spawned. Restoring drops them and rewinds the ID counter, so a resumed
-    // world does not silently carry 256 extra consumed entity IDs.
     restoreOrganisms(
       snapshot.organisms,
       engine.organisms,
@@ -230,6 +363,22 @@ export class SimulationEngine {
       engine.config,
     );
     restoreCarcasses(snapshot.carcasses, engine.carcasses);
+
+    // The species registry, event log, detector state and statistics series
+    // are restored wholesale. The species restore happens after the organisms
+    // so it can be cross-checked against the population it claims to describe.
+    engine.species.restore(snapshot.species);
+    engine.events.restore(snapshot.history.events);
+    engine.detectors.restore(snapshot.history.detectors);
+    engine.stats.restore(snapshot.history.stats);
+    engine.#validateSpeciesAssignments();
+
+    // The command log restores with its cursor, which is what guarantees a
+    // command is applied exactly once across save/load (task J01): applied
+    // history stays behind the cursor, pending commands stay ahead of it.
+    engine.commands.restore(snapshot.commands);
+    engine.#validateCommandCursor();
+
     engine.#context.spatialPre.clear();
     engine.#context.spatialPost.clear();
     engine.#context.carcassIndex.clear();
@@ -237,26 +386,107 @@ export class SimulationEngine {
     return engine;
   }
 
-  /** Copy restored arrays into this engine's store (the store reference is frozen). */
-  #adoptEnvironment(source: EnvironmentStore): void {
-    const target = this.environment;
-    target.elevationQ.set(source.elevationQ);
-    target.baseMoistureQ.set(source.baseMoistureQ);
-    target.moistureOffsetQ.set(source.moistureOffsetQ);
-    target.fertilityQ.set(source.fertilityQ);
-    target.baseTemperatureCentiC.set(source.baseTemperatureCentiC);
-    target.temperatureOffsetCentiC.set(source.temperatureOffsetCentiC);
-    target.biome.set(source.biome);
-    target.plantBiomass.set(source.plantBiomass);
-    target.plantCapacity.set(source.plantCapacity);
-    target.plantGrowthRemainderQ.set(source.plantGrowthRemainderQ);
-    target.globalTemperatureOffsetCentiC = source.globalTemperatureOffsetCentiC;
-    target.passable.set(source.passable);
+  /**
+   * Cross-check the restored command cursor against the restored tick: every
+   * applied command must target a tick the world has already executed, and
+   * every pending command must target the current tick or later. A log that
+   * fails this would either re-apply history or silently skip a command.
+   */
+  #validateCommandCursor(): void {
+    const log = this.commands;
+    for (let i = 0; i < log.length; i += 1) {
+      const command = log.at(i);
+      if (i < log.cursor && command.tick >= this.#tick) {
+        throw new SnapshotCompatibilityError(
+          `command ${command.id} is recorded as applied but targets tick ${command.tick}, ` +
+            `not before the snapshot tick ${this.#tick}`,
+        );
+      }
+      if (i >= log.cursor && command.tick < this.#tick) {
+        throw new SnapshotCompatibilityError(
+          `command ${command.id} is pending but targets tick ${command.tick}, already behind ` +
+            `the snapshot tick ${this.#tick}; it could never apply`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Cross-check the restored registry against the restored population: every
+   * live organism must belong to an ACTIVE species record, and every record's
+   * population must equal its live member count (docs/07 §4). A snapshot that
+   * fails this was corrupted or hand-edited, and trusting it would let the
+   * population-matches-members invariant break silently at the next split.
+   */
+  #validateSpeciesAssignments(): void {
+    const organisms = this.organisms;
+    const counts = new Map<number, number>();
+    for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+      if (organisms.alive[slot] !== 1) {
+        continue;
+      }
+      const speciesId = organisms.speciesId[slot] as number;
+      if (speciesId < 1 || speciesId > this.species.count) {
+        throw new SnapshotCompatibilityError(
+          `live organism in slot ${slot} belongs to unknown species ${speciesId}`,
+        );
+      }
+      counts.set(speciesId, (counts.get(speciesId) ?? 0) + 1);
+    }
+    for (const record of this.species.records) {
+      const live = counts.get(record.id) ?? 0;
+      if (record.population !== live) {
+        throw new SnapshotCompatibilityError(
+          `species ${record.id} claims population ${record.population} but ${live} live members exist`,
+        );
+      }
+      if (record.endReason !== SpeciesEndReason.Active && live !== 0) {
+        throw new SnapshotCompatibilityError(
+          `ended species ${record.id} still has ${live} live members`,
+        );
+      }
+    }
   }
 
   /** Current authoritative tick (number of completed steps). */
   get tick(): number {
     return this.#tick;
+  }
+
+  /**
+   * Queue a player command (docs/02 §§7, 15; task J01).
+   *
+   * This is the ONLY way player input reaches authoritative state, and it does
+   * not touch that state itself: an accepted command is stamped with identity
+   * `(id, tick, sequence)`, recorded in the immutable log, and applied at the
+   * start of its target tick by phase 0. Rejection is a deterministic ANSWER,
+   * not an exception — a malformed or out-of-bounds request from a buggy UI
+   * must never stop a running world.
+   *
+   * Without an explicit `targetTick` the command is stamped for the next tick
+   * the engine will execute (the live path). An explicit tick in the past is
+   * rejected (docs/10 §16); an explicit current or future tick is accepted,
+   * which is what fixtures and scripted experiments use.
+   */
+  queueCommand(input: CommandInput): CommandQueueResult {
+    const problem = validateCommandInput(input, this.config);
+    if (problem !== null) {
+      return { accepted: false, reason: problem.reason, detail: problem.detail };
+    }
+    let tick = this.#tick;
+    if (input.targetTick !== undefined) {
+      if (input.targetTick < this.#tick) {
+        return {
+          accepted: false,
+          reason: CommandRejectReason.PastTick,
+          detail:
+            `target tick ${input.targetTick} is in the past; the next executable tick ` +
+            `is ${this.#tick}`,
+        };
+      }
+      tick = input.targetTick;
+    }
+    return { accepted: true, command: this.commands.accept(input, tick) };
   }
 
   /**
@@ -292,7 +522,9 @@ export class SimulationEngine {
     const ctx = this.#context;
     // Profiling is opt-in and reports boundaries only; see setProfiler.
     const profiler = this.#profiler;
-    //   0 applyCommands                     — Milestone 9
+    profiler?.begin(TickPhase.Commands);
+    applyCommandsForTick(ctx, this.commands, this.#tick); // 0 applyCommands
+    profiler?.end(TickPhase.Commands);
     if (this.#tick % this.config.time.environmentInterval === 0) {
       profiler?.begin(TickPhase.Environment);
       updateEnvironment(this.environment, this.config); // 1 scheduledEnvironmentUpdate
@@ -326,11 +558,11 @@ export class SimulationEngine {
     profiler?.end(TickPhase.Feeding);
     profiler?.begin(TickPhase.Combat);
     buildCombatClaims(ctx); //                         10 buildCombatClaims
-    resolveCombatSimultaneously(ctx); //               11 resolveCombatSimultaneously
+    resolveCombatSimultaneously(ctx, this.#tick); //   11 resolveCombatSimultaneously
     profiler?.end(TickPhase.Combat);
     profiler?.begin(TickPhase.MetabolismDeath);
     applyMetabolismGrowthThermalAging(ctx); //         12 applyMetabolismGrowthThermalAging
-    finalizeDeaths(ctx); //                            13 finalizeDeathsAndCreateCarcasses
+    finalizeDeaths(ctx, this.#tick); //                13 finalizeDeathsAndCreateCarcasses
     profiler?.end(TickPhase.MetabolismDeath);
     profiler?.begin(TickPhase.Reproduction);
     resolveReproduction(ctx); //                       14 resolveReproduction
@@ -340,8 +572,16 @@ export class SimulationEngine {
       decayCarcasses(ctx); //                          15 scheduledCarcassDecay
       profiler?.end(TickPhase.Carcasses);
     }
-    //   16 scheduledSpeciesAnalysis         — Milestone 8
-    //   17 scheduledStatisticsAndEvents     — Milestone 8
+    if (this.#tick % this.config.time.speciesAnalysisInterval === 0) {
+      profiler?.begin(TickPhase.SpeciesAnalysis);
+      analyzeSpecies(ctx, this.#tick); //              16 scheduledSpeciesAnalysis
+      profiler?.end(TickPhase.SpeciesAnalysis);
+    }
+    if (this.#tick % this.config.time.statisticsInterval === 0) {
+      profiler?.begin(TickPhase.Statistics);
+      collectStatisticsAndDetectEvents(ctx, this.#tick); // 17 scheduledStatisticsAndEventDetection
+      profiler?.end(TickPhase.Statistics);
+    }
     //   18 optionalRenderSnapshot           — produced on the host's cadence by
     //      render/renderSnapshot.ts, deliberately NOT inside the tick: a
     //      picture is taken between ticks, never as part of one.
@@ -379,11 +619,19 @@ export class SimulationEngine {
       engineVersion: ENGINE_VERSION,
       seed: this.seed,
       tick: this.#tick,
+      generationAttempt: this.generationAttempt,
       rngState: this.getRngState(),
       config: cloneConfig(this.config),
       environment: captureEnvironment(this.environment, this.founderRegion),
       organisms: captureOrganisms(this.organisms, this.genomes),
       carcasses: captureCarcasses(this.carcasses),
+      species: this.species.capture(),
+      history: {
+        events: this.events.capture(),
+        detectors: this.detectors.capture(),
+        stats: this.stats.capture(),
+      },
+      commands: this.commands.capture(),
     };
   }
 }

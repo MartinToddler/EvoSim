@@ -191,3 +191,278 @@ export const CARCASS_TINT = 0x8a5a4a;
 
 /** Selection ring colour: high contrast against terrain and every organism hue. */
 export const SELECTION_TINT = 0xffffff;
+
+// --- World layers (Milestone 7, task H05, docs/06 §7) -------------------------
+//
+// Each data layer maps one byte-per-cell field through a colour ramp and blends
+// the result over the composed terrain, so coastlines and relief stay readable
+// underneath the data. Ramps follow the charting rules the UI uses elsewhere:
+// magnitude is a single hue running dark → bright (dark recedes into this
+// app's dark canvas, bright means "more"), and temperature — the one field with
+// a real polarity — is a cool/warm diverging ramp through a neutral midpoint.
+// One layer is active at a time, with an opacity control (docs/06 §7).
+
+/** Identifiers for the selectable world views. */
+export type WorldLayerId =
+  | "terrain"
+  | "biome"
+  | "elevation"
+  | "temperature"
+  | "moisture"
+  | "fertility"
+  | "vegetation"
+  | "capacity"
+  | "density";
+
+export interface WorldLayerInfo {
+  readonly id: WorldLayerId;
+  readonly label: string;
+  /** How the legend should present it. */
+  readonly kind: "composed" | "categorical" | "sequential" | "diverging";
+  /** What the two ends of the ramp mean, for the legend ("low" → "high"). */
+  readonly lowLabel: string;
+  readonly highLabel: string;
+  /**
+   * Where the field comes from. Static planes arrive once with WORLD_READY;
+   * `vegetation` follows the ~4 Hz vegetation stream; `density` is derived on
+   * the main thread from each render snapshot. Purely descriptive — switching
+   * layers never sends a message and never touches the simulation.
+   */
+  readonly source: "static" | "vegetation-stream" | "render-snapshot";
+}
+
+/** Every selectable layer, in the order the UI lists them. */
+export const WORLD_LAYERS: readonly WorldLayerInfo[] = [
+  {
+    id: "terrain",
+    label: "Terrain",
+    kind: "composed",
+    lowLabel: "",
+    highLabel: "",
+    source: "static",
+  },
+  {
+    id: "biome",
+    label: "Biomes",
+    kind: "categorical",
+    lowLabel: "",
+    highLabel: "",
+    source: "static",
+  },
+  {
+    id: "elevation",
+    label: "Elevation",
+    kind: "sequential",
+    lowLabel: "low",
+    highLabel: "high",
+    source: "static",
+  },
+  {
+    id: "temperature",
+    label: "Temperature",
+    kind: "diverging",
+    lowLabel: "cold",
+    highLabel: "hot",
+    source: "static",
+  },
+  {
+    id: "moisture",
+    label: "Moisture",
+    kind: "sequential",
+    lowLabel: "arid",
+    highLabel: "saturated",
+    source: "static",
+  },
+  {
+    id: "fertility",
+    label: "Fertility",
+    kind: "sequential",
+    lowLabel: "barren",
+    highLabel: "fertile",
+    source: "static",
+  },
+  {
+    id: "vegetation",
+    label: "Plant biomass",
+    kind: "sequential",
+    lowLabel: "grazed bare",
+    highLabel: "full stock",
+    source: "vegetation-stream",
+  },
+  {
+    id: "capacity",
+    label: "Plant capacity",
+    kind: "sequential",
+    lowLabel: "none",
+    highLabel: "richest",
+    source: "static",
+  },
+  {
+    id: "density",
+    label: "Organism density",
+    kind: "sequential",
+    lowLabel: "empty",
+    highLabel: "crowded",
+    source: "render-snapshot",
+  },
+];
+
+export function isWorldLayerId(value: unknown): value is WorldLayerId {
+  return typeof value === "string" && WORLD_LAYERS.some((layer) => layer.id === value);
+}
+
+/** One ramp stop: field byte position 0-255 and the colour there. */
+type RampStop = readonly [position: number, r: number, g: number, b: number];
+
+/**
+ * Ramp definitions per data layer.
+ *
+ * Sequential ramps run dark → bright in a single hue; the dark end sits near
+ * the app's canvas colour so "little" recedes and "much" glows. Temperature is
+ * the diverging exception: deep cool blue through a pale neutral to warm red,
+ * with the neutral at the middle of the published display range.
+ */
+const LAYER_RAMPS: Partial<Record<WorldLayerId, readonly RampStop[]>> = {
+  elevation: [
+    [0, 16, 22, 28],
+    [255, 219, 227, 232],
+  ],
+  temperature: [
+    [0, 13, 54, 107],
+    [96, 85, 152, 231],
+    [128, 240, 239, 236],
+    [176, 236, 132, 82],
+    [255, 179, 38, 42],
+  ],
+  moisture: [
+    [0, 11, 22, 32],
+    [160, 42, 120, 214],
+    [255, 158, 197, 244],
+  ],
+  fertility: [
+    [0, 14, 26, 16],
+    [255, 85, 201, 106],
+  ],
+  vegetation: [
+    [0, 13, 26, 13],
+    [255, 70, 224, 94],
+  ],
+  capacity: [
+    [0, 12, 26, 23],
+    [255, 46, 230, 168],
+  ],
+  density: [
+    [0, 23, 13, 26],
+    [255, 213, 81, 129],
+  ],
+};
+
+/** CSS hex stops for a layer's legend gradient, low → high. */
+export function worldLayerLegendStops(id: WorldLayerId): readonly string[] {
+  if (id === "biome") {
+    return BIOME_COLORS.map(
+      ([r, g, b]) => `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`,
+    );
+  }
+  const ramp = LAYER_RAMPS[id];
+  if (ramp === undefined) {
+    return [];
+  }
+  return ramp.map(([, r, g, b]) => `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`);
+}
+
+/** Sample a data layer's ramp at a byte value; RGB into `out`. */
+function sampleRamp(ramp: readonly RampStop[], value: number, out: [number, number, number]): void {
+  const first = ramp[0] as RampStop;
+  if (value <= first[0]) {
+    out[0] = first[1];
+    out[1] = first[2];
+    out[2] = first[3];
+    return;
+  }
+  for (let i = 1; i < ramp.length; i += 1) {
+    const stop = ramp[i] as RampStop;
+    if (value <= stop[0]) {
+      const previous = ramp[i - 1] as RampStop;
+      const span = stop[0] - previous[0];
+      const t = span > 0 ? (value - previous[0]) / span : 1;
+      out[0] = previous[1] + (stop[1] - previous[1]) * t;
+      out[1] = previous[2] + (stop[2] - previous[2]) * t;
+      out[2] = previous[3] + (stop[3] - previous[3]) * t;
+      return;
+    }
+  }
+  const last = ramp[ramp.length - 1] as RampStop;
+  out[0] = last[1];
+  out[1] = last[2];
+  out[2] = last[3];
+}
+
+/**
+ * Blend a data layer over the composed terrain base.
+ *
+ * `values` is the byte-per-cell field, `base` the RGBA the default view would
+ * show, `opacity` in [0, 1] how strongly the data covers it. Pure and
+ * GPU-free, like {@link composeTerrainRgba}, so it is unit-testable and the
+ * caller owns the upload.
+ */
+export function composeDataLayerRgba(
+  id: WorldLayerId,
+  values: Uint8Array,
+  base: Uint8Array,
+  opacity: number,
+  out: Uint8Array,
+): void {
+  const ramp = LAYER_RAMPS[id];
+  if (ramp === undefined) {
+    out.set(base.subarray(0, out.length));
+    return;
+  }
+  const cells = Math.min(values.length, out.length >> 2, base.length >> 2);
+  const alpha = opacity < 0 ? 0 : opacity > 1 ? 1 : opacity;
+  const keep = 1 - alpha;
+  const colour: [number, number, number] = [0, 0, 0];
+  for (let cell = 0; cell < cells; cell += 1) {
+    sampleRamp(ramp, values[cell] as number, colour);
+    const offset = cell << 2;
+    out[offset] = clampByte((base[offset] as number) * keep + colour[0] * alpha);
+    out[offset + 1] = clampByte((base[offset + 1] as number) * keep + colour[1] * alpha);
+    out[offset + 2] = clampByte((base[offset + 2] as number) * keep + colour[2] * alpha);
+    out[offset + 3] = 255;
+  }
+}
+
+/**
+ * Blend flat biome colours over the composed terrain base.
+ *
+ * Categorical, so no ramp: each cell takes its biome's own colour, unshaded —
+ * the elevation relief of the default view would only muddy category edges.
+ */
+export function composeBiomeLayerRgba(
+  biome: Uint8Array,
+  base: Uint8Array,
+  opacity: number,
+  out: Uint8Array,
+): void {
+  const cells = Math.min(biome.length, out.length >> 2, base.length >> 2);
+  const alpha = opacity < 0 ? 0 : opacity > 1 ? 1 : opacity;
+  const keep = 1 - alpha;
+  for (let cell = 0; cell < cells; cell += 1) {
+    const colour = BIOME_COLORS[biome[cell] as number] ?? UNKNOWN_BIOME;
+    const offset = cell << 2;
+    out[offset] = clampByte((base[offset] as number) * keep + colour[0] * alpha);
+    out[offset + 1] = clampByte((base[offset + 1] as number) * keep + colour[1] * alpha);
+    out[offset + 2] = clampByte((base[offset + 2] as number) * keep + colour[2] * alpha);
+    out[offset + 3] = 255;
+  }
+}
+
+/**
+ * Organisms per cell at which the density layer saturates.
+ *
+ * The environment grid averages well under one organism per cell even at the
+ * population cap, so density is interesting in exactly the places several
+ * bodies share a cell. Six is "a visible crowd" without making a single grazer
+ * invisible: 1 organism already reads at 42 of 255.
+ */
+export const DENSITY_SATURATION_COUNT = 6;

@@ -1,5 +1,6 @@
 import { ANGLE_STEPS, POS_SCALE, Q, clamp, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
+import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { createFounderGenes } from "../genetics/founderGenome";
 import type { FounderRegion } from "../world/validateWorld";
@@ -69,12 +70,32 @@ export interface SpawnRequest {
  * (docs/04 §4).
  */
 export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number {
-  const { organisms, genomes, phenotypes, config } = ctx;
+  const { organisms, genomes, phenotypes, scratch, config } = ctx;
 
   const slot = organisms.allocateSlot();
   if (slot < 0) {
     return -1;
   }
+
+  // Clear the slot's per-tick scratch. Authoritatively this is redundant —
+  // sensing, brain and movement rewrite every one of these before anything
+  // reads them on the newborn's first full tick — but `queryEntity` reads the
+  // retained sensor/intent blocks between ticks for the inspector, and a
+  // reused slot would otherwise show the previous occupant's last thoughts as
+  // the newborn's. Scratch is never hashed, so this cannot move a golden hash.
+  scratch.sensorValues.fill(
+    0,
+    slot * BRAIN_INPUT_COUNT,
+    slot * BRAIN_INPUT_COUNT + BRAIN_INPUT_COUNT,
+  );
+  scratch.throttleQ[slot] = 0;
+  scratch.turnQ[slot] = 0;
+  scratch.eatQ[slot] = 0;
+  scratch.attackQ[slot] = 0;
+  scratch.reproduceQ[slot] = 0;
+  scratch.speedFractionQ[slot] = 0;
+  scratch.accelFractionQ[slot] = 0;
+  scratch.inWater[slot] = 0;
 
   genomes.writeGenome(slot, request.genes, request.brainWeights);
   derivePhenotype(phenotypes, genomes, slot, config);
@@ -106,6 +127,9 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   organisms.generation[slot] = request.generation;
   organisms.parentEntityId[slot] = request.parentEntityId;
   organisms.speciesId[slot] = request.speciesId;
+  // Membership is counted where it is created, so the registry's population
+  // can never drift from the live rows (docs/05 §5, docs/07 §4).
+  ctx.species.recordBirth(request.speciesId);
 
   // Energy is capped by the NEWBORN's body, not by its adult potential. A parent
   // that over-invests loses the surplus (see ecology/reproduction.ts); energy is

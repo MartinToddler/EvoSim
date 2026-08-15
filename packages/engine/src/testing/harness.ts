@@ -7,8 +7,13 @@ import { validateConfig } from "../config/validateConfig";
 import { CarcassStore } from "../ecology/CarcassStore";
 import type { EngineContext } from "../EngineContext";
 import { EngineScratch } from "../EngineScratch";
+import { SpeciesStore } from "../evolution/SpeciesStore";
+import { TRAIT_DIMENSIONS, buildTraitRanges } from "../evolution/traitVector";
 import { GENE_COUNT, geneFromQ } from "../genetics/genes";
 import { createFounderGenes } from "../genetics/founderGenome";
+import { EventStore } from "../history/EventStore";
+import { EventDetectors } from "../history/eventDetection";
+import { StatisticsStore } from "../history/StatisticsStore";
 import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { GenomeStore } from "../organisms/GenomeStore";
 import { OrganismStore } from "../organisms/OrganismStore";
@@ -99,6 +104,16 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
 
   const organisms = new OrganismStore(config.limits.maxOrganisms);
   const carcasses = new CarcassStore(config.limits.maxCarcasses);
+  // The founder species that every test organism spawns into by default,
+  // mirroring the real engine constructor (docs/05 §5).
+  const species = new SpeciesStore();
+  species.createSpecies({
+    parentSpeciesId: 0,
+    originTick: 0,
+    centroid: new Int32Array(TRAIT_DIMENSIONS),
+    founderEntityId: 1,
+    generationAtOrigin: 0,
+  });
   const ctx: EngineContext = {
     seed: options.seed ?? 0x1234_5678,
     config,
@@ -107,6 +122,11 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     genomes: new GenomeStore(config.limits.maxOrganisms),
     phenotypes: new PhenotypeStore(config.limits.maxOrganisms),
     carcasses,
+    species,
+    events: new EventStore(config.limits.maxTimelineEventsInMemoryBeforeChunk),
+    detectors: new EventDetectors(),
+    stats: new StatisticsStore(),
+    traitRanges: buildTraitRanges(config),
     spatialPre: new SpatialGrid(
       config.world.sizeLU,
       config.world.spatialCellSizeLU,
@@ -169,6 +189,33 @@ export interface TestOrganismOptions {
   ageTicks?: number;
   /** Realized development at spawn, for tests about the 90% gate. */
   developmentQ?: number;
+  /** Species to spawn into; defaults to the harness founder species 1. */
+  speciesId?: number;
+}
+
+/**
+ * Ensure the registry holds at least `speciesId` species, creating empty
+ * sibling records as needed, then move one live organism into that species
+ * with the registry's population kept consistent (docs/07 §4). Tests that
+ * write `organisms.speciesId` directly would silently break the
+ * population-matches-members invariant that phase 16 asserts.
+ */
+export function reassignTestSpecies(world: TestWorld, slot: number, speciesId: number): void {
+  const { ctx } = world;
+  while (ctx.species.count < speciesId) {
+    ctx.species.createSpecies({
+      parentSpeciesId: 0,
+      originTick: 0,
+      centroid: new Int32Array(TRAIT_DIMENSIONS),
+      founderEntityId: ctx.organisms.entityId[slot] as number,
+      generationAtOrigin: 0,
+    });
+  }
+  const from = ctx.species.get(ctx.organisms.speciesId[slot] as number);
+  const to = ctx.species.get(speciesId);
+  from.population -= 1;
+  to.population += 1;
+  ctx.organisms.speciesId[slot] = speciesId;
 }
 
 /** Spawn one organism into a test world and return its slot. */
@@ -198,7 +245,7 @@ export function spawnTestOrganism(world: TestWorld, options: TestOrganismOptions
     brainWeights: weights,
     generation: 0,
     parentEntityId: 0,
-    speciesId: 1,
+    speciesId: options.speciesId ?? 1,
     energy: {
       kind: "fractionOfMax",
       fractionQ: options.energyFractionQ ?? config.organism.initialEnergyFractionQ,

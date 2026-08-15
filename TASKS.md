@@ -59,8 +59,9 @@ and snapshot restore trusting a malformed free list. Golden hashes unchanged.
 - [x] E03 ecological mutation.
 - [x] E04 brain mutation.
 - [x] E05 generation/parent IDs.
-- [ ] E06 population cap event — deterministic rejection and diagnostics counters done; the
-      `PopulationCapReached` timeline event needs the Milestone 8 `EventStore`.
+- [x] E06 population cap event — deterministic rejection and diagnostics counters since M4; the
+      `PopulationCapReached` timeline event landed with the Milestone 8 `EventStore` (one event
+      per pressure episode, ADR 0013 §4).
 - [x] E07 100k deterministic soak.
 - [x] E08 parameter sweep harness.
 
@@ -264,46 +265,141 @@ Three notes carried forward:
    The deadline is unchanged: before **J05 / Milestone 9**.
 
 ## H UI/analytics
-- [ ] H01 app shell/top bar.
-- [ ] H02 time controls/actual TPS.
-- [ ] H03 organism inspector.
-- [ ] H04 global stats/charts.
-- [ ] H05 heatmaps.
-- [ ] H06 responsive mobile layout.
+- [x] H01 app shell/top bar.
+- [x] H02 time controls/actual TPS.
+- [x] H03 organism inspector.
+- [x] H04 global stats/charts.
+- [x] H05 heatmaps.
+- [x] H06 responsive mobile layout.
+
+Milestone 7 review gate: **PASS** (engine 0.5.0 unchanged, protocol 3 unchanged, ADR 0012). The
+observation UI was reviewed against the eighteen-point brief — placeholder honesty, the React
+boundary, telemetry cadence, chart memory bounds, stale queries, entity death, follow, slot vs
+entity ID, pause/play, rapid speed switching, layer purity, query purity, resize, mobile layout,
+gestures, listener/chart leaks, Pixi lifetime, accessibility — statically, through the fake-driven
+session tests, and in a scripted headless-Chromium pass (25/25 checks, zero console/page errors).
+**Every golden hash is untouched**: all fixes are presentation-side.
+
+Four P2 defects found and fixed, plus three P3 polish items:
+
+1. **A third finger during a pinch fired a click selection** — `#onPointerDown` treated only
+   exactly-two pointers as a pinch, so a steadying finger became a zero-travel drag whose lift
+   read as a tap and silently retargeted selection, follow and the inspector. Any `>= 2` pointers
+   are now a pinch, and no pinch finger can end as a click.
+2. **Touch dead ends** — a pinch ending with one finger down left that finger inert (now it
+   continues as a pan that can never click), and `.chart-plot { touch-action: none }` made the
+   mobile stats sheet unscrollable wherever a chart was under the finger (now `pan-y`).
+3. **The one-sheet rule did not survive becoming narrow** — rotating/shrinking with both panels
+   open stacked two bottom sheets (browser-reproduced). Panel state is one object now, settled in
+   the media-query subscription: entering narrow keeps stats and closes layers.
+4. P3: speed tooltips now derive from `hostRuntime.targetTicksPerSecond1x` instead of hardcoding
+   the defaults; the layer radios expose `aria-checked` alone (`aria-pressed` contradicted the
+   radio role); the seed-copy confirmation timer is cleared on re-click and unmount.
 
 ## I Species/history
-- [ ] I01 species registry.
-- [ ] I02 trait vector/distance.
-- [ ] I03 deterministic 2-means.
-- [ ] I04 stability candidate.
-- [ ] I05 split/extinction.
-- [ ] I06 events.
-- [ ] I07 tree UI.
-- [ ] I08 species inspector.
+- [x] I01 species registry.
+- [x] I02 trait vector/distance.
+- [x] I03 deterministic 2-means.
+- [x] I04 stability candidate.
+- [x] I05 split/extinction.
+- [x] I06 events.
+- [x] I07 tree UI.
+- [x] I08 species inspector.
+
+Milestone 8 gate: **PASS** (engine 0.5.0 → 0.6.0, snapshot schema 7, protocol 4, ADR 0013).
+Phases 16 (species analysis) and 17 (statistics/event detection) now run. The registry, the
+versioned fifteen-dimension trait vector, deterministic seeded 2-means with five-interval
+stability, extinction-at-the-death-tick, the bounded event log with eight live detectors, the
+tiered statistics store, protocol 4 and the species panel / Tree of Life / history timeline are
+implemented and tested (61 new tests; 13 mandated fixtures all present). **Every golden hash
+regenerated** — the canonical stream gained the species registry, event log and detector state —
+while the organism trajectory reproduces 0.5.0 exactly (same 10k population/generation/diet).
+Snapshot schema 7 restores a mid-candidate world to an identical future: split on the same tick,
+event log equal entry for entry, statistics byte-identical.
+
+Two notes carried forward:
+
+1. **100 000 ticks of real evolution end with ONE species** (ADR 0013 §9). The founder lineage's
+   evolved diversity is a continuous cloud, and the docs/05 §7 detector exists precisely to
+   refuse to split clouds — the synthetic fixtures prove real bimodality splits after exactly
+   five stable analyses. Whether default constants let bimodality EMERGE at realistic horizons
+   joins the L07 calibration questions (docs/07 §12 lists "species never splitting" as a failure
+   mode to monitor there).
+2. **"Focus members" from the docs/06 §12 species-inspector list is deferred** — it needs a
+   member-position query the protocol does not carry; every other listed field shipped.
+
+Milestone 8 review gate: **PASS** (engine 0.6.0 unchanged, ADR 0014). The implementation was
+audited against the twenty-one-point brief — normalization, clustering determinism,
+initialization, ties, order dependence, flicker, false splits, failure-to-split, minimum
+populations, split persistence, centroid stability, IDs, extinction, lineage cycles, parent
+species, event duplication, event hysteresis, pending-split and detector snapshots, hash coverage,
+replay equivalence — by tracing concrete values and by repro scripts; all eight mandated fixtures
+were already present and honest. **Every golden hash unchanged and reproduced.** Two defects found
+and fixed, neither reachable from a previously-constructible world: a validator-accepted
+`min == max` gene range crashed engine construction (now a constant dimension contributing zero
+distance — the ADR 0007 §2 / ADR 0009 §1 class), and `SpeciesStore.capture()` would silently drop
+a hypothetical zero-pass split candidate (now asserted loudly at save time).
 
 ## J Player tools
-- [ ] J01 immutable command log.
-- [ ] J02 stroke resampling.
-- [ ] J03 global/local temperature.
-- [ ] J04 moisture/fertility.
-- [ ] J05 terrain raise/lower.
-- [ ] J06 biomass.
-- [ ] J07 meteor.
-- [ ] J08 timeline integration.
-- [ ] J09 optional translocation.
+- [x] J01 immutable command log.
+- [x] J02 stroke resampling.
+- [x] J03 global/local temperature.
+- [x] J04 moisture/fertility.
+- [x] J05 terrain raise/lower.
+- [x] J06 biomass.
+- [x] J07 meteor.
+- [x] J08 timeline integration.
+- [ ] J09 optional translocation — deliberately not built: docs/01 §4 and docs/02 §15 both label
+      it "late-MVP if schedule permits", and `TRANSLOCATE_ORGANISMS` is the one command whose
+      payload the docs never specify. It stays open as the optional task it is.
+
+Milestone 9 gate: **PASS** (engine 0.6.0 → 0.7.0, snapshot schema 8, config schema 7, protocol 5,
+ADR 0015). Phase 0 (applyCommands) now runs. Player input is canonical commands only: immutable,
+versioned (`COMMAND_SCHEMA_VERSION` 1), engine-stamped `(id, tick, sequence)` identity, validated
+with deterministic rejection (past tick / malformed / out of bounds), `(tick, sequence)`-ordered,
+hashed and serialized with an application cursor so a restored world neither re-applies nor skips
+a command. Brush strokes canonicalize in the protocol package (fixed world-distance resampling +
+whole-LU quantization) so pointer event rate never reaches history — the same stroke at 2, 17 and
+500 pointer events is the same command. Every documented tool shipped: global temperature offset,
+warm/cool, wet/dry, fertility, terrain raise/lower (with real flooding/draining via the
+deterministic biome/capacity/passability region recompute), biomass add/remove (with the
+docs/03 §27 bounded transient overfill), and the meteor (radial organism damage with a lethal
+core, biomass loss, crater, scorched soil, Major event). Each applied command appends exactly one
+PlayerIntervention event; the timeline names the tool. The golden fixture now RUNS a nine-command
+log covering every kind — every applier is inside the golden regression net. 96 new tests.
+
+**The pre-J05 merge mandate is closed** (ADR 0006 §0 → ADR 0013 §10): the foundation-gate and
+Milestone 2.5 branches were reconciled semantically rather than textually merged — every
+foundation-gate fix is now in this line (exact config shape, geometry bounds, snapshot value
+validation, restore-without-regeneration through a forge-proof channel, the hashed founder
+region, the sealed environment store, the `__proto__`-safe clone, dead noise salts removed), and
+the M2.5 debug visualizer is recorded as superseded by the M6 renderer + M7 layer views it was
+reused into. Details and per-fix disposition in ADR 0015 §0.
 
 ## K Persistence/replay
-- [ ] K01 IndexedDB schema.
-- [ ] K02 manifests.
-- [ ] K03 snapshot serializer/checksum.
-- [ ] K04 manual save/load.
-- [ ] K05 autosave.
-- [ ] K06 deterministic save/reload test.
-- [ ] K07 rewind reconstruction.
-- [ ] K08 historical preview.
-- [ ] K09 return present.
-- [ ] K10 branch.
-- [ ] K11 branch deterministic test.
+- [x] K01 IndexedDB schema.
+- [x] K02 manifests.
+- [x] K03 snapshot serializer/checksum.
+- [x] K04 manual save/load.
+- [x] K05 autosave.
+- [x] K06 deterministic save/reload test (independently re-verified, ADR 0017).
+- [x] K07 rewind reconstruction.
+- [x] K08 historical preview.
+- [x] K09 return present.
+- [x] K10 branch.
+- [x] K11 branch deterministic test.
+
+Milestone 11 gate: **PASS** (protocol 6 → 7, engine 0.7.0 and every golden hash unchanged, ADR
+0018). Any earlier tick is reconstructed from the newest save at or before it plus the command log
+plus deterministic forward simulation, previewed read-only in a second engine, and left again by a
+mode switch rather than a reload. A branch is an independent world inheriting its parent's history
+only through the branch point: control to 10 000 ticks equals a branch taken at 5 000 with no new
+commands, and equals one taken at 6 234 that needed save + replay to reconstruct — on the populated
+world, with organisms, species and events. A branch-only command diverges the branch and leaves the
+original untouched. A preview cannot reach the present: it is a second engine, the host refuses
+interventions and saves while it is open, and a superseded rewind is cancelled on both sides.
+Limitation recorded in ADR 0018 §7: a world must have a save at or before a tick to be rewound
+there.
 
 ## L Quality/performance
 - [ ] L01 benchmark CLI.

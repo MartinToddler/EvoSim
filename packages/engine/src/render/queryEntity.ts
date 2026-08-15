@@ -1,6 +1,9 @@
+import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { engineInternals } from "../internal";
-import { ANGLE_STEPS, POS_SCALE, Q } from "../math/fixed";
+import { ANGLE_STEPS, POS_SCALE, Q, qmul } from "../math/fixed";
+import { basalCost, thermalBasalMultiplierQ } from "../organisms/metabolism";
 import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { thermalStressQ } from "../organisms/thermal";
 import type { SimulationEngine } from "../SimulationEngine";
 import { BIOME_NAMES } from "../world/biomes";
 import { speedLUPerTick } from "./renderSnapshot";
@@ -61,6 +64,14 @@ export interface EntityDetails {
   maturityAgeTicks: number;
   maxAgeTicks: number;
   hueDegrees: number;
+  reproductionCooldownTicks: number;
+
+  costBasalPerTick: number;
+  costMovementPerTick: number;
+  thermalStress: number;
+
+  brainInputs: readonly number[];
+  brainIntents: readonly number[];
 
   plantEnergyEaten: number;
   meatEnergyEaten: number;
@@ -84,7 +95,7 @@ const VELOCITY_UNITS_PER_LU = 256 * POS_SCALE;
  */
 export function queryEntity(engine: SimulationEngine, entityId: number): EntityDetails | null {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, environment, config } = context;
+  const { organisms, phenotypes, environment, scratch, config } = context;
 
   const slot = organisms.findSlotByEntityId(entityId);
   if (slot < 0 || organisms.alive[slot] !== 1) {
@@ -97,6 +108,61 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
   const xPos = organisms.x[slot] as number;
   const yPos = organisms.y[slot] as number;
   const cell = environment.cellIndexFromPosition(xPos, yPos);
+
+  // --- Running costs (docs/06 §11), the same formulas metabolism will apply --
+  //
+  // Recomputed read-only from current state rather than stored: the physiology
+  // phase has no reason to remember a per-organism breakdown 8192 organisms
+  // wide for the one organism somebody is looking at. The movement term reads
+  // the effort fractions the movement phase left in scratch, so it describes
+  // the most recent tick, not a hypothetical.
+  const { basal, movement, health } = config.organism;
+  const stressQ = thermalStressQ(
+    environment.getTemperatureCentiC(cell),
+    phenotypes.thermalOptimumCentiC[slot] as number,
+    phenotypes.thermalToleranceCentiC[slot] as number,
+    health.thermalStressMinToleranceCentiC,
+  );
+  let costBasalPerTick = qmul(
+    basalCost(context, slot, mass),
+    thermalBasalMultiplierQ(stressQ, health.severeThermalBasalMultiplierMaxQ),
+  );
+  if (costBasalPerTick < basal.minimumBasalPerTick) {
+    costBasalPerTick = basal.minimumBasalPerTick;
+  }
+  const speedFractionQ = scratch.speedFractionQ[slot] as number;
+  const accelFractionQ = scratch.accelFractionQ[slot] as number;
+  let costMovementPerTick = qmul(
+    mass,
+    qmul(qmul(speedFractionQ, speedFractionQ), movement.movementCostCoeffQ),
+  );
+  costMovementPerTick += qmul(
+    mass,
+    qmul(qmul(accelFractionQ, accelFractionQ), movement.accelerationCostCoeffQ),
+  );
+  if (scratch.inWater[slot] === 1) {
+    costMovementPerTick = qmul(costMovementPerTick, movement.waterMovementCostMultiplierQ);
+  }
+
+  // --- Brain view (docs/06 §11): what the last tick sensed and decided -------
+  //
+  // Scratch retains each organism's sensor block and mapped intents after the
+  // tick completes, so this is a read of what actually happened — nothing is
+  // re-inferred, no PRNG is touched, and before the first tick it is honestly
+  // all zeroes.
+  const brainInputs: number[] = new Array<number>(BRAIN_INPUT_COUNT);
+  const sensorBase = slot * BRAIN_INPUT_COUNT;
+  for (let i = 0; i < BRAIN_INPUT_COUNT; i += 1) {
+    brainInputs[i] = (scratch.sensorValues[sensorBase + i] as number) / Q;
+  }
+  // Indexed like BRAIN_OUTPUT_NAMES: throttle, turn, eat, attack, reproduce.
+  const brainIntents: number[] = [
+    (scratch.throttleQ[slot] as number) / Q,
+    (scratch.turnQ[slot] as number) / Q,
+    (scratch.eatQ[slot] as number) / Q,
+    (scratch.attackQ[slot] as number) / Q,
+    (scratch.reproduceQ[slot] as number) / Q,
+  ];
 
   return {
     entityId,
@@ -131,6 +197,17 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
     maturityAgeTicks: phenotypes.maturityAgeTicks[slot] as number,
     maxAgeTicks: phenotypes.maxAgeTicks[slot] as number,
     hueDegrees: phenotypes.hueDegrees[slot] as number,
+    reproductionCooldownTicks: organisms.reproductionCooldown[slot] as number,
+
+    costBasalPerTick,
+    costMovementPerTick,
+    // The engine's stress scale runs 0..2Q (2Q = capped worst case, damage
+    // begins at Q); normalized here so the DTO's [0, 1] means "fraction of the
+    // worst case" and 0.5 is exactly the damage threshold.
+    thermalStress: stressQ / (2 * Q),
+
+    brainInputs,
+    brainIntents,
 
     plantEnergyEaten: organisms.plantEnergyEaten[slot] as number,
     meatEnergyEaten: organisms.meatEnergyEaten[slot] as number,
@@ -143,31 +220,82 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
   };
 }
 
+/** Mean trait values over the alive population; all zero when it is empty. */
+export interface TraitMeans {
+  diet: number;
+  maxSpeedLUPerTick: number;
+  adultRadiusLU: number;
+  visionRangeLU: number;
+  attack: number;
+  armor: number;
+  metabolicPace: number;
+  thermalOptimumC: number;
+}
+
 /**
- * Cheap world-wide aggregates for the HUD (docs/02 §11).
+ * Cheap world-wide aggregates for the HUD and charts (docs/02 §11, docs/05 §10).
  *
  * One ascending pass over live slots. Called at telemetry cadence — a couple of
- * times per second — never per tick, and never per frame.
+ * times per second — never per tick, and never per frame. The trait means are
+ * what lets the Milestone 7 charts show evolutionary drift without ever
+ * shipping a per-organism array off the Worker.
  */
 export function collectTelemetryAggregates(engine: SimulationEngine): {
   population: number;
   maxGeneration: number;
   plantBiomass: number;
   plantCapacity: number;
+  organismMass: number;
+  meanEnergyFraction: number;
+  traitMeans: TraitMeans;
 } {
   const { context } = engineInternals(engine);
-  const { organisms, environment } = context;
+  const { organisms, phenotypes, environment, config } = context;
+  const massScale = config.organism.massScalePerRadiusSquared;
 
   let maxGeneration = 0;
+  let organismMass = 0;
+  let energyFractionSum = 0;
+  let dietSum = 0;
+  let speedSum = 0;
+  let radiusSum = 0;
+  let visionSum = 0;
+  let attackSum = 0;
+  let armorSum = 0;
+  let paceSum = 0;
+  let thermalSum = 0;
+  let alive = 0;
+
   const slotHighWater = organisms.slotHighWater;
   for (let slot = 0; slot < slotHighWater; slot += 1) {
     if (organisms.alive[slot] !== 1) {
       continue;
     }
+    alive += 1;
     const generation = organisms.generation[slot] as number;
     if (generation > maxGeneration) {
       maxGeneration = generation;
     }
+
+    const radiusPos = currentRadiusPos(
+      phenotypes.adultRadiusPos[slot] as number,
+      organisms.developmentQ[slot] as number,
+    );
+    const mass = massFromRadiusPos(radiusPos, massScale);
+    organismMass += mass;
+    const maxEnergy = maxEnergyForMass(mass, config);
+    if (maxEnergy > 0) {
+      energyFractionSum += Math.min(1, (organisms.energy[slot] as number) / maxEnergy);
+    }
+
+    dietSum += phenotypes.dietQ[slot] as number;
+    speedSum += phenotypes.maxSpeedVel[slot] as number;
+    radiusSum += phenotypes.adultRadiusPos[slot] as number;
+    visionSum += phenotypes.visionRangePos[slot] as number;
+    attackSum += phenotypes.attackQ[slot] as number;
+    armorSum += phenotypes.armorQ[slot] as number;
+    paceSum += phenotypes.metabolicPaceQ[slot] as number;
+    thermalSum += phenotypes.thermalOptimumCentiC[slot] as number;
   }
 
   let plantBiomass = 0;
@@ -178,10 +306,36 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
     plantCapacity += environment.plantCapacity[cell] as number;
   }
 
+  const traitMeans: TraitMeans =
+    alive === 0
+      ? {
+          diet: 0,
+          maxSpeedLUPerTick: 0,
+          adultRadiusLU: 0,
+          visionRangeLU: 0,
+          attack: 0,
+          armor: 0,
+          metabolicPace: 0,
+          thermalOptimumC: 0,
+        }
+      : {
+          diet: dietSum / alive / Q,
+          maxSpeedLUPerTick: speedSum / alive / VELOCITY_UNITS_PER_LU,
+          adultRadiusLU: radiusSum / alive / POS_SCALE,
+          visionRangeLU: visionSum / alive / POS_SCALE,
+          attack: attackSum / alive / Q,
+          armor: armorSum / alive / Q,
+          metabolicPace: paceSum / alive / Q,
+          thermalOptimumC: thermalSum / alive / 100,
+        };
+
   return {
     population: organisms.liveCount,
     maxGeneration,
     plantBiomass,
     plantCapacity,
+    organismMass,
+    meanEnergyFraction: alive === 0 ? 0 : energyFractionSum / alive,
+    traitMeans,
   };
 }

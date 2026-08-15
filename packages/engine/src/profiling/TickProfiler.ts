@@ -48,15 +48,19 @@ export const TickPhase = {
   Reproduction: 9,
   /** Scheduled carcass decay. */
   Carcasses: 10,
-  /** Reserved for Milestone 8 species analysis. */
+  /** Scheduled species analysis (Milestone 8). */
   SpeciesAnalysis: 11,
   /** Render snapshot production. Measured by the host, outside `step()`. */
   RenderSnapshot: 12,
+  /** Scheduled statistics collection and event detection (Milestone 8). */
+  Statistics: 13,
+  /** Phase 0: player command application (Milestone 9). */
+  Commands: 14,
 } as const;
 
 export type TickPhaseId = (typeof TickPhase)[keyof typeof TickPhase];
 
-export const TICK_PHASE_COUNT = 13;
+export const TICK_PHASE_COUNT = 15;
 
 export const TICK_PHASE_NAMES: readonly string[] = [
   "total",
@@ -72,6 +76,8 @@ export const TICK_PHASE_NAMES: readonly string[] = [
   "carcasses",
   "speciesAnalysis",
   "renderSnapshot",
+  "statistics",
+  "commands",
 ];
 
 /**

@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./palette": {
+      "types": "./src/palette.ts",
+      "default": "./src/palette.ts"
     }
   },
   "scripts": {

@@ -99,18 +99,51 @@ pnpm equivalence --ticks 10000   # Worker-scheduled vs headless vs golden hash (
 pnpm --filter @eon/web dev   # run the web app locally
 ```
 
-Current status: Milestones 0–6 complete — workspace, determinism skeleton (hardened after
+Current status: Milestones 0–10 complete — workspace, determinism skeleton (hardened after
 review), the procedural environment, organism mechanics (reviewed and hardened, ADR 0005), asexual
 reproduction with gene and brain mutation (ADR 0006, reviewed in ADR 0007), predation: carrion,
-combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), and the Worker host, render
-transport and PixiJS renderer (ADR 0010).
+combat and the diet trade-off (ADR 0008, reviewed in ADR 0009), the Worker host, render
+transport and PixiJS renderer (ADR 0010), the observation UI (ADR 0011, reviewed in ADR 0012),
+species + history (ADR 0013, reviewed in ADR 0014), and player interventions (ADR 0015): an
+immutable `(tick, sequence)`-ordered command log applied only in phase 0, canonical
+device-independent brush strokes, nine intervention tools (global temperature, warm/cool,
+wet/dry, fertility, terrain raise/lower with real flooding and draining, biomass add/remove,
+meteor), deterministic biome/capacity/passability recompute after every edit, one
+PlayerIntervention timeline event per command, and command cursor/history in every snapshot so
+saves replay without double-applying, and persistence (ADR 0016): a durable snapshot container
+with magic, versions, checksums and the canonical state hash in its header, an IndexedDB world
+store with manifests, autosave retention and all-or-nothing writes, save/load over protocol 6,
+and a saved-worlds panel in the app. A world saved at tick 2 500 and reloaded into a fresh
+runtime reaches tick 10 000 with the same canonical hash as one that never stopped — that is
+the milestone's acceptance test, and it runs in CI (engine 0.7.0 unchanged, snapshot schema 8,
+config schema 7, protocol 5 → 6). The pre-J05 foundation-gate mandate is closed: its six fixes
+are ported (ADR 0015 §0).
 
-**The world is now watchable — live at <https://martintoddler.github.io/EvoSim/>.**
+And rewind, historical mode and branching (ADR 0018): any earlier tick is reconstructed from the
+newest save at or before it plus the command log plus deterministic forward simulation, previewed
+read-only in a second engine while the live one stays exactly where it was, and left again by a
+mode switch rather than a reload. A branch is an independent world that inherits its parent's
+history only through the branch point — the parent's queued future is stripped, its identity
+counters are kept — and the milestone's acceptance test proves it on the populated world: a control
+run to 10 000 ticks, a branch taken at 5 000 with no new commands, and a branch taken at 6 234 that
+needed save + replay to reconstruct all reach the identical canonical hash, while a branch-only
+command diverges the branch and leaves the original untouched (protocol 6 → 7; engine 0.7.0 and
+every golden hash unchanged).
+
+**The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
-the plants, and the organisms living in it — pan, zoom, click an organism to inspect it, and run at
-1×, 5×, 20×, 100× or MAX. The simulation itself runs in a dedicated Worker and is unchanged by any
-of it: `ENGINE_VERSION` stayed at 0.5.0 through Milestone 6 and every golden hash is byte-identical,
-because rendering is a projection and never a decision.
+the plants, and the organisms living in it — pan, zoom, run at 1×, 5×, 20×, 100× or MAX. Click an
+organism for the full inspector (vitals, inherited traits, running costs, the last tick's brain
+inputs and intents) and follow it as it lives; open the stats panel for bounded-memory charts of
+population, biomass, birth/death rates and trait drift; flip the world through nine data layers
+(biomes, elevation, temperature, moisture, fertility, plant biomass and capacity, organism
+density) without the simulation noticing; open the species panel, the Tree of Life and the
+history timeline to watch detected lineages, splits, extinctions, booms, crashes and the world's
+first predation appear as events. Press **Worlds** to save the world to the browser, reload the
+page, and load it back exactly where it was — the restored world continues into the same future,
+not merely a similar one. The simulation itself runs in a dedicated Worker and rendering
+never decides anything — the Milestone 8 hash changes are the species/history state itself
+joining the canonical stream, while the organism trajectory reproduces 0.5.0's exactly.
 
 Everything below is still reproducible headlessly, which is the point — the same world, the same
 hashes, with or without a browser.
@@ -174,7 +207,7 @@ Two configurations, deliberately separated (ADR 0002 §4):
 
 The golden deterministic fixture lives in `packages/engine/src/fixtures/goldenStateHashes.json`;
 regenerating it is only legitimate together with an `ENGINE_VERSION` bump and a `CHANGELOG.md`
-entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 2, snapshot schema 6, config
+entry (see `CLAUDE.md`). Current versions: engine 0.5.0, protocol 3, snapshot schema 6, config
 schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
 
 - `0001-milestone-0-1-implementation-decisions.md` — workspace, PRNG, trig LUT, hashing.
@@ -206,11 +239,38 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
   why the scheduler takes its clock as a constructor argument, why a render snapshot is one buffer
   and one transfer, why render snapshots are droppable and ticks are not, how the engine is profiled
   without ever reading a clock, and why the selection ring is drawn in screen space.
+- `0011-milestone-7-observation-ui.md` — the observation UI: why the world layers ride the terrain
+  snapshot instead of a new request protocol, the tiered chart history and the head-collapse bug the
+  bounding test caught, running costs recomputed read-only and a brain view that is read rather than
+  re-inferred, DTOs frozen at the session boundary, and the placeholders that refuse to lie.
 - `0009-milestone-5-review.md` — the independent Milestone 5 review: a carcass meat value that
   silently wrapped its Uint32 row and conjured 4.3 billion units into the conservation identity, a
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0013-milestone-8-species-history.md` — species and history: the phenotype-space trait vector,
+  deterministic 2-means with the swap-unambiguity validator rule, extinction at the death tick,
+  one-emission-site-per-fact event detection, the hashed/derived statistics split, protocol 4's
+  pull-based UI, and what 100 000 ticks of real evolution says about splitting clouds.
+- `0014-milestone-8-review.md` — the independent Milestone 8 review: the twenty-one-point audit,
+  the validator-accepted degenerate range that crashed construction (now a constant dimension),
+  and the zero-pass candidate save/load assertion.
+- `0017-milestone-10-review.md` — the independent Milestone 10 review: the field-by-field
+  completeness audit re-derived from the store classes, the save-tick lattice that hid a whole class
+  of environment-cache bug from the shipped suite, a manifest that kept advertising a save nobody
+  could read, a load that took the highest tick instead of the manifest's, a manual save an autosave
+  could swallow, and a connection another tab closed that stayed closed forever.
+- `0016-milestone-10-persistence.md` — persistence: the durable container's header and its two
+  checksums, why the payload is written by one self-describing codec instead of 150 hand-written
+  fields, the shape contract that fails the build when the engine serializes something the format
+  does not know about, transaction-atomic saves that cannot damage the last good one, autosave
+  that arms rather than fires on its own, and why the 10 000-tick acceptance run uses the soak
+  world's geometry.
+- `0012-milestone-7-review.md` — the independent Milestone 7 review: a third finger during a pinch
+  that fired a click selection, a pinch that left its surviving finger dead, charts that blocked
+  the mobile sheet from scrolling, a one-sheet rule that did not survive rotating to narrow, and
+  the eighteen review dimensions that came back clean — verified statically, through the
+  fake-driven session tests, and in a scripted headless-Chromium pass.
 
 > **Repository note.** Three branches diverged in parallel from the Milestone 2 commit. This line is
 > Milestone 2 → 3 → 4 → 5. The Milestone 0–2 "foundation gate" branch

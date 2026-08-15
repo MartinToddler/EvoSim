@@ -13,6 +13,7 @@
  */
 import {
   BIOME_COUNT,
+  FIXTURE_COMMANDS,
   BIOME_NAMES,
   DEATH_CAUSE_COUNT,
   DEATH_CAUSE_NAMES,
@@ -32,6 +33,8 @@ interface CliOptions {
   seed: number;
   ticks: number;
   checkpoints: number[];
+  /** Queue the fixture command log before stepping (golden hash regeneration). */
+  fixtureCommands: boolean;
 }
 
 const FIXTURE_SEED = 0xe0a12026;
@@ -85,7 +88,12 @@ function checkTickBound(value: number, name: string): number {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { seed: FIXTURE_SEED, ticks: 10_000, checkpoints: [] };
+  const options: CliOptions = {
+    seed: FIXTURE_SEED,
+    ticks: 10_000,
+    checkpoints: [],
+    fixtureCommands: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
     switch (arg) {
@@ -115,10 +123,14 @@ function parseArgs(argv: string[]): CliOptions {
           .map((part) => checkTickBound(parseIntStrict(part.trim(), "checkpoint"), "checkpoint"));
         break;
       }
+      case "--fixture-commands":
+        options.fixtureCommands = true;
+        break;
       case "--help":
       case "-h":
         console.log(
-          "usage: pnpm headless [--seed <int|0xHEX>] [--ticks <n>] [--checkpoints t0,t1,...]",
+          "usage: pnpm headless [--seed <int|0xHEX>] [--ticks <n>] [--checkpoints t0,t1,...] " +
+            "[--fixture-commands]",
         );
         process.exit(0);
         break;
@@ -227,6 +239,19 @@ function main(): void {
   console.log(`ticks      ${totalTicks}`);
 
   const engine = new SimulationEngine({ seed: options.seed, config: DEFAULT_CONFIG });
+  if (options.fixtureCommands) {
+    // The mandatory fixture is seed + config + THIS command log (CLAUDE.md);
+    // queueing before stepping reproduces the golden identities exactly.
+    for (const input of FIXTURE_COMMANDS) {
+      const result = engine.queueCommand(input);
+      if (!result.accepted) {
+        fail(`fixture command rejected: ${result.detail}`);
+      }
+    }
+    console.log(`commands   fixture log (${FIXTURE_COMMANDS.length} commands)`);
+  } else {
+    console.log("commands   none");
+  }
   printWorldSummary(engine);
 
   const startedAt = performance.now();

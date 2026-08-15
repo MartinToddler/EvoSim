@@ -212,7 +212,7 @@ describe("starvation", () => {
     for (let i = 0; i < ticksToDie; i += 1) {
       expect(world.organisms.alive[slot]).toBe(1);
       physiology(world);
-      finalizeDeaths(world.ctx);
+      finalizeDeaths(world.ctx, 0);
     }
     expect(world.organisms.alive[slot]).toBe(0);
     expect(world.organisms.deathsByCause[DeathCause.Starvation]).toBe(1);
@@ -291,7 +291,7 @@ describe("thermal stress", () => {
     for (let i = 0; i < 1000 && world.organisms.alive[slot] === 1; i += 1) {
       world.organisms.energy[slot] = 1_000_000;
       physiology(world);
-      finalizeDeaths(world.ctx);
+      finalizeDeaths(world.ctx, 0);
     }
     expect(world.organisms.alive[slot]).toBe(0);
     expect(world.organisms.deathsByCause[DeathCause.Thermal]).toBe(1);
@@ -331,7 +331,7 @@ describe("drowning", () => {
       world.organisms.energy[slot] = 1_000_000;
       world.organisms.waterTicks[slot] = tick;
       physiology(world);
-      finalizeDeaths(world.ctx);
+      finalizeDeaths(world.ctx, 0);
     }
     expect(world.organisms.alive[slot]).toBe(0);
     expect(world.organisms.deathsByCause[DeathCause.Drowning]).toBe(1);
@@ -402,7 +402,7 @@ describe("aging", () => {
     world.organisms.healthQ[slot] = Q;
 
     physiology(world);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
     expect(world.organisms.alive[slot]).toBe(0);
     expect(world.organisms.deathsByCause[DeathCause.OldAge]).toBe(1);
   });
@@ -432,7 +432,7 @@ describe("death finalization", () => {
 
     world.organisms.healthQ[slot] = 1;
     physiology(world);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
 
     expect(world.organisms.alive[slot]).toBe(0);
     expect(world.organisms.liveCount).toBe(0);
@@ -446,8 +446,8 @@ describe("death finalization", () => {
     const slot = spawnTestOrganism(world, { ...world.cellCenter(10, 10), energyFractionQ: 0 });
     world.organisms.healthQ[slot] = 1;
     physiology(world);
-    finalizeDeaths(world.ctx);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
+    finalizeDeaths(world.ctx, 0);
     expect(world.organisms.totalDeaths).toBe(1);
     expect(world.organisms.freeCount).toBe(1);
   });
@@ -461,7 +461,7 @@ describe("death finalization", () => {
       world.organisms.healthQ[slot] = 1;
     }
     physiology(world);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
 
     expect(world.organisms.liveCount).toBe(0);
     expect(world.organisms.totalDeaths).toBe(3);
@@ -478,7 +478,7 @@ describe("death finalization", () => {
     // ask whether the entity they are looking at still exists.
     expect(world.organisms.alive[slot]).toBe(1);
     expect(world.ctx.scratch.pendingDeath[slot]).toBe(1);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
     expect(world.organisms.alive[slot]).toBe(0);
   });
 });
@@ -500,7 +500,7 @@ describe("invariants under sustained physiology", () => {
     // best-provisioned organism to burn its reserves and then its health.
     for (let tick = 0; tick < 3000; tick += 1) {
       physiology(world);
-      finalizeDeaths(world.ctx);
+      finalizeDeaths(world.ctx, 0);
       for (const slot of slots) {
         if (world.organisms.alive[slot] !== 1) {
           continue;

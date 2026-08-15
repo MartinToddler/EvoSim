@@ -21,19 +21,48 @@
  *
  * ## What is NOT here yet
  *
- * docs/02 §13 also lists LOAD_WORLD, QUEUE_COMMAND, QUERY_SPECIES,
- * REQUEST_TREE, REQUEST_HISTORY_RANGE, REQUEST_SAVE, REQUEST_REWIND and
- * CREATE_BRANCH. Those address engine features that do not exist yet —
- * player commands (Milestone 9), species (Milestone 8) and persistence
- * (Milestone 10). Declaring their wire shapes now would mean inventing
- * payloads for rules nobody has written, so they arrive with their milestones
- * and bump PROTOCOL_VERSION then.
+ * Everything docs/02 §§13-14 lists is now here. QUERY_SPECIES, REQUEST_TREE and
+ * REQUEST_HISTORY_RANGE arrived with Milestone 8 (protocol 4); QUEUE_COMMAND
+ * with Milestone 9 (protocol 5); REQUEST_SAVE, SNAPSHOT_DATA and LOAD_WORLD
+ * with Milestone 10 (protocol 6); REQUEST_REWIND, RETURN_TO_PRESENT,
+ * CREATE_BRANCH, REWIND_PROGRESS and HISTORICAL_MODE_READY with Milestone 11
+ * (protocol 7).
+ *
+ * ## Why rewinding is split across the port
+ *
+ * The database lives on the main thread and the engine lives in the Worker, so
+ * neither can rewind alone. The main thread picks the newest save at or before
+ * the target — it is the only side that can see the saves — and sends the bytes
+ * with REQUEST_REWIND. The Worker restores them into a SECOND engine and
+ * replays it forward, reporting REWIND_PROGRESS per slice and finishing with
+ * HISTORICAL_MODE_READY. The live engine is never touched, which is why
+ * "return to present" is a mode switch and not a reload.
+ *
+ * ## Why saving is a message and not a storage call
+ *
+ * The engine lives in the Worker, and only the Worker can serialize it. The
+ * database lives on the main thread, where the UI can report what happened.
+ * REQUEST_SAVE therefore asks the Worker for *bytes* — it does not ask it to
+ * store anything — and SNAPSHOT_DATA transfers those bytes back for the main
+ * thread to write. LOAD_WORLD is the mirror image. Persistence stays a host
+ * concern on both sides of the port, and the engine keeps knowing nothing
+ * about storage (docs/02 §3, docs/06 §26).
  */
 
+import {
+  COMMAND_KINDS,
+  type BrushRequestDto,
+  type CommandKindDto,
+  type CommandRequestDto,
+  type CommandResultDto,
+} from "./commands";
 import type {
   EntityDetailsDto,
+  HistorySliceDto,
   SimulationSpeed,
+  SpeciesDetailsDto,
   TelemetryDto,
+  TreeSnapshotDto,
   WorldSummaryDto,
   WorkerErrorDto,
 } from "./dto";
@@ -68,6 +97,19 @@ export interface QueryEntityPayload {
   entityId: number;
 }
 
+export interface QuerySpeciesPayload {
+  speciesId: number;
+}
+
+export interface RequestHistoryRangePayload {
+  /**
+   * Return only events with `id > sinceEventId`; 0 fetches everything the
+   * engine still retains. The UI passes the highest ID it has seen, so a
+   * telemetry-triggered refresh ships only what is new.
+   */
+  sinceEventId: number;
+}
+
 export interface QueryStateHashPayload {
   /**
    * Run to exactly this tick before hashing, or `null` to hash the current
@@ -86,6 +128,64 @@ export interface RecycleBufferPayload {
   buffer: ArrayBuffer;
 }
 
+export interface QueueCommandPayload {
+  /**
+   * One canonical player command request (Milestone 9). The Worker forwards it
+   * to the engine, which validates, stamps identity and records it; the
+   * COMMAND_RESULT response echoes the outcome. Commands are the ONLY channel
+   * through which the UI can change authoritative state.
+   */
+  command: CommandRequestDto;
+}
+
+/**
+ * Why a save was asked for. Echoed back with the bytes so a save started before
+ * an autosave can be told apart from it when both answers arrive.
+ *
+ * `"branch"` is not a third flavour of the same thing: it names bytes that will
+ * become a DIFFERENT world's origin (Milestone 11), so the host must write them
+ * under a new manifest instead of appending them to the current world's saves.
+ */
+export type SaveReason = "manual" | "autosave" | "branch";
+
+export interface RequestSavePayload {
+  reason: SaveReason;
+}
+
+export interface RequestRewindPayload {
+  /**
+   * The durable save the replay starts from — the newest one at or before
+   * `targetTick`. The main thread owns the database and therefore chooses it;
+   * the Worker owns the engine and therefore replays it (docs/02 §3).
+   */
+  snapshot: unknown;
+  /** Exact tick to reconstruct. Landing anywhere else is an error, not a rounding. */
+  targetTick: number;
+}
+
+export interface CreateBranchPayload {
+  /**
+   * Tick the branch starts from. Must equal the tick of the open historical
+   * preview: a branch that claims one tick and carries another is the defect
+   * this field exists to catch.
+   */
+  branchTick: number;
+}
+
+export interface LoadWorldPayload {
+  /**
+   * A durable snapshot container (`@eon/persistence`). Typed as `unknown` for
+   * the same reason `InitNewWorldPayload.config` is: the wire must not force
+   * `@eon/protocol` to depend on the persistence package, and the bytes are
+   * validated on arrival regardless of what the types here claim.
+   */
+  snapshot: unknown;
+  /** Host pacing overrides, or `null` for `DEFAULT_HOST_RUNTIME_CONFIG`. */
+  hostRuntime: Partial<HostRuntimeConfig> | null;
+  /** Speed to resume at. */
+  speed: SimulationSpeed;
+}
+
 export interface SetRenderStreamPayload {
   /**
    * Whether the Worker should keep producing render snapshots.
@@ -99,8 +199,17 @@ export interface SetRenderStreamPayload {
 export type MainToWorkerMessage =
   | Envelope<"INIT_NEW_WORLD", InitNewWorldPayload>
   | Envelope<"SET_RUN_STATE", SetRunStatePayload>
+  | Envelope<"QUEUE_COMMAND", QueueCommandPayload>
   | Envelope<"QUERY_ENTITY", QueryEntityPayload>
+  | Envelope<"QUERY_SPECIES", QuerySpeciesPayload>
+  | Envelope<"REQUEST_TREE", Record<string, never>>
+  | Envelope<"REQUEST_HISTORY_RANGE", RequestHistoryRangePayload>
   | Envelope<"QUERY_STATE_HASH", QueryStateHashPayload>
+  | Envelope<"REQUEST_SAVE", RequestSavePayload>
+  | Envelope<"LOAD_WORLD", LoadWorldPayload>
+  | Envelope<"REQUEST_REWIND", RequestRewindPayload>
+  | Envelope<"RETURN_TO_PRESENT", Record<string, never>>
+  | Envelope<"CREATE_BRANCH", CreateBranchPayload>
   | Envelope<"RECYCLE_RENDER_BUFFER", RecycleBufferPayload>
   | Envelope<"RECYCLE_VEGETATION_BUFFER", RecycleBufferPayload>
   | Envelope<"SET_RENDER_STREAM", SetRenderStreamPayload>
@@ -111,8 +220,17 @@ export type MainToWorkerType = MainToWorkerMessage["type"];
 const MAIN_TO_WORKER_TYPES: readonly MainToWorkerType[] = [
   "INIT_NEW_WORLD",
   "SET_RUN_STATE",
+  "QUEUE_COMMAND",
   "QUERY_ENTITY",
+  "QUERY_SPECIES",
+  "REQUEST_TREE",
+  "REQUEST_HISTORY_RANGE",
   "QUERY_STATE_HASH",
+  "REQUEST_SAVE",
+  "LOAD_WORLD",
+  "REQUEST_REWIND",
+  "RETURN_TO_PRESENT",
+  "CREATE_BRANCH",
   "RECYCLE_RENDER_BUFFER",
   "RECYCLE_VEGETATION_BUFFER",
   "SET_RENDER_STREAM",
@@ -141,6 +259,23 @@ export interface VegetationSnapshotPayload {
   tick: number;
 }
 
+export interface TerrainSnapshotPayload {
+  /**
+   * Packed terrain fields, the same layout WORLD_READY ships; see
+   * `./terrainSnapshot`. Transferred. Sent again whenever an applied command
+   * changed the environment (Milestone 9) — terrain stopped being static the
+   * moment the player could raise, lower, flood and scorch it.
+   */
+  buffer: ArrayBuffer;
+  tick: number;
+}
+
+export interface CommandResultPayload {
+  result: CommandResultDto;
+  /** Tick at which the engine answered. */
+  tick: number;
+}
+
 export interface EntityDetailsPayload {
   entityId: number;
   /**
@@ -156,19 +291,77 @@ export interface EntityDetailsPayload {
   tick: number;
 }
 
+export interface SnapshotDataPayload {
+  /** The durable snapshot container. Transferred, not copied. */
+  buffer: ArrayBuffer;
+  tick: number;
+  /** Canonical state hash at `tick`; also inside the container's header. */
+  stateHash: string;
+  engineVersion: string;
+  snapshotSchemaVersion: number;
+  configHash: string;
+  seed: number;
+  /** Echoed from the request. */
+  reason: SaveReason;
+}
+
+export interface RewindProgressPayload {
+  targetTick: number;
+  /** Tick of the save the replay started from. */
+  fromTick: number;
+  currentTick: number;
+  ticksReplayed: number;
+  ticksTotal: number;
+}
+
+export interface HistoricalModeReadyPayload {
+  /** Tick now being previewed, read-only. */
+  tick: number;
+  /** Tick the live world is paused at, so the UI can say "3 548 of 7 097". */
+  presentTick: number;
+  /** Canonical hash of the reconstructed state, for verification and display. */
+  stateHash: string;
+  /** Whether this world can be rewound below `tick` (false at a branch origin). */
+  earliestTick: number;
+}
+
 export interface StateHashPayload {
   tick: number;
   hash: string;
   engineVersion: string;
 }
 
+export interface SpeciesDetailsPayload {
+  speciesId: number;
+  /** `null` when the species ID was never issued. */
+  details: SpeciesDetailsDto | null;
+  /** Tick at which the answer was read. */
+  tick: number;
+}
+
+export interface TreeSnapshotPayload {
+  tree: TreeSnapshotDto;
+}
+
+export interface HistoryEventsPayload {
+  history: HistorySliceDto;
+}
+
 export type WorkerToMainMessage =
   | Envelope<"WORLD_READY", WorldReadyPayload>
   | Envelope<"RENDER_SNAPSHOT", RenderSnapshotPayload>
   | Envelope<"VEGETATION_SNAPSHOT", VegetationSnapshotPayload>
+  | Envelope<"TERRAIN_SNAPSHOT", TerrainSnapshotPayload>
   | Envelope<"TELEMETRY", TelemetryDto>
+  | Envelope<"COMMAND_RESULT", CommandResultPayload>
   | Envelope<"ENTITY_DETAILS", EntityDetailsPayload>
+  | Envelope<"SPECIES_DETAILS", SpeciesDetailsPayload>
+  | Envelope<"TREE_SNAPSHOT", TreeSnapshotPayload>
+  | Envelope<"HISTORY_EVENTS", HistoryEventsPayload>
   | Envelope<"STATE_HASH", StateHashPayload>
+  | Envelope<"SNAPSHOT_DATA", SnapshotDataPayload>
+  | Envelope<"REWIND_PROGRESS", RewindProgressPayload>
+  | Envelope<"HISTORICAL_MODE_READY", HistoricalModeReadyPayload>
   | Envelope<"ERROR", WorkerErrorDto>;
 
 export type WorkerToMainType = WorkerToMainMessage["type"];
@@ -296,6 +489,24 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
         message: { protocolVersion: PROTOCOL_VERSION, type: "SET_RUN_STATE", payload: { speed } },
       };
     }
+    case "QUEUE_COMMAND": {
+      if (requestId === undefined) {
+        return bad("QUEUE_COMMAND requires a requestId so the result can be correlated");
+      }
+      const decoded = decodeCommandRequest(payload["command"]);
+      if (!decoded.ok) {
+        return bad(`QUEUE_COMMAND ${decoded.reason}`);
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "QUEUE_COMMAND",
+          payload: { command: decoded.command },
+        },
+      };
+    }
     case "QUERY_ENTITY": {
       const entityId = payload["entityId"];
       if (!isSafeIndex(entityId)) {
@@ -314,6 +525,56 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
         },
       };
     }
+    case "QUERY_SPECIES": {
+      const speciesId = payload["speciesId"];
+      if (!isSafeIndex(speciesId)) {
+        return bad("QUERY_SPECIES speciesId must be a non-negative safe integer");
+      }
+      if (requestId === undefined) {
+        return bad("QUERY_SPECIES requires a requestId so the answer can be correlated");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "QUERY_SPECIES",
+          payload: { speciesId },
+        },
+      };
+    }
+    case "REQUEST_TREE": {
+      if (requestId === undefined) {
+        return bad("REQUEST_TREE requires a requestId so the answer can be correlated");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_TREE",
+          payload: {},
+        },
+      };
+    }
+    case "REQUEST_HISTORY_RANGE": {
+      const sinceEventId = payload["sinceEventId"];
+      if (!isSafeIndex(sinceEventId)) {
+        return bad("REQUEST_HISTORY_RANGE sinceEventId must be a non-negative safe integer");
+      }
+      if (requestId === undefined) {
+        return bad("REQUEST_HISTORY_RANGE requires a requestId so the answer can be correlated");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_HISTORY_RANGE",
+          payload: { sinceEventId },
+        },
+      };
+    }
     case "QUERY_STATE_HASH": {
       const targetTick = payload["targetTick"];
       if (targetTick !== null && !isSafeIndex(targetTick)) {
@@ -329,6 +590,98 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
           requestId,
           type: "QUERY_STATE_HASH",
           payload: { targetTick },
+        },
+      };
+    }
+    case "REQUEST_SAVE": {
+      if (requestId === undefined) {
+        return bad("REQUEST_SAVE requires a requestId so the bytes can be correlated");
+      }
+      const reason = payload["reason"];
+      if (reason !== "manual" && reason !== "autosave" && reason !== "branch") {
+        return bad(
+          `REQUEST_SAVE reason must be "manual", "autosave" or "branch", got ${String(reason)}`,
+        );
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_SAVE",
+          payload: { reason },
+        },
+      };
+    }
+    case "LOAD_WORLD": {
+      const snapshot = payload["snapshot"];
+      if (!(snapshot instanceof ArrayBuffer)) {
+        return bad("LOAD_WORLD snapshot must be an ArrayBuffer");
+      }
+      const speed = payload["speed"];
+      if (!isSpeed(speed)) {
+        return bad(`LOAD_WORLD speed is invalid: ${String(speed)}`);
+      }
+      const hostRuntime = payload["hostRuntime"];
+      if (hostRuntime !== null && !isRecord(hostRuntime)) {
+        return bad("LOAD_WORLD hostRuntime must be an object or null");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          type: "LOAD_WORLD",
+          payload: { snapshot, hostRuntime, speed },
+        },
+      };
+    }
+    case "REQUEST_REWIND": {
+      if (requestId === undefined) {
+        return bad("REQUEST_REWIND requires a requestId so a stale reply can be discarded");
+      }
+      const snapshot = payload["snapshot"];
+      if (!(snapshot instanceof ArrayBuffer)) {
+        return bad("REQUEST_REWIND snapshot must be an ArrayBuffer");
+      }
+      const targetTick = payload["targetTick"];
+      if (!isSafeIndex(targetTick)) {
+        return bad(`REQUEST_REWIND targetTick must be a non-negative safe integer`);
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "REQUEST_REWIND",
+          payload: { snapshot, targetTick },
+        },
+      };
+    }
+    case "RETURN_TO_PRESENT": {
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          type: "RETURN_TO_PRESENT",
+          payload: {},
+        },
+      };
+    }
+    case "CREATE_BRANCH": {
+      if (requestId === undefined) {
+        return bad("CREATE_BRANCH requires a requestId so the bytes can be correlated");
+      }
+      const branchTick = payload["branchTick"];
+      if (!isSafeIndex(branchTick)) {
+        return bad("CREATE_BRANCH branchTick must be a non-negative safe integer");
+      }
+      return {
+        ok: true,
+        message: {
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          type: "CREATE_BRANCH",
+          payload: { branchTick },
         },
       };
     }
@@ -370,6 +723,91 @@ export function decodeMainToWorkerMessage(data: unknown): DecodeResult<MainToWor
 }
 
 /**
+ * Structural decode of one command request (Milestone 9).
+ *
+ * Deliberately SHAPE-only: field types, array parallelism, known kind and
+ * falloff names. Values — bounds, signs, integrality — are the ENGINE's to
+ * judge, and it answers with a deterministic COMMAND_RESULT rejection rather
+ * than a protocol error, so a slider bug in the UI produces a readable "out of
+ * bounds" toast instead of a dead message.
+ */
+function decodeCommandRequest(
+  value: unknown,
+): { ok: true; command: CommandRequestDto } | { ok: false; reason: string } {
+  if (!isRecord(value)) {
+    return { ok: false, reason: "command must be an object" };
+  }
+  const kind = value["kind"];
+  if (typeof kind !== "string" || !(COMMAND_KINDS as readonly string[]).includes(kind)) {
+    return { ok: false, reason: `command kind is unknown: ${JSON.stringify(kind)}` };
+  }
+  const targetTick = value["targetTick"];
+  if (targetTick !== undefined && targetTick !== null && typeof targetTick !== "number") {
+    return { ok: false, reason: "command targetTick must be a number, null or absent" };
+  }
+  const tickField = targetTick === undefined ? {} : { targetTick };
+
+  if (kind === "setGlobalTemperature") {
+    const offsetCentiC = value["offsetCentiC"];
+    if (typeof offsetCentiC !== "number") {
+      return { ok: false, reason: "setGlobalTemperature offsetCentiC must be a number" };
+    }
+    return { ok: true, command: { kind, offsetCentiC, ...tickField } };
+  }
+
+  if (kind === "meteor") {
+    const centerXLU = value["centerXLU"];
+    const centerYLU = value["centerYLU"];
+    const radiusLU = value["radiusLU"];
+    if (
+      typeof centerXLU !== "number" ||
+      typeof centerYLU !== "number" ||
+      typeof radiusLU !== "number"
+    ) {
+      return { ok: false, reason: "meteor centre and radius must be numbers" };
+    }
+    return { ok: true, command: { kind, centerXLU, centerYLU, radiusLU, ...tickField } };
+  }
+
+  const radiusLU = value["radiusLU"];
+  const strength = value["strength"];
+  const falloff = value["falloff"];
+  const samplesXLU = value["samplesXLU"];
+  const samplesYLU = value["samplesYLU"];
+  if (typeof radiusLU !== "number" || typeof strength !== "number") {
+    return { ok: false, reason: `${kind} radius and strength must be numbers` };
+  }
+  if (falloff !== "linear" && falloff !== "hard") {
+    return { ok: false, reason: `${kind} falloff must be "linear" or "hard"` };
+  }
+  if (!isNumberArray(samplesXLU) || !isNumberArray(samplesYLU)) {
+    return { ok: false, reason: `${kind} samples must be number arrays` };
+  }
+  if (samplesXLU.length !== samplesYLU.length || samplesXLU.length === 0) {
+    return { ok: false, reason: `${kind} sample arrays must be parallel and non-empty` };
+  }
+  const command: BrushRequestDto = {
+    kind: kind as BrushRequestDto["kind"],
+    radiusLU,
+    strength,
+    falloff,
+    samplesXLU: [...samplesXLU],
+    samplesYLU: [...samplesYLU],
+    ...tickField,
+  };
+  return { ok: true, command };
+}
+
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "number");
+}
+
+/** The wire kind of a command request, for COMMAND_RESULT echoes. */
+export function commandKindOf(command: CommandRequestDto): CommandKindDto {
+  return command.kind;
+}
+
+/**
  * Decode an untrusted `MessageEvent.data` into a worker→main message.
  *
  * The main thread is the less hostile direction — it only ever receives what
@@ -397,9 +835,17 @@ export function decodeWorkerToMainMessage(data: unknown): DecodeResult<WorkerToM
     case "WORLD_READY":
     case "RENDER_SNAPSHOT":
     case "VEGETATION_SNAPSHOT":
+    case "TERRAIN_SNAPSHOT":
     case "TELEMETRY":
+    case "COMMAND_RESULT":
     case "ENTITY_DETAILS":
+    case "SPECIES_DETAILS":
+    case "TREE_SNAPSHOT":
+    case "HISTORY_EVENTS":
     case "STATE_HASH":
+    case "SNAPSHOT_DATA":
+    case "REWIND_PROGRESS":
+    case "HISTORICAL_MODE_READY":
     case "ERROR":
       return { ok: true, message: data as unknown as WorkerToMainMessage };
     default:

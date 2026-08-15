@@ -252,14 +252,23 @@ export type { EngineContext } from "./EngineContext";
 // cannot change the world it is looking at.
 export {
   RenderFlagBit,
+  TEMPERATURE_DISPLAY_MAX_CENTI_C,
+  TEMPERATURE_DISPLAY_MIN_CENTI_C,
+  capacityDisplayReference,
   speedLUPerTick,
   writeRenderSnapshot,
   writeTerrainFields,
   writeVegetationField,
   type RenderSnapshotCounts,
   type RenderSnapshotWriter,
+  type StaticWorldFieldsWriter,
 } from "./render/renderSnapshot";
-export { collectTelemetryAggregates, queryEntity, type EntityDetails } from "./render/queryEntity";
+export {
+  collectTelemetryAggregates,
+  queryEntity,
+  type EntityDetails,
+  type TraitMeans,
+} from "./render/queryEntity";
 
 // Phase profiling hooks (CLAUDE.md "Profiling"). The engine reports phase
 // boundaries; the host owns the clock.
@@ -272,9 +281,124 @@ export {
 } from "./profiling/TickProfiler";
 
 // Engine shell, state hash and snapshots (tasks B05/B06/B08).
+export {
+  SpeciesStore,
+  SpeciesEndReason,
+  SPECIES_END_REASON_NAMES,
+  SpeciesSnapshotError,
+  type SpeciesRecord,
+  type SplitCandidateState,
+  type SpeciesSnapshot,
+} from "./evolution/SpeciesStore";
+export {
+  TRAIT_VECTOR_VERSION,
+  TRAIT_DIMENSIONS,
+  TRAIT_DIM_NAMES,
+  TraitDim,
+  buildTraitRanges,
+  writeTraitVector,
+  traitDistanceSumSq,
+  rmsThresholdSumSq,
+  type TraitRanges,
+} from "./evolution/traitVector";
+export { analyzeSpecies } from "./evolution/speciation";
+export {
+  EventStore,
+  WorldEventType,
+  WORLD_EVENT_TYPE_COUNT,
+  WORLD_EVENT_TYPE_NAMES,
+  EventSeverity,
+  EVENT_SEVERITY_NAMES,
+  EventSnapshotError,
+  type WorldEventRecord,
+  type WorldEventInput,
+  type EventStoreSnapshot,
+} from "./history/EventStore";
+export {
+  EventDetectors,
+  EventDetectorsSnapshotError,
+  collectStatisticsAndDetectEvents,
+  reportCombatKill,
+  POPULATION_BASELINE_WINDOW_SAMPLES,
+  POPULATION_EVENT_MIN_ABS_DELTA,
+  MASS_EXTINCTION_WINDOW_SAMPLES,
+  MASS_EXTINCTION_MAX_LISTED_SPECIES,
+  CARNIVORE_PERSIST_SAMPLES,
+  CARNIVORE_MIN_INTERVAL_ENERGY,
+  type EventDetectorsSnapshot,
+} from "./history/eventDetection";
+export {
+  StatisticsStore,
+  StatisticsSnapshotError,
+  WorldStatMetric,
+  WORLD_STAT_METRIC_COUNT,
+  WORLD_STAT_METRIC_NAMES,
+  SpeciesStatMetric,
+  SPECIES_STAT_METRIC_COUNT,
+  SPECIES_STAT_METRIC_NAMES,
+  STATS_TIER_COUNT,
+  STATS_TIER_RATIO,
+  STATS_TIER_CAPACITY,
+  SPECIES_SERIES_CAPACITY,
+  type StatisticsSnapshot,
+  type ExtractedSeries,
+} from "./history/StatisticsStore";
+export {
+  querySpecies,
+  queryTree,
+  queryHistory,
+  type SpeciesSummary,
+  type SpeciesDetails,
+  type TreeSnapshot,
+  type HistorySlice,
+} from "./render/querySpecies";
+export {
+  COMMAND_SCHEMA_VERSION,
+  InterventionKind,
+  INTERVENTION_KIND_COUNT,
+  INTERVENTION_KIND_NAMES,
+  COMMAND_TYPE_NAMES,
+  BrushFalloff,
+  BRUSH_FALLOFF_NAMES,
+  CommandRejectReason,
+  COMMAND_REJECT_REASON_NAMES,
+  isBrushKind,
+  brushStrengthBound,
+  brushStrengthIsSigned,
+  validateCommandInput,
+  type SimulationCommand,
+  type GlobalTemperatureCommand,
+  type BrushCommand,
+  type MeteorCommand,
+  type BrushKind,
+  type CommandInput,
+  type GlobalTemperatureInput,
+  type BrushInput,
+  type MeteorInput,
+  type CommandQueueResult,
+} from "./commands/SimulationCommand";
+export {
+  CommandLog,
+  CommandLogSnapshotError,
+  type CommandLogSnapshot,
+} from "./commands/CommandLog";
+export { applyCommandsForTick } from "./commands/applyCommands";
+export { FIXTURE_COMMANDS } from "./fixtures/fixtureCommands";
+export { recomputeDerivedRegion } from "./world/recomputeRegion";
 // NOTE: `internal.ts` is deliberately not re-exported — the authoritative PRNG
 // must stay unreachable from outside this package (see internal.ts).
 export { SimulationEngine, type SimulationEngineOptions, MAX_TICK } from "./SimulationEngine";
 export { computeStateHash, STATE_HASH_MAGIC } from "./hashState";
 export { type EngineCoreSnapshot, SnapshotCompatibilityError } from "./snapshot/EngineSnapshot";
 export { engineFromSnapshot } from "./snapshot/deserialize";
+
+// Historical reconstruction and branch origins (Milestone 11, K07–K10).
+export {
+  Reconstruction,
+  ReconstructionError,
+  reconstructAt,
+  prepareBranchSnapshot,
+  type ReconstructionOptions,
+  type ReconstructAtOptions,
+  type ReconstructionProgress,
+} from "./replay/reconstruct";

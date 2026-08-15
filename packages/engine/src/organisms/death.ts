@@ -1,5 +1,7 @@
 import { createCarcass } from "../ecology/carcasses";
 import type { EngineContext } from "../EngineContext";
+import { SpeciesEndReason } from "../evolution/SpeciesStore";
+import { EventSeverity, WorldEventType } from "../history/EventStore";
 
 /**
  * Death causes (docs/04 §22).
@@ -54,9 +56,15 @@ export const DEATH_CAUSE_NAMES: readonly string[] = [
  * does. Every cause leaves a carcass, combat included and combat not specially —
  * a starved organism is as edible as a killed one, which is what keeps
  * scavenging available to lineages that never learn to fight.
+ *
+ * Species accounting happens here too (docs/10 §14 "species counters"): the
+ * member is removed from its registry record, and the death that empties a
+ * species marks the extinction at THIS tick and emits the event (docs/05 §8) —
+ * extinction is a fact of the death, not something the next scheduled analysis
+ * discovers late.
  */
-export function finalizeDeaths(ctx: EngineContext): void {
-  const { organisms, genomes, scratch } = ctx;
+export function finalizeDeaths(ctx: EngineContext, tick: number): void {
+  const { organisms, genomes, scratch, species, events } = ctx;
 
   for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
     if (scratch.pendingDeath[slot] !== 1) {
@@ -71,6 +79,23 @@ export function finalizeDeaths(ctx: EngineContext): void {
     scratch.deathCause[slot] = DeathCause.None;
     organisms.deathsByCause[cause] = (organisms.deathsByCause[cause] as number) + 1;
     organisms.totalDeaths += 1;
+
+    const speciesId = organisms.speciesId[slot] as number;
+    if (species.recordDeath(speciesId) === 0) {
+      species.endSpecies(speciesId, tick, SpeciesEndReason.Extinct);
+      events.append({
+        tick,
+        type: WorldEventType.SpeciesExtinct,
+        severity: EventSeverity.Notable,
+        speciesIds: [speciesId],
+        entityIds: [organisms.entityId[slot] as number],
+        regionXPos: organisms.x[slot] as number,
+        regionYPos: organisms.y[slot] as number,
+        regionRadiusPos: 0,
+        payloadVersion: 1,
+        payload: [cause],
+      });
+    }
 
     createCarcass(ctx, slot);
     genomes.clearSlot(slot);

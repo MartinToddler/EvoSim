@@ -5,7 +5,12 @@ import { Gene } from "../genetics/genes";
 import { POS_SCALE, Q } from "../math/fixed";
 import { applyMetabolismGrowthThermalAging } from "../organisms/metabolism";
 import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
-import { createTestWorld, spawnTestOrganism, type TestWorld } from "../testing/harness";
+import {
+  createTestWorld,
+  reassignTestSpecies,
+  spawnTestOrganism,
+  type TestWorld,
+} from "../testing/harness";
 import { canReproduce, reproductionEnergyCost, resolveReproduction } from "./reproduction";
 
 /**
@@ -284,9 +289,9 @@ describe("reproduction energy accounting (task E02)", () => {
 
 describe("child identity and lineage (task E05)", () => {
   it("records the parent, increments the generation and inherits the species", () => {
-    const { ctx, slot } = worldWithAdult();
+    const { world, ctx, slot } = worldWithAdult();
     ctx.organisms.generation[slot] = 7;
-    ctx.organisms.speciesId[slot] = 3;
+    reassignTestSpecies(world, slot, 3);
     requestReproduction(ctx, slot);
     const parentId = ctx.organisms.entityId[slot] as number;
 

@@ -6,9 +6,13 @@
  * enough to send outright and far cheaper than describing it. Two messages
  * carry it, because the two halves change at wildly different rates:
  *
- * - **Terrain** (biome + elevation) is sent once with WORLD_READY. Nothing in
- *   Milestones 0-6 edits it; terrain raise/lower is Milestone 9 (task J05),
- *   and when it lands it will resend the affected field rather than stream it.
+ * - **Terrain** (biome, elevation and — since layout 2 — temperature,
+ *   moisture, fertility and plant capacity, for the Milestone 7 world layers)
+ *   is sent once with WORLD_READY. Nothing in Milestones 0-7 edits any of it;
+ *   the player interventions of Milestone 9 (tasks J03-J05) are what will make
+ *   these fields move, and when they land they will resend the affected field
+ *   rather than stream it — exactly the plan already recorded here for terrain
+ *   raise/lower.
  * - **Vegetation** is sent on its own low-rate cadence. docs/06 §2 puts plant
  *   display at ~2-5 Hz: biomass changes slowly, the environment phase only
  *   runs every `time.environmentInterval` ticks, and a 64 KB field at 60 Hz
@@ -24,7 +28,17 @@ export const TERRAIN_SNAPSHOT_MAGIC = 0x454f4e54;
 /** `"EONV"` */
 export const VEGETATION_SNAPSHOT_MAGIC = 0x454f4e56;
 
-export const FIELD_SNAPSHOT_LAYOUT_VERSION = 1;
+/**
+ * Bumped to 2 for Milestone 7: the terrain snapshot grew four display planes
+ * (temperature, moisture, fertility, plant capacity) for the world layers.
+ * The vegetation snapshot's shape is unchanged, but it shares this constant —
+ * both ends of the wire always ship together, and one number that must match
+ * is simpler than two that usually do.
+ */
+export const FIELD_SNAPSHOT_LAYOUT_VERSION = 2;
+
+/** Byte planes in a terrain snapshot, in buffer order. */
+const TERRAIN_PLANES = 7;
 
 export const FieldHeader = {
   Magic: 0,
@@ -96,11 +110,25 @@ export interface TerrainSnapshotView {
   readonly elevation: Uint8Array;
   /** Plant biomass as a fraction of that cell's capacity, 0-255. */
   readonly vegetation: Uint8Array;
+  /**
+   * Temperature rescaled to 0-255 over the display range published in
+   * `WorldSummaryDto.display` (layout 2, Milestone 7 world layers).
+   */
+  readonly temperature: Uint8Array;
+  /** Effective moisture as a fraction of full saturation, 0-255. */
+  readonly moisture: Uint8Array;
+  /** Soil fertility as a fraction of maximum, 0-255. */
+  readonly fertility: Uint8Array;
+  /**
+   * Plant capacity as a fraction of the display reference in
+   * `WorldSummaryDto.display.capacityDisplayReference`, 0-255.
+   */
+  readonly capacity: Uint8Array;
 }
 
 export function createTerrainBuffer(gridSize: number): ArrayBuffer {
   const cellCount = validateGridSize(gridSize);
-  const buffer = new ArrayBuffer(HEADER_BYTES + cellCount * 3);
+  const buffer = new ArrayBuffer(HEADER_BYTES + cellCount * TERRAIN_PLANES);
   writeHeader(buffer, TERRAIN_SNAPSHOT_MAGIC, gridSize);
   return buffer;
 }
@@ -109,20 +137,26 @@ export function viewTerrainSnapshot(buffer: ArrayBuffer): TerrainSnapshotView {
   const header = readHeader(buffer, TERRAIN_SNAPSHOT_MAGIC, "terrain snapshot");
   const gridSize = header[FieldHeader.GridSize] as number;
   const cellCount = header[FieldHeader.CellCount] as number;
-  if (buffer.byteLength !== HEADER_BYTES + cellCount * 3) {
+  if (buffer.byteLength !== HEADER_BYTES + cellCount * TERRAIN_PLANES) {
     throw new FieldSnapshotFormatError(
       `terrain snapshot buffer is ${buffer.byteLength} bytes but its header describes ` +
-        `${HEADER_BYTES + cellCount * 3}`,
+        `${HEADER_BYTES + cellCount * TERRAIN_PLANES}`,
     );
   }
+  const plane = (index: number): Uint8Array =>
+    new Uint8Array(buffer, HEADER_BYTES + cellCount * index, cellCount);
   return {
     buffer,
     header,
     gridSize,
     cellCount,
-    biome: new Uint8Array(buffer, HEADER_BYTES, cellCount),
-    elevation: new Uint8Array(buffer, HEADER_BYTES + cellCount, cellCount),
-    vegetation: new Uint8Array(buffer, HEADER_BYTES + cellCount * 2, cellCount),
+    biome: plane(0),
+    elevation: plane(1),
+    vegetation: plane(2),
+    temperature: plane(3),
+    moisture: plane(4),
+    fertility: plane(5),
+    capacity: plane(6),
   };
 }
 

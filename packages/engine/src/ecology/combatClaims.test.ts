@@ -30,7 +30,7 @@ const PACIFIST = { [Gene.AttackPower]: 0, [Gene.Armor]: 0 } as const;
 function combat(world: TestWorld): void {
   world.ctx.spatialPost.rebuild(world.organisms);
   buildCombatClaims(world.ctx);
-  resolveCombatSimultaneously(world.ctx);
+  resolveCombatSimultaneously(world.ctx, 0);
 }
 
 function intendAttack(world: TestWorld, ...slots: number[]): void {
@@ -237,7 +237,7 @@ describe("simultaneous resolution", () => {
     expect(world.organisms.kills[a]).toBe(1);
     expect(world.organisms.kills[b]).toBe(1);
 
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
     expect(world.organisms.liveCount).toBe(0);
     expect(world.organisms.deathsByCause[DeathCause.Combat]).toBe(2);
     // Both bodies became food.
@@ -290,7 +290,7 @@ describe("simultaneous resolution", () => {
       attackDamageQ(world.ctx, first, target) + attackDamageQ(world.ctx, second, target),
     );
     expect(world.organisms.totalDeaths).toBe(0);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
     expect(world.organisms.totalDeaths).toBe(1);
   });
 });
@@ -365,7 +365,7 @@ describe("kill attribution", () => {
     const placeholder = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
     const lowerId = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
     markDeath(world.ctx, placeholder, DeathCause.Other);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
     const higherId = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
 
     expect(higherId).toBeLessThan(lowerId); // storage order
@@ -411,7 +411,7 @@ describe("target selection", () => {
     const placeholder = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
     const lowerIdTarget = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
     markDeath(world.ctx, placeholder, DeathCause.Other);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
     const higherIdTarget = spawnTestOrganism(world, { ...place, genesQ: PACIFIST });
     const attacker = spawnTestOrganism(world, { ...place, genesQ: FIGHTER });
 
@@ -438,13 +438,13 @@ describe("target selection", () => {
 
     world.ctx.spatialPost.rebuild(world.organisms);
     markDeath(world.ctx, victim, DeathCause.Other);
-    finalizeDeaths(world.ctx);
+    finalizeDeaths(world.ctx, 0);
 
     const energyBefore = world.organisms.energy[attacker] as number;
     intendAttack(world, attacker);
     // Deliberately NOT rebuilt: the index still lists the released slot.
     buildCombatClaims(world.ctx);
-    resolveCombatSimultaneously(world.ctx);
+    resolveCombatSimultaneously(world.ctx, 0);
 
     expect(world.ctx.scratch.damageAccumQ[victim]).toBe(0);
     expect(world.organisms.energy[attacker]).toBe(energyBefore);

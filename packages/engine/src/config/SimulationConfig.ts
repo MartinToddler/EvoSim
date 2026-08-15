@@ -508,6 +508,62 @@ export interface HistoryConfig {
 }
 
 /**
+ * Player intervention constants (docs/01 §4, docs/02 §§15–16, docs/03 §25;
+ * Milestone 9).
+ *
+ * Everything a canonical command may carry is bounded here, and every effect an
+ * intervention has on the world is scaled by a constant from here — no literal
+ * strengths anywhere in the appliers (CLAUDE.md "Configuration"). Strengths are
+ * per-application deltas: the PLAYER chooses a strength within the bound each
+ * stroke; the accumulated offsets have their own bounds so repeated strokes
+ * saturate instead of wrapping the underlying Int16 rows.
+ */
+export interface InterventionConfig {
+  /**
+   * Hard cap on canonical brush samples one command may carry. Bounds both the
+   * command payload and the phase-0 work one command can demand.
+   */
+  maxBrushSamplesPerCommand: number;
+  /** Canonical stroke resample spacing in whole LU (docs/02 §16). */
+  brushSampleSpacingLU: number;
+  minBrushRadiusLU: number;
+  maxBrushRadiusLU: number;
+  /** Largest per-application temperature delta at the brush centre (centi-°C). */
+  maxTemperatureBrushStrengthCentiC: number;
+  /** Largest per-application moisture delta at the brush centre (Q). */
+  maxMoistureBrushStrengthQ: number;
+  /** Largest per-application fertility delta at the brush centre (Q). */
+  maxFertilityBrushStrengthQ: number;
+  /** Largest per-application elevation delta at the brush centre (Q). */
+  maxTerrainBrushStrengthQ: number;
+  /** Largest per-application biomass delta at the brush centre (biomass units). */
+  maxBiomassBrushStrengthUnits: number;
+  /** Saturation bound for the accumulated local temperature offset (centi-°C). */
+  maxLocalTemperatureOffsetCentiC: number;
+  /** Bound for the global temperature offset command (centi-°C). */
+  maxGlobalTemperatureOffsetCentiC: number;
+  /**
+   * ADD_BIOMASS ceiling as a Q multiple of the cell's capacity (>= Q).
+   * docs/03 §27 explicitly allows transient brush overfill above capacity;
+   * this bounds how far above. Growth decays overfill back toward capacity.
+   */
+  biomassOverfillLimitQ: number;
+  /** Meteor catastrophe constants (docs/03 §25). All effects fall off linearly to the rim. */
+  meteor: {
+    minRadiusLU: number;
+    maxRadiusLU: number;
+    /** Organism health damage at the impact centre (Q; Q = a full health bar). */
+    damageQ: number;
+    /** Fraction of plant biomass destroyed at the centre (Q). */
+    biomassLossQ: number;
+    /** Elevation drop at the centre (Q). */
+    depressionQ: number;
+    /** Fertility change at the centre (Q, signed; negative = scorched soil). */
+    fertilityDeltaQ: number;
+  };
+}
+
+/**
  * Hard safety limits (docs/03 §2, docs/08 §4).
  *
  * These are authoritative: reaching a cap deterministically changes outcomes
@@ -537,5 +593,6 @@ export interface SimulationConfig {
   reproduction: ReproductionConfig;
   species: SpeciesConfig;
   history: HistoryConfig;
+  interventions: InterventionConfig;
   limits: LimitConfig;
 }

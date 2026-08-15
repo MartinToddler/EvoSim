@@ -7,10 +7,14 @@ import { TickPhase, type TickPhaseId, type TickProfiler } from "../profiling/Tic
 import { collectTelemetryAggregates, queryEntity } from "./queryEntity";
 import {
   RenderFlagBit,
+  TEMPERATURE_DISPLAY_MAX_CENTI_C,
+  TEMPERATURE_DISPLAY_MIN_CENTI_C,
+  capacityDisplayReference,
   writeRenderSnapshot,
   writeTerrainFields,
   writeVegetationField,
   type RenderSnapshotWriter,
+  type StaticWorldFieldsWriter,
 } from "./renderSnapshot";
 
 /**
@@ -53,6 +57,17 @@ function createEngine(seed = 0xe0a12026): SimulationEngine {
     config.world.validity.minTotalPlantCapacity * areaRatio,
   );
   return new SimulationEngine({ seed, config });
+}
+
+function createStaticWriter(cellCount: number): StaticWorldFieldsWriter {
+  return {
+    biome: new Uint8Array(cellCount),
+    elevation: new Uint8Array(cellCount),
+    temperature: new Uint8Array(cellCount),
+    moisture: new Uint8Array(cellCount),
+    fertility: new Uint8Array(cellCount),
+    capacity: new Uint8Array(cellCount),
+  };
 }
 
 function createWriter(organismCapacity: number, carcassCapacity: number): RenderSnapshotWriter {
@@ -243,16 +258,50 @@ describe("writeVegetationField and writeTerrainFields", () => {
 
   it("copies biome indices verbatim and rescales elevation to a byte", () => {
     const engine = createEngine();
-    const biome = new Uint8Array(engine.environment.cellCount);
-    const elevation = new Uint8Array(engine.environment.cellCount);
-    writeTerrainFields(engine, biome, elevation);
+    const writer = createStaticWriter(engine.environment.cellCount);
+    writeTerrainFields(engine, writer);
 
-    expect([...biome]).toEqual([...engine.environment.biome]);
+    expect([...writer.biome]).toEqual([...engine.environment.biome]);
     for (let cell = 0; cell < engine.environment.cellCount; cell += 1) {
-      expect(elevation[cell]).toBe(
+      expect(writer.elevation[cell]).toBe(
         Math.round(((engine.environment.elevationQ[cell] as number) * 255) / Q),
       );
     }
+  });
+
+  it("quantizes the layer planes over their published display ranges", () => {
+    const engine = createEngine();
+    const writer = createStaticWriter(engine.environment.cellCount);
+    writeTerrainFields(engine, writer);
+
+    const reference = capacityDisplayReference(engine.config);
+    const span = TEMPERATURE_DISPLAY_MAX_CENTI_C - TEMPERATURE_DISPLAY_MIN_CENTI_C;
+    for (let cell = 0; cell < engine.environment.cellCount; cell += 1) {
+      const centiC = engine.environment.getTemperatureCentiC(cell);
+      const expected = Math.min(
+        255,
+        Math.max(0, Math.round(((centiC - TEMPERATURE_DISPLAY_MIN_CENTI_C) * 255) / span)),
+      );
+      expect(writer.temperature[cell]).toBe(expected);
+      expect(writer.moisture[cell]).toBe(
+        Math.round((engine.environment.getMoistureQ(cell) * 255) / Q),
+      );
+      expect(writer.fertility[cell]).toBe(
+        Math.round(((engine.environment.fertilityQ[cell] as number) * 255) / Q),
+      );
+      expect(writer.capacity[cell]).toBe(
+        Math.min(
+          255,
+          Math.round(((engine.environment.plantCapacity[cell] as number) * 255) / reference),
+        ),
+      );
+    }
+    // The default world must actually exercise the temperature range interior:
+    // an all-0 or all-255 plane would mean the display range does not cover
+    // what the generator produces.
+    const temperatures = [...writer.temperature];
+    expect(Math.min(...temperatures)).toBeGreaterThan(0);
+    expect(Math.max(...temperatures)).toBeLessThan(255);
   });
 
   it("leaves the state hash untouched", () => {
@@ -260,11 +309,7 @@ describe("writeVegetationField and writeTerrainFields", () => {
     engine.stepMany(20);
     const before = engine.computeStateHash();
     writeVegetationField(engine, new Uint8Array(engine.environment.cellCount));
-    writeTerrainFields(
-      engine,
-      new Uint8Array(engine.environment.cellCount),
-      new Uint8Array(engine.environment.cellCount),
-    );
+    writeTerrainFields(engine, createStaticWriter(engine.environment.cellCount));
     expect(engine.computeStateHash()).toBe(before);
   });
 
@@ -305,6 +350,48 @@ describe("queryEntity", () => {
     expect(details.maxEnergy).toBeGreaterThan(0);
     expect(details.biomeName.length).toBeGreaterThan(0);
     expect(Number.isFinite(details.cellTemperatureC)).toBe(true);
+  });
+
+  it("reports running costs and the last tick's brain view (docs/06 §11)", () => {
+    const engine = createEngine();
+    engine.stepMany(30);
+    const writer = createWriter(
+      engine.config.limits.maxOrganisms,
+      engine.config.limits.maxCarcasses,
+    );
+    writeRenderSnapshot(engine, writer);
+    const details = queryEntity(engine, writer.organismId[0] as number);
+    expect(details).not.toBeNull();
+    if (details === null) {
+      return;
+    }
+
+    // Costs are energy per tick, never negative, and the basal floor applies.
+    expect(details.costBasalPerTick).toBeGreaterThanOrEqual(
+      engine.config.organism.basal.minimumBasalPerTick,
+    );
+    expect(details.costMovementPerTick).toBeGreaterThanOrEqual(0);
+    expect(details.thermalStress).toBeGreaterThanOrEqual(0);
+    expect(details.thermalStress).toBeLessThanOrEqual(1);
+    expect(details.reproductionCooldownTicks).toBeGreaterThanOrEqual(0);
+
+    // The brain view is one value per input/output, in unit ranges.
+    expect(details.brainInputs).toHaveLength(20);
+    expect(details.brainIntents).toHaveLength(5);
+    for (const input of details.brainInputs) {
+      expect(input).toBeGreaterThanOrEqual(-1);
+      expect(input).toBeLessThanOrEqual(1);
+    }
+    // The bias input is a constant +1 by definition — proof the values are the
+    // slot's real sensor block and not zero-fill.
+    expect(details.brainInputs[0]).toBe(1);
+    const [throttle, turn, eat, attack, reproduce] = details.brainIntents as number[];
+    for (const positive of [throttle, eat, attack, reproduce]) {
+      expect(positive).toBeGreaterThanOrEqual(0);
+      expect(positive).toBeLessThanOrEqual(1);
+    }
+    expect(turn).toBeGreaterThanOrEqual(-1);
+    expect(turn).toBeLessThanOrEqual(1);
   });
 
   it("returns null for an entity that never existed", () => {
@@ -352,6 +439,44 @@ describe("queryEntity", () => {
     collectTelemetryAggregates(engine);
     expect(engine.computeStateHash()).toBe(before);
   });
+
+  it("shows a just-born organism an honestly blank brain, never a stale one", () => {
+    // A newborn has not sensed or decided anything yet. Between its spawn tick
+    // and its first full tick the inspector must show zeros — not whatever the
+    // slot's previous occupant left in scratch (spawnOrganism clears it).
+    const engine = createEngine();
+    // Skip ahead to the first reproductive era cheaply, then hunt tick by tick.
+    engine.stepMany(1500);
+    let previousBirths = engine.organisms.totalBirths;
+    let newbornId = -1;
+    for (let i = 0; i < 4000 && newbornId < 0; i += 1) {
+      engine.step();
+      if (engine.organisms.totalBirths === previousBirths) {
+        continue;
+      }
+      previousBirths = engine.organisms.totalBirths;
+      const organisms = engine.organisms;
+      for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+        // Age ticks up in physiology, which runs before reproduction: only an
+        // organism born THIS tick can still be at age 0 here.
+        if (organisms.alive[slot] === 1 && (organisms.ageTicks[slot] as number) === 0) {
+          newbornId = organisms.entityId[slot] as number;
+          break;
+        }
+      }
+    }
+    expect(newbornId).toBeGreaterThan(0);
+    const details = queryEntity(engine, newbornId);
+    expect(details).not.toBeNull();
+    if (details === null) {
+      return;
+    }
+    // Every sensed value and intent is zero — the bias input would read 1 the
+    // moment a real sensor pass has run for this slot.
+    expect(details.brainInputs.every((value) => value === 0)).toBe(true);
+    expect(details.brainIntents.every((value) => value === 0)).toBe(true);
+    expect(details.costMovementPerTick).toBe(0);
+  });
 });
 
 describe("collectTelemetryAggregates", () => {
@@ -370,6 +495,65 @@ describe("collectTelemetryAggregates", () => {
     expect(aggregates.plantBiomass).toBe(biomass);
     expect(aggregates.plantCapacity).toBe(capacity);
     expect(aggregates.maxGeneration).toBeGreaterThanOrEqual(0);
+  });
+
+  it("reports trait means that agree with per-entity queries", () => {
+    const engine = createEngine();
+    engine.stepMany(40);
+    const aggregates = collectTelemetryAggregates(engine);
+    expect(aggregates.population).toBeGreaterThan(0);
+    expect(aggregates.organismMass).toBeGreaterThan(0);
+    expect(aggregates.meanEnergyFraction).toBeGreaterThan(0);
+    expect(aggregates.meanEnergyFraction).toBeLessThanOrEqual(1);
+
+    // Cross-check the means against the individually queried population — the
+    // two paths must describe the same world in the same units.
+    const writer = createWriter(
+      engine.config.limits.maxOrganisms,
+      engine.config.limits.maxCarcasses,
+    );
+    const counts = writeRenderSnapshot(engine, writer);
+    let dietSum = 0;
+    let speedSum = 0;
+    let visionSum = 0;
+    for (let i = 0; i < counts.organismCount; i += 1) {
+      const details = queryEntity(engine, writer.organismId[i] as number);
+      expect(details).not.toBeNull();
+      if (details !== null) {
+        dietSum += details.diet;
+        speedSum += details.maxSpeedLUPerTick;
+        visionSum += details.visionRangeLU;
+      }
+    }
+    const population = counts.organismCount;
+    expect(aggregates.traitMeans.diet).toBeCloseTo(dietSum / population, 10);
+    expect(aggregates.traitMeans.maxSpeedLUPerTick).toBeCloseTo(speedSum / population, 10);
+    expect(aggregates.traitMeans.visionRangeLU).toBeCloseTo(visionSum / population, 10);
+    expect(aggregates.traitMeans.attack).toBeGreaterThanOrEqual(0);
+    expect(aggregates.traitMeans.attack).toBeLessThanOrEqual(1);
+  });
+
+  it("stays finite in every field the charts consume", () => {
+    // The UI plots these numbers directly; a NaN would poison a chart's whole
+    // scale. (The population-zero branch returns literal zeros by construction
+    // — see collectTelemetryAggregates — so the live path is the one to probe.)
+    const engine = createEngine();
+    engine.stepMany(200);
+    const aggregates = collectTelemetryAggregates(engine);
+    for (const value of [
+      aggregates.organismMass,
+      aggregates.meanEnergyFraction,
+      aggregates.traitMeans.diet,
+      aggregates.traitMeans.maxSpeedLUPerTick,
+      aggregates.traitMeans.adultRadiusLU,
+      aggregates.traitMeans.visionRangeLU,
+      aggregates.traitMeans.attack,
+      aggregates.traitMeans.armor,
+      aggregates.traitMeans.metabolicPace,
+      aggregates.traitMeans.thermalOptimumC,
+    ]) {
+      expect(Number.isFinite(value)).toBe(true);
+    }
   });
 });
 

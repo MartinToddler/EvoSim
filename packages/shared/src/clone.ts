@@ -15,7 +15,16 @@ export function deepCloneJson<T>(value: T): T {
   }
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(value)) {
-    out[key] = deepCloneJson((value as Record<string, unknown>)[key]);
+    // `JSON.parse` can produce a real own "__proto__" key, and snapshots are
+    // JSON that may come from disk. Plain assignment would invoke
+    // Object.prototype's setter and reshape the clone's prototype instead of
+    // copying the data, so every key is defined as an own property.
+    Object.defineProperty(out, key, {
+      value: deepCloneJson((value as Record<string, unknown>)[key]),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return out as T;
 }

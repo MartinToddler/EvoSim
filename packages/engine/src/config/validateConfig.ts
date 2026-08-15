@@ -2,6 +2,7 @@ import type { DeepReadonly } from "@eon/shared";
 import { ANGLE_STEPS, POS_SCALE, Q, qmul } from "../math/fixed";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
+import { DEFAULT_CONFIG } from "./defaultConfig";
 import type { SimulationConfig } from "./SimulationConfig";
 
 /** Error thrown when a SimulationConfig violates structural invariants. */
@@ -40,6 +41,35 @@ const UINT16_MAX = 65535;
  * and leave the store claiming to have created meat it does not hold.
  */
 const UINT32_MAX = 4_294_967_295;
+
+/**
+ * Largest value an `Int16Array` row can hold. The accumulated local
+ * temperature offset saturation bound must fit this row or repeated brush
+ * strokes would wrap it.
+ */
+const INT16_MAX = 32_767;
+
+/**
+ * Allocation ceiling for the environment grid (16.7M cells) — far above the
+ * 256 the MVP uses. Without it a typo reaches `new Uint16Array()` and surfaces
+ * as a bare RangeError naming no config field (foundation-gate ADR §6).
+ */
+const MAX_ENV_GRID_SIZE = 4096;
+
+/**
+ * Largest world edge in LU whose fixed-point positions still fit Int32.
+ *
+ * Organism positions are `Int32Array` sub-units at POS_SCALE per LU
+ * (docs/03 §§3, 6), so a wider world would wrap coordinates rather than merely
+ * be large (foundation-gate ADR §6).
+ */
+const MAX_WORLD_SIZE_LU = Math.floor(2_147_483_647 / POS_SCALE);
+
+/** Sanity ceiling on canonical brush samples per command (allocation bound). */
+const MAX_BRUSH_SAMPLES_CEILING = 1024;
+
+/** Sanity ceiling on the ADD_BIOMASS overfill multiplier (16×capacity). */
+const MAX_BIOMASS_OVERFILL_LIMIT_Q = 16 * Q;
 
 function check(condition: boolean, message: string): void {
   if (!condition) {
@@ -141,6 +171,7 @@ export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
     `config schemaVersion ${config.schemaVersion} does not match supported version ${CONFIG_SCHEMA_VERSION}`,
   );
 
+  checkSchemaShape(config);
   validateWorld(config);
   validateTime(config);
   validatePlants(config);
@@ -153,7 +184,94 @@ export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
   validateReproduction(config);
   validateSpecies(config);
   validateHistory(config);
+  validateInterventions(config);
   validateLimits(config);
+}
+
+function describeType(value: unknown): string {
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  if (value === null) {
+    return "null";
+  }
+  return typeof value;
+}
+
+/**
+ * Require `actual` to have exactly the shape of `template`.
+ *
+ * Arrays match element-wise against their first template element, so tables
+ * whose length is a tuning choice (elevation octaves) stay free; every other
+ * node must have exactly the same key set and the same primitive types.
+ */
+function checkShape(actual: unknown, template: unknown, path: string): void {
+  if (Array.isArray(template)) {
+    check(Array.isArray(actual), `${path} must be an array, got ${describeType(actual)}`);
+    if (template.length === 0) {
+      return;
+    }
+    const element: unknown = template[0];
+    for (let i = 0; i < (actual as unknown[]).length; i += 1) {
+      checkShape((actual as unknown[])[i], element, `${path}[${i}]`);
+    }
+    return;
+  }
+
+  if (template !== null && typeof template === "object") {
+    check(
+      actual !== null && typeof actual === "object" && !Array.isArray(actual),
+      `${path === "" ? "config" : path} must be an object, got ${describeType(actual)}`,
+    );
+    const templateKeys = Object.keys(template);
+    const actualKeys = Object.keys(actual as object);
+    for (const key of actualKeys) {
+      check(
+        Object.prototype.hasOwnProperty.call(template, key),
+        `${path === "" ? key : `${path}.${key}`} is not a field of config schema ` +
+          `${CONFIG_SCHEMA_VERSION}. Unknown fields are rejected because they would silently ` +
+          "enter the authoritative config hash and change world identity",
+      );
+    }
+    for (const key of templateKeys) {
+      check(
+        Object.prototype.hasOwnProperty.call(actual, key),
+        `${path === "" ? key : `${path}.${key}`} is missing from the configuration`,
+      );
+    }
+    for (const key of templateKeys) {
+      checkShape(
+        (actual as Record<string, unknown>)[key],
+        (template as Record<string, unknown>)[key],
+        path === "" ? key : `${path}.${key}`,
+      );
+    }
+    return;
+  }
+
+  check(
+    typeof actual === typeof template,
+    `${path} must be a ${typeof template}, got ${describeType(actual)}`,
+  );
+}
+
+/**
+ * Reject any configuration whose shape differs from the schema
+ * (foundation-gate ADR §4).
+ *
+ * `hashConfig` serializes whatever keys the object actually has, so a stray
+ * field — a leftover from an older schema, a typo such as
+ * `time.enviromentInterval`, or a host value like `targetTicksPerSecond1x`
+ * pasted into the wrong config — would be ignored by every rule below and
+ * still change the world hash. A missing field is worse: the reader gets
+ * `undefined` in a hot loop. Both must fail at construction.
+ *
+ * DEFAULT_CONFIG is the schema template because TypeScript already forces it
+ * to carry exactly the fields of `SimulationConfig`, so this runtime check can
+ * never drift from the interface it is guarding.
+ */
+function checkSchemaShape(config: DeepReadonly<SimulationConfig>): void {
+  checkShape(config, DEFAULT_CONFIG, "");
 }
 
 function validateWorld(config: DeepReadonly<SimulationConfig>): void {
@@ -163,6 +281,15 @@ function validateWorld(config: DeepReadonly<SimulationConfig>): void {
   checkPositiveInt(world.envGridSize, "world.envGridSize");
   checkPositiveInt(world.envCellSizeLU, "world.envCellSizeLU");
   checkPositiveInt(world.spatialCellSizeLU, "world.spatialCellSizeLU");
+  check(
+    world.sizeLU <= MAX_WORLD_SIZE_LU,
+    `world.sizeLU must not exceed ${MAX_WORLD_SIZE_LU}, or fixed-point positions ` +
+      `(${POS_SCALE} sub-units per LU) would leave the Int32 range`,
+  );
+  check(
+    world.envGridSize <= MAX_ENV_GRID_SIZE,
+    `world.envGridSize must not exceed ${MAX_ENV_GRID_SIZE} (${MAX_ENV_GRID_SIZE}² cells), got ${world.envGridSize}`,
+  );
   check(
     world.envGridSize * world.envCellSizeLU === world.sizeLU,
     "world: envGridSize * envCellSizeLU must equal sizeLU",
@@ -818,10 +945,15 @@ function validateSpecies(config: DeepReadonly<SimulationConfig>): void {
     "species.candidateCentroidContinuityThresholdQ",
   );
   // A candidate must be able to look "the same as last time" more easily than
-  // its two clusters look "far apart", or a split could never stabilize.
+  // its two clusters look "far apart", or a split could never stabilize. The
+  // factor of two is what makes the docs/05 §7 A/B-swap comparison unambiguous:
+  // qualifying centroids are at least splitDistanceThresholdQ apart, so with
+  // the continuity radius below half of that, a new centroid can never sit
+  // within continuity range of BOTH stored centroids at once.
   check(
-    species.candidateCentroidContinuityThresholdQ < species.splitDistanceThresholdQ,
-    "species: centroid continuity threshold must be below the split distance threshold",
+    2 * species.candidateCentroidContinuityThresholdQ < species.splitDistanceThresholdQ,
+    "species: the split distance threshold must exceed twice the centroid continuity " +
+      "threshold, or candidate A/B matching could become ambiguous",
   );
   // docs/05 §6: only species with at least 2 * minDaughterPopulation members are
   // analyzed, so that eligibility must be reachable at all.
@@ -858,6 +990,124 @@ function validateHistory(config: DeepReadonly<SimulationConfig>): void {
     "history.populationCrashFractionQ must be positive or every tick would look like a crash",
   );
   checkNonNegativeInt(history.eventCooldownStatsSamples, "history.eventCooldownStatsSamples");
+}
+
+function validateInterventions(config: DeepReadonly<SimulationConfig>): void {
+  const { interventions, world } = config;
+
+  checkPositiveInt(
+    interventions.maxBrushSamplesPerCommand,
+    "interventions.maxBrushSamplesPerCommand",
+  );
+  check(
+    interventions.maxBrushSamplesPerCommand <= MAX_BRUSH_SAMPLES_CEILING,
+    `interventions.maxBrushSamplesPerCommand must not exceed ${MAX_BRUSH_SAMPLES_CEILING}, ` +
+      `got ${interventions.maxBrushSamplesPerCommand}`,
+  );
+  checkPositiveInt(interventions.brushSampleSpacingLU, "interventions.brushSampleSpacingLU");
+  checkPositiveInt(interventions.minBrushRadiusLU, "interventions.minBrushRadiusLU");
+  checkPositiveInt(interventions.maxBrushRadiusLU, "interventions.maxBrushRadiusLU");
+  check(
+    interventions.minBrushRadiusLU <= interventions.maxBrushRadiusLU,
+    "interventions: minBrushRadiusLU must not exceed maxBrushRadiusLU",
+  );
+  check(
+    interventions.maxBrushRadiusLU <= world.sizeLU,
+    "interventions.maxBrushRadiusLU must fit inside the world",
+  );
+
+  checkPositiveInt(
+    interventions.maxTemperatureBrushStrengthCentiC,
+    "interventions.maxTemperatureBrushStrengthCentiC",
+  );
+  check(
+    interventions.maxTemperatureBrushStrengthCentiC <= TEMPERATURE_CENTI_C_LIMIT,
+    `interventions.maxTemperatureBrushStrengthCentiC must not exceed ${TEMPERATURE_CENTI_C_LIMIT}`,
+  );
+  checkQFraction(
+    interventions.maxMoistureBrushStrengthQ,
+    "interventions.maxMoistureBrushStrengthQ",
+  );
+  check(
+    interventions.maxMoistureBrushStrengthQ > 0,
+    "interventions.maxMoistureBrushStrengthQ must be positive",
+  );
+  checkQFraction(
+    interventions.maxFertilityBrushStrengthQ,
+    "interventions.maxFertilityBrushStrengthQ",
+  );
+  check(
+    interventions.maxFertilityBrushStrengthQ > 0,
+    "interventions.maxFertilityBrushStrengthQ must be positive",
+  );
+  checkQFraction(interventions.maxTerrainBrushStrengthQ, "interventions.maxTerrainBrushStrengthQ");
+  check(
+    interventions.maxTerrainBrushStrengthQ > 0,
+    "interventions.maxTerrainBrushStrengthQ must be positive",
+  );
+  checkPositiveInt(
+    interventions.maxBiomassBrushStrengthUnits,
+    "interventions.maxBiomassBrushStrengthUnits",
+  );
+  check(
+    interventions.maxBiomassBrushStrengthUnits <= UINT16_MAX,
+    `interventions.maxBiomassBrushStrengthUnits must fit a Uint16 biomass row (max ${UINT16_MAX})`,
+  );
+
+  checkPositiveInt(
+    interventions.maxLocalTemperatureOffsetCentiC,
+    "interventions.maxLocalTemperatureOffsetCentiC",
+  );
+  check(
+    interventions.maxLocalTemperatureOffsetCentiC <= INT16_MAX,
+    "interventions.maxLocalTemperatureOffsetCentiC must fit the Int16 offset row " +
+      `(max ${INT16_MAX}), got ${interventions.maxLocalTemperatureOffsetCentiC}`,
+  );
+  checkPositiveInt(
+    interventions.maxGlobalTemperatureOffsetCentiC,
+    "interventions.maxGlobalTemperatureOffsetCentiC",
+  );
+  check(
+    interventions.maxGlobalTemperatureOffsetCentiC <= TEMPERATURE_CENTI_C_LIMIT,
+    `interventions.maxGlobalTemperatureOffsetCentiC must not exceed ${TEMPERATURE_CENTI_C_LIMIT}`,
+  );
+
+  checkQMultiplierAtLeastOne(
+    interventions.biomassOverfillLimitQ,
+    "interventions.biomassOverfillLimitQ",
+  );
+  check(
+    interventions.biomassOverfillLimitQ <= MAX_BIOMASS_OVERFILL_LIMIT_Q,
+    `interventions.biomassOverfillLimitQ must not exceed ${MAX_BIOMASS_OVERFILL_LIMIT_Q} (16.0)`,
+  );
+
+  const meteor = interventions.meteor;
+  checkPositiveInt(meteor.minRadiusLU, "interventions.meteor.minRadiusLU");
+  checkPositiveInt(meteor.maxRadiusLU, "interventions.meteor.maxRadiusLU");
+  check(
+    meteor.minRadiusLU <= meteor.maxRadiusLU,
+    "interventions.meteor: minRadiusLU must not exceed maxRadiusLU",
+  );
+  check(
+    meteor.maxRadiusLU <= world.sizeLU,
+    "interventions.meteor.maxRadiusLU must fit inside the world",
+  );
+  // Damage may exceed one health bar (Q): the excess widens the lethal core of
+  // the linear falloff. Bounded so the centre damage cannot dwarf the health
+  // scale into meaninglessness.
+  check(
+    Number.isSafeInteger(meteor.damageQ) && meteor.damageQ >= 0 && meteor.damageQ <= 4 * Q,
+    `interventions.meteor.damageQ must be an integer in [0, ${4 * Q}], got ${meteor.damageQ}`,
+  );
+  checkQFraction(meteor.biomassLossQ, "interventions.meteor.biomassLossQ");
+  checkQFraction(meteor.depressionQ, "interventions.meteor.depressionQ");
+  check(
+    Number.isSafeInteger(meteor.fertilityDeltaQ) &&
+      meteor.fertilityDeltaQ >= -Q &&
+      meteor.fertilityDeltaQ <= Q,
+    `interventions.meteor.fertilityDeltaQ must be an integer in [-${Q}, ${Q}], ` +
+      `got ${meteor.fertilityDeltaQ}`,
+  );
 }
 
 function validateLimits(config: DeepReadonly<SimulationConfig>): void {

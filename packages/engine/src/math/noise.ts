@@ -14,11 +14,15 @@ import { Q, clampQ, lerpQ, qmul } from "./fixed";
  * correlate and none of them consumes the authoritative PRNG.
  */
 
-/** Distinct salts for the independent fields generated from one world seed. */
+/**
+ * Distinct salts for the independent fields generated from one world seed.
+ *
+ * Elevation carries ONE base salt: `layeredNoiseQ` derives a distinct salt per
+ * octave from it internally, so there are no per-octave entries here — listing
+ * them suggested a mapping that never existed (foundation-gate ADR §7).
+ */
 export const NOISE_SALT = {
   elevationOctave0: 0x00000101,
-  elevationOctave1: 0x00000102,
-  elevationOctave2: 0x00000103,
   moisture: 0x00000201,
   temperature: 0x00000301,
   fertility: 0x00000401,

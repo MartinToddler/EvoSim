@@ -1,5 +1,10 @@
+import type { CommandLogSnapshot } from "../commands/CommandLog";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import type { CarcassSnapshot } from "../ecology/carcassSnapshot";
+import type { SpeciesSnapshot } from "../evolution/SpeciesStore";
+import type { EventStoreSnapshot } from "../history/EventStore";
+import type { EventDetectorsSnapshot } from "../history/eventDetection";
+import type { StatisticsSnapshot } from "../history/StatisticsStore";
 import type { OrganismSnapshot } from "../organisms/organismSnapshot";
 import type { Xoshiro128State } from "../random/Xoshiro128";
 import type { EnvironmentSnapshot } from "../world/environmentSnapshot";
@@ -25,6 +30,12 @@ export interface EngineCoreSnapshot {
   engineVersion: string;
   seed: number;
   tick: number;
+  /**
+   * Which generation attempt produced this world (provenance, not hashed).
+   * Stored so restore never re-runs generation to rediscover it
+   * (foundation-gate ADR §2).
+   */
+  generationAttempt: number;
   rngState: Xoshiro128State;
   config: SimulationConfig;
   /**
@@ -45,6 +56,28 @@ export interface EngineCoreSnapshot {
    * slot the next death reuses (docs/10 §18).
    */
   carcasses: CarcassSnapshot;
+  /**
+   * The species registry with its split-candidate state (docs/10 §18). A world
+   * restored without it would re-run its pending splits from zero and speciate
+   * on different ticks than the world that never saved.
+   */
+  species: SpeciesSnapshot;
+  /**
+   * The timeline: event log, the detector state that decides FUTURE events
+   * (docs/02 §9), and the derived statistics series that back the charts.
+   */
+  history: {
+    events: EventStoreSnapshot;
+    detectors: EventDetectorsSnapshot;
+    stats: StatisticsSnapshot;
+  };
+  /**
+   * The player command log with its application cursor (task J01). The cursor
+   * is what makes a restored world apply each command exactly once: applied
+   * history stays behind it, pending commands ahead of it. Losing the log
+   * would lose replay; losing the cursor would double-apply on resume.
+   */
+  commands: CommandLogSnapshot;
 }
 
 /**
