@@ -29,6 +29,7 @@ function world(overrides: Partial<SavedWorldView> = {}): SavedWorldView {
     statusDetail: "",
     isCurrent: false,
     loadable: true,
+    branch: null,
     ...overrides,
   };
 }
@@ -43,6 +44,7 @@ function status(overrides: Partial<PersistenceStatusView> = {}): PersistenceStat
     message: "Not saved yet",
     failed: false,
     storageNote: null,
+    branchNote: null,
     ...overrides,
   };
 }
@@ -146,5 +148,33 @@ describe("WorldsPanel", () => {
     const html = render({ status: status({ busy: true }) });
     expect(html).toContain("Working…");
     expect(html).toContain("disabled");
+  });
+
+  it("names a branch's parent and branch tick on its row (ADR 0025)", () => {
+    const html = render({
+      worlds: [world({ branch: { parentName: "Eden", branchTick: 5_000 } })],
+    });
+    expect(html).toContain("branched from");
+    expect(html).toContain("Eden");
+    expect(html).toContain("5,000");
+  });
+
+  it("says when a branch's parent no longer exists", () => {
+    const html = render({
+      worlds: [world({ branch: { parentName: null, branchTick: 42 } })],
+    });
+    expect(html).toContain("a deleted world");
+  });
+
+  it("shows the standing branch note while the open world is a branch", () => {
+    const html = render({
+      status: status({
+        worldId: "w2",
+        worldName: "Fork",
+        branchNote: "This is a branch of “Eden”, diverging from tick 5,000.",
+      }),
+    });
+    expect(html).toContain("This is a branch of");
+    expect(html).toContain("diverging from tick 5,000");
   });
 });

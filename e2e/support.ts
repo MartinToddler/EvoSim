@@ -33,32 +33,77 @@ export async function readPopulation(page: Page): Promise<number> {
   return digits === "" ? 0 : Number.parseInt(digits, 10);
 }
 
-/**
- * Open a world and wait until it is actually running.
- *
- * "Running" means the tick counter has moved past zero, which is the only
- * honest signal that world generation, the Worker handshake, the first render
- * snapshot and the telemetry stream have all completed.
- */
-export async function openWorld(page: Page, seedHex = FIXTURE_SEED_HEX): Promise<void> {
-  const consoleErrors: string[] = [];
+/** Start collecting console/page errors for {@link consoleErrors}. */
+function collectErrors(page: Page): void {
+  const errors: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => {
-    consoleErrors.push(String(error));
+    errors.push(String(error));
   });
-  (page as Page & { __eonConsoleErrors?: string[] }).__eonConsoleErrors = consoleErrors;
+  (page as Page & { __eonConsoleErrors?: string[] }).__eonConsoleErrors = errors;
+}
+
+/**
+ * Walk the product's New World flow up to — but not including — Play
+ * (ADR 0025): deep-link the seed into the New World screen, let it preview,
+ * click Create World, and wait for the world stage to come up PAUSED at
+ * exact tick 0.
+ */
+export async function createWorldPaused(page: Page, seedHex = FIXTURE_SEED_HEX): Promise<void> {
+  collectErrors(page);
 
   // Relative, with no leading slash: `page.goto` resolves against `baseURL` as
   // `new URL(path, baseURL)`, and a leading "/" would resolve to the ORIGIN
   // ROOT and throw away the deployment path. A project Pages site lives at
   // `/<repo>/`, which is exactly the case EON_E2E_BASE_URL exists for.
   await page.goto(`./?seed=${seedHex}`);
-  await expect(page.locator(".topbar")).toBeVisible();
+  await expect(page.getByTestId("new-world-screen")).toBeVisible();
+  // The preview generates synchronously on the main thread; Create World is
+  // enabled once a valid world is on screen.
+  const create = page.getByTestId("new-world-create");
+  await expect(create).toBeEnabled({ timeout: 30_000 });
+  await create.click();
+
+  await expect(page.locator(".topbar")).toBeVisible({ timeout: 90_000 });
+  await expect
+    .poll(async () => readTick(page), { timeout: 90_000, message: "world summary never arrived" })
+    .toBeGreaterThanOrEqual(0);
+  // A created world begins at exact tick 0, paused: the user starts time.
+  expect(await readTick(page)).toBe(0);
+}
+
+/** Press Play (1×) and wait for authoritative time to actually advance. */
+export async function pressPlay(page: Page): Promise<void> {
+  await topBarButton(page, "Run the simulation").click();
   await expect
     .poll(async () => readTick(page), { timeout: 90_000, message: "world never started ticking" })
     .toBeGreaterThan(0);
+}
+
+/**
+ * Open a world and run it: the product flow (New World → Create World → Play),
+ * driven to the point where ticks are advancing. The shape every scenario that
+ * just needs "a running world" starts from.
+ */
+export async function openWorld(page: Page, seedHex = FIXTURE_SEED_HEX): Promise<void> {
+  await createWorldPaused(page, seedHex);
+  await pressPlay(page);
+}
+
+/**
+ * From the START SCREEN already on display (no navigation): click New World,
+ * create the previewed world, and press Play. Used where navigation itself is
+ * the thing under test — e.g. the offline reload.
+ */
+export async function runNewWorldFromStartScreen(page: Page): Promise<void> {
+  await page.getByTestId("start-new-world").click();
+  const create = page.getByTestId("new-world-create");
+  await expect(create).toBeEnabled({ timeout: 30_000 });
+  await create.click();
+  await expect(page.locator(".topbar")).toBeVisible({ timeout: 90_000 });
+  await pressPlay(page);
 }
 
 /** Console and page errors collected since {@link openWorld}. */

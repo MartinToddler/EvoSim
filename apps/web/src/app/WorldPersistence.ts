@@ -388,7 +388,7 @@ export class WorldPersistence {
    * world with no save that early cannot be rewound there at all, and says so
    * rather than silently landing somewhere else.
    */
-  async rewindTo(targetTick: number): Promise<boolean> {
+  async rewindTo(targetTick: number, presentTick?: number): Promise<boolean> {
     const worldId = this.#status.worldId;
     if (this.#disposed || worldId === null) {
       this.#updateHistorical({
@@ -403,7 +403,10 @@ export class WorldPersistence {
     this.#updateHistorical({
       mode: "reconstructing",
       tick: targetTick,
-      presentTick: this.#historical.presentTick,
+      // The caller saw the live world last; while previewing, the Worker's
+      // telemetry describes the historical engine, so this is the only honest
+      // "present" the UI can show during the reconstruction (ADR 0025).
+      presentTick: presentTick ?? this.#historical.presentTick,
       progress: { ticksReplayed: 0, ticksTotal: 0 },
       message: `Reconstructing tick ${targetTick.toLocaleString()}…`,
       failed: false,

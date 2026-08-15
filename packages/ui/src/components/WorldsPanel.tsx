@@ -46,6 +46,12 @@ export interface SavedWorldView {
   isCurrent: boolean;
   /** False when this build cannot run the save (engine version mismatch). */
   loadable: boolean;
+  /**
+   * Lineage, for a world created as a branch (ADR 0025): the parent's display
+   * name (null when the parent was deleted) and the tick it branched from.
+   * Null for root worlds.
+   */
+  branch: { parentName: string | null; branchTick: number } | null;
 }
 
 /** Storage status, as the app's persistence controller reports it. */
@@ -63,6 +69,12 @@ export interface PersistenceStatusView {
    * wording; this panel only decides where it goes.
    */
   storageNote: string | null;
+  /**
+   * One line naming the open world's lineage when it is a branch (ADR 0025) —
+   * "Branch of X from tick N" — or null for a root world. Makes "you are now
+   * inside the branch" visible somewhere persistent, not only in a toast.
+   */
+  branchNote: string | null;
 }
 
 export interface WorldsPanelProps {
@@ -179,6 +191,12 @@ export function WorldsPanel(props: WorldsPanelProps): React.JSX.Element {
         {status.storageNote === null ? null : ` ${status.storageNote}`}
       </p>
 
+      {status.branchNote === null ? null : (
+        <p className="worlds-branch-note" role="status" data-testid="branch-note">
+          {status.branchNote}
+        </p>
+      )}
+
       {worlds.length === 0 ? (
         <p className="worlds-empty">No saved worlds yet.</p>
       ) : (
@@ -201,6 +219,13 @@ export function WorldsPanel(props: WorldsPanelProps): React.JSX.Element {
                 </span>
                 <span>{formatSavedAt(world.savedAtIso)}</span>
               </div>
+              {world.branch === null ? null : (
+                <div className="world-branch" title="This world is a branch: an alternative history">
+                  branched from{" "}
+                  {world.branch.parentName === null ? "a deleted world" : world.branch.parentName} at
+                  tick {formatInt(world.branch.branchTick)}
+                </div>
+              )}
               {world.status === "ok" ? null : (
                 <p className="world-problem">
                   {world.status === "legacy"

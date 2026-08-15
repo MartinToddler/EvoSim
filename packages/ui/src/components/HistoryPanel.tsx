@@ -2,19 +2,29 @@ import { useCallback, useState } from "react";
 import { formatInt } from "../format";
 
 /**
- * Historical navigation panel (Milestone 11, tasks K07–K10; docs/06 §§13, 29–30).
+ * Historical navigation panel (Milestone 11, tasks K07–K10; docs/06 §§13, 29–30;
+ * corrected by ADR 0025).
  *
  * Three states, and the panel has to make which one you are in unmistakable:
  * the present, a reconstruction in flight, and a read-only preview of an
  * earlier tick.
  *
- * ## Dragging selects; releasing rewinds
+ * ## Dragging selects; a button rewinds
  *
  * docs/06 §13: "Dragging timeline only selects time; explicit action starts
- * rewind." That is also the only practical design — a pointer drag emits dozens
- * of values a second and each one would queue a replay of thousands of ticks.
- * The scrubber therefore keeps a local selection and raises `onRewind` on
- * release (pointer up, or key up for keyboard users), not on every change.
+ * rewind." The scrubber keeps a local selection and does nothing else — no
+ * pointer-up, key-up or blur ever launches a replay, because releasing a
+ * slider handle is not an explicit action. The explicit action is the
+ * "View this time" button, which names what it is about to do.
+ *
+ * ## The offered range is the reconstructable range
+ *
+ * A rewind needs a stored save at or before its target (ADR 0018 §7), so the
+ * scrubber's lower bound is the EARLIEST STORED SAVE, not the world's logical
+ * origin. A legacy world whose first save came late cannot reach the ticks
+ * before it; those are stated as unavailable rather than offered and failed.
+ * Worlds created through the New World flow always carry a tick-0 baseline
+ * save, so for them the two bounds coincide.
  *
  * ## Dependency-free, like the other panels
  *
@@ -30,7 +40,7 @@ export interface HistoryPanelProps {
   /** Tick being previewed, or null in the present. */
   historicalTick: number | null;
   progress: { ticksReplayed: number; ticksTotal: number } | null;
-  /** Ticks with a stored save, where a rewind needs no replay at all. */
+  /** Ticks with a stored save, ascending. Rewinds replay forward from these. */
   saveTicks: readonly number[];
   message: string;
   failed: boolean;
@@ -52,6 +62,9 @@ function progressPercent(replayed: number, total: number): number {
   return Math.min(100, Math.max(0, (replayed / total) * 100));
 }
 
+/** How many save chips are shown before the rest collapse into a count. */
+const MAX_SAVE_CHIPS = 10;
+
 export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
   const { mode, presentTick, originTick, historicalTick, progress, saveTicks } = props;
   const busy = mode === "reconstructing";
@@ -60,28 +73,39 @@ export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
   const [selected, setSelected] = useState<number | null>(null);
   const [branchName, setBranchName] = useState("");
 
+  // The reconstructable floor: the earliest stored save. Ticks between the
+  // world's logical origin and this save exist but cannot be rebuilt, and are
+  // therefore not offered (ADR 0018 §7).
+  const earliestSaveTick = saveTicks.length > 0 ? (saveTicks[0] as number) : null;
+  const minTick = earliestSaveTick ?? originTick;
+  const maxTick = Math.max(minTick, presentTick);
+  const rewindable = props.canRewind && earliestSaveTick !== null;
+
   // What the handle points at: the tick being dragged, else the previewed tick,
   // else the present.
-  const position = selected ?? historicalTick ?? presentTick;
+  const position = Math.min(maxTick, Math.max(minTick, selected ?? historicalTick ?? presentTick));
 
-  const commit = useCallback(
-    (value: number) => {
-      setSelected(null);
-      if (value !== historicalTick) {
-        props.onRewind(value);
-      }
-    },
-    [historicalTick, props],
-  );
+  // The tick "View this time" would reconstruct. Nothing to do when it already
+  // is the tick on screen (the previewed tick, or the present in live mode).
+  const shownTick = historicalTick ?? presentTick;
+  const viewTarget = selected !== null && selected !== shownTick ? selected : null;
 
-  const span = presentTick - originTick;
+  const viewSelected = useCallback(() => {
+    if (viewTarget === null) {
+      return;
+    }
+    setSelected(null);
+    props.onRewind(viewTarget);
+  }, [viewTarget, props]);
+
+  const span = maxTick - minTick;
 
   return (
     <section className="panel history-panel" aria-label="History">
       <header className="panel__header">
         <h2>History</h2>
         <span className={previewing ? "history-panel__badge" : "history-panel__badge--live"}>
-          {previewing ? "Historical preview — read only" : "Live"}
+          {previewing ? "Historical preview — read only" : busy ? "Reconstructing…" : "Live"}
         </span>
       </header>
 
@@ -92,30 +116,33 @@ export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
         </p>
       ) : null}
 
-      {!props.canRewind ? (
+      {!rewindable ? (
         <p className="history-panel__notice">
           Save this world to explore its history: a rewind replays from the nearest save.
         </p>
       ) : null}
 
+      {rewindable && earliestSaveTick !== null && earliestSaveTick > originTick ? (
+        <p className="history-panel__notice" data-testid="history-unavailable-note">
+          History before tick {formatInt(earliestSaveTick)} was not stored for this world and
+          cannot be viewed. The earliest stored save is the earliest reachable time.
+        </p>
+      ) : null}
+
       <label className="history-panel__scrubber">
-        <span className="visually-hidden">Timeline</span>
+        <span className="visually-hidden">Timeline — drag to select a time</span>
         <input
           type="range"
-          min={originTick}
-          max={Math.max(originTick, presentTick)}
+          min={minTick}
+          max={maxTick}
           step={1}
           value={position}
-          disabled={busy || !props.canRewind || span <= 0}
+          disabled={busy || !rewindable || span <= 0}
           list="history-panel-saves"
           onChange={(event) => {
+            // Selection only. The explicit action is the button below
+            // (docs/06 §13) — no pointer or key release ever starts a replay.
             setSelected(Number(event.target.value));
-          }}
-          onPointerUp={(event) => {
-            commit(Number((event.target as HTMLInputElement).value));
-          }}
-          onKeyUp={(event) => {
-            commit(Number((event.target as HTMLInputElement).value));
           }}
           aria-valuetext={`tick ${formatInt(position)}`}
           data-testid="history-scrubber"
@@ -128,9 +155,53 @@ export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
       </label>
 
       <div className="history-panel__range">
-        <span>tick {formatInt(originTick)}</span>
+        <span>earliest {formatInt(minTick)}</span>
         <span data-testid="history-position">tick {formatInt(position)}</span>
         <span>now {formatInt(presentTick)}</span>
+      </div>
+
+      {rewindable && saveTicks.length > 0 ? (
+        <div className="history-panel__saves" data-testid="history-save-ticks">
+          <span className="history-panel__saves-label">Saved checkpoints:</span>
+          {saveTicks.slice(-MAX_SAVE_CHIPS).map((tick) => (
+            <button
+              key={tick}
+              type="button"
+              className="history-panel__save-chip"
+              disabled={busy}
+              onClick={() => {
+                setSelected(tick);
+              }}
+              aria-label={`select saved tick ${formatInt(tick)}`}
+            >
+              {formatInt(tick)}
+            </button>
+          ))}
+          {saveTicks.length > MAX_SAVE_CHIPS ? (
+            <span className="history-panel__saves-more">
+              +{formatInt(saveTicks.length - MAX_SAVE_CHIPS)} earlier
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="history-panel__actions">
+        <button
+          type="button"
+          disabled={busy || !rewindable || viewTarget === null}
+          onClick={viewSelected}
+          data-testid="view-this-time"
+        >
+          {viewTarget === null ? "View this time" : `View tick ${formatInt(viewTarget)}`}
+        </button>
+        <button
+          type="button"
+          disabled={busy || !previewing}
+          onClick={props.onReturnToPresent}
+          data-testid="return-to-present"
+        >
+          Return to present
+        </button>
       </div>
 
       {progress !== null ? (
@@ -152,17 +223,6 @@ export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
           </span>
         </div>
       ) : null}
-
-      <div className="history-panel__actions">
-        <button
-          type="button"
-          disabled={busy || !previewing}
-          onClick={props.onReturnToPresent}
-          data-testid="return-to-present"
-        >
-          Return to present
-        </button>
-      </div>
 
       {previewing ? (
         <div className="history-panel__branch">

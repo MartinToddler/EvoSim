@@ -141,6 +141,7 @@ function worldFixture(): WorldSummaryDto {
     configSchemaVersion: 1,
     snapshotSchemaVersion: 1,
     configHash: "0123456789abcdef",
+    environmentHash: "feedfacefeedface",
     worldSizeLU: 256,
     gridSize: 8,
     cellSizeLU: 32,
@@ -238,7 +239,7 @@ interface Harness {
 let indexedDb: IDBFactory;
 let idCounter = 0;
 
-function createHarness(): Harness {
+function createHarness(extra: { persistBaseline?: { name: string } } = {}): Harness {
   const worker = new FakeWorker();
   const statuses: PersistenceStatus[] = [];
   const errors: string[] = [];
@@ -250,6 +251,7 @@ function createHarness(): Harness {
     viewport: { getBoundingClientRect: () => ({ width: 800, height: 600 }) } as HTMLElement,
     seed: 7,
     initialSpeed: "x1",
+    ...(extra.persistBaseline === undefined ? {} : { persistBaseline: extra.persistBaseline }),
     appVersion: "test-build",
     callbacks: {
       onWorldReady: () => {},
@@ -330,6 +332,7 @@ function createHarness(): Harness {
           engineVersion: "test",
           snapshotSchemaVersion: 1,
           configHash: "0123456789abcdef",
+          environmentHash: "feedfacefeedface",
           seed: 7,
           reason: request.payload["reason"],
         },
@@ -604,6 +607,38 @@ describe("loading from the app shell", () => {
     expect(harness.worker.all("LOAD_WORLD")).toHaveLength(0);
     expect(harness.status().failed).toBe(true);
     expect(harness.status().message).toMatch(/Load failed/);
+    harness.session.destroy();
+  });
+});
+
+describe("the tick-0 baseline of a created world (ADR 0025)", () => {
+  it("persists a tick-0 baseline, binds the manifest and arms autosave without user action", async () => {
+    const harness = createHarness({ persistBaseline: { name: "Genesis" } });
+    await harness.ready();
+
+    // Create World is an explicit persistence intent: the session itself must
+    // have asked for the save the moment the world was ready.
+    expect(harness.worker.last("REQUEST_SAVE")).toBeDefined();
+    await harness.answerSave(0);
+
+    const status = harness.status();
+    expect(status.worldId).not.toBeNull();
+    expect(status.worldName).toBe("Genesis");
+    expect(status.lastSavedTick).toBe(0);
+    expect(status.autosaveArmed).toBe(true);
+
+    const stored = harness.latestWorlds();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.saves.some((save) => save.tick === 0)).toBe(true);
+    harness.session.destroy();
+  });
+
+  it("writes no baseline when none was requested (a preview that was discarded never got here)", async () => {
+    const harness = createHarness();
+    await harness.ready();
+
+    expect(harness.worker.last("REQUEST_SAVE")).toBeUndefined();
+    expect(harness.status().worldId).toBeNull();
     harness.session.destroy();
   });
 });

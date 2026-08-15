@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openWorld, readTick } from "./support";
+import { openWorld, readTick, runNewWorldFromStartScreen } from "./support";
 
 /**
  * Installable shell and lifecycle behaviour in a real browser (tasks M01/M03,
@@ -69,7 +69,7 @@ test.describe("offline app shell", () => {
     // browsers treat as a secure context, so this is the same code path as the
     // deployed site.
     await page.goto("./");
-    await expect(page.locator(".topbar")).toBeVisible();
+    await expect(page.getByTestId("start-screen")).toBeVisible();
 
     const active = await page.evaluate(async () => {
       const registration = await navigator.serviceWorker.ready;
@@ -90,20 +90,22 @@ test.describe("offline app shell", () => {
     );
 
     await page.goto("./");
-    await expect(page.locator(".topbar")).toBeVisible();
+    await expect(page.getByTestId("start-screen")).toBeVisible();
     await page.evaluate(() => navigator.serviceWorker.ready);
 
     // A reload while online, so the navigation response is in the cache the
     // worker will serve from.
     await page.reload();
-    await expect(page.locator(".topbar")).toBeVisible();
+    await expect(page.getByTestId("start-screen")).toBeVisible();
 
     await context.setOffline(true);
     await page.reload();
 
     // The shell is what has to survive; the simulation runs locally anyway, so
-    // an offline EON is a fully working EON.
-    await expect(page.locator(".topbar")).toBeVisible({ timeout: 60_000 });
+    // an offline EON is a fully working EON — all the way through creating and
+    // running a world with the network off.
+    await expect(page.getByTestId("start-screen")).toBeVisible({ timeout: 60_000 });
+    await runNewWorldFromStartScreen(page);
     await expect
       .poll(async () => readTick(page), { timeout: 90_000, message: "offline world never ticked" })
       .toBeGreaterThan(0);

@@ -21,6 +21,18 @@ export const DEFAULT_SEED = 0xe0a12026;
  * exactly as the engine does, so `?seed=` and the engine agree on which world a
  * number names.
  */
+/**
+ * Whether the URL names a seed at all (ADR 0025).
+ *
+ * A `?seed=` link is a deep link INTO the New World screen with that seed
+ * prefilled and previewed — it must not skip the explicit Create World step,
+ * and its absence means the app opens on the start screen.
+ */
+export function hasSeedInLocation(search: string): boolean {
+  const raw = new URLSearchParams(search).get("seed");
+  return raw !== null && raw.trim() !== "";
+}
+
 export function readSeedFromLocation(search: string): number {
   const raw = new URLSearchParams(search).get("seed");
   if (raw === null || raw.trim() === "") {

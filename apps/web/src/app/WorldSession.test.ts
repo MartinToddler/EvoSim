@@ -137,6 +137,7 @@ function worldFixture(): WorldSummaryDto {
     configSchemaVersion: 6,
     snapshotSchemaVersion: 6,
     configHash: "cafe",
+    environmentHash: "feedfacefeedface",
     worldSizeLU: 128,
     gridSize: 8,
     cellSizeLU: 16,

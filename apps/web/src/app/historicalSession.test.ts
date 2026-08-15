@@ -124,6 +124,7 @@ function worldFixture(): WorldSummaryDto {
     configSchemaVersion: 1,
     snapshotSchemaVersion: 1,
     configHash: "0123456789abcdef",
+    environmentHash: "feedfacefeedface",
     worldSizeLU: 256,
     gridSize: 8,
     cellSizeLU: 32,
@@ -269,6 +270,7 @@ function createHarness(): Harness {
           engineVersion: "test",
           snapshotSchemaVersion: 1,
           configHash: "0123456789abcdef",
+          environmentHash: "feedfacefeedface",
           seed: 7,
           reason: request.payload["reason"],
         },
@@ -528,5 +530,68 @@ describe("branching from the session", () => {
 
     expect(await harness.session.branchHere("nope")).toBeNull();
     expect(harness.worker.last("CREATE_BRANCH")).toBeUndefined();
+  });
+
+  it("opens the branch automatically, paused at the branch tick (ADR 0025)", async () => {
+    const harness = createHarness();
+    await harness.ready();
+    await saveAt(harness, 100);
+    await saveAt(harness, 400);
+    const parentId = harness.session.persistenceStatus.worldId;
+
+    const pending = harness.session.rewindTo(200);
+    await harness.flush();
+    await harness.answerRewind({ tick: 200, presentTick: 400 });
+    await pending;
+
+    const branching = harness.session.branchHere("Alternative");
+    await harness.flush();
+    await harness.answerBranch(200);
+    const branchId = await branching;
+    await harness.flush();
+
+    expect(branchId).not.toBeNull();
+    // The preview was left…
+    expect(harness.worker.last("RETURN_TO_PRESENT")).toBeDefined();
+    expect(harness.session.historical.mode).toBe("live");
+    // …and the branch became the OPEN world, loaded paused at its origin tick.
+    expect(harness.session.persistenceStatus.worldId).toBe(branchId);
+    expect(harness.session.persistenceStatus.worldName).toBe("Alternative");
+    expect(harness.session.persistenceStatus.lastSavedTick).toBe(200);
+    const load = harness.worker.last("LOAD_WORLD");
+    expect(load).toBeDefined();
+    expect(load?.payload["speed"]).toBe("paused");
+    expect(harness.session.paused).toBe(true);
+    // The parent is untouched and still listed under its own identity.
+    const worlds = harness.latestWorlds();
+    expect(worlds.some((world) => world.manifest.worldId === parentId)).toBe(true);
+  });
+
+  it("keeps later saves inside the branch, never the parent (ADR 0025)", async () => {
+    const harness = createHarness();
+    await harness.ready();
+    await saveAt(harness, 100);
+    const parentId = harness.session.persistenceStatus.worldId;
+    const pending = harness.session.rewindTo(100);
+    await harness.flush();
+    await harness.answerRewind({ tick: 100, presentTick: 100 });
+    await pending;
+
+    const branching = harness.session.branchHere("Fork");
+    await harness.flush();
+    await harness.answerBranch(100);
+    const branchId = await branching;
+    await harness.flush();
+
+    // A save issued after the switch belongs to the branch's manifest.
+    harness.session.saveWorld();
+    await harness.answerSave(150);
+
+    const worlds = harness.latestWorlds();
+    const parent = worlds.find((world) => world.manifest.worldId === parentId);
+    const branch = worlds.find((world) => world.manifest.worldId === branchId);
+    expect(parent?.manifest.latestTick).toBe(100);
+    expect(branch?.manifest.latestTick).toBe(150);
+    expect(branch?.manifest.parentWorldId).toBe(parentId);
   });
 });

@@ -38,10 +38,13 @@ import {
   type PersistenceStatus,
 } from "./app/WorldPersistence";
 import { toggleViewHref } from "./app/route";
-import { readSeedFromLocation } from "./app/seed";
+import { hasSeedInLocation, readSeedFromLocation } from "./app/seed";
 import { APP_VERSION } from "./app/appVersion";
 import { attachLifecycle } from "./app/lifecycle";
 import { describeStoragePersistence } from "./app/storagePersistence";
+import { StartScreen } from "./start/StartScreen";
+import { NewWorldScreen, type AcceptedWorld } from "./start/NewWorldScreen";
+import { listStartWorlds, type StartWorldView } from "./start/startWorlds";
 import "./styles/app.css";
 
 /**
@@ -151,6 +154,23 @@ function useNarrowViewport(setPanels: React.Dispatch<React.SetStateAction<Panels
  */
 const PERFORMANCE_POLL_MS = 500;
 
+/**
+ * How this session's world came to exist (ADR 0025): accepted on the New World
+ * screen, or reopened from storage. The distinction decides whether a tick-0
+ * baseline is persisted and whether the preview-identity invariant applies.
+ */
+type WorldStart =
+  | { kind: "new"; seed: number; name: string; environmentHash: string }
+  | { kind: "load"; worldId: string };
+
+/**
+ * The app's top-level stage (docs/01 §9 states 1–3): the start screen, the New
+ * World screen, or an open world. No engine, Worker or renderer exists before
+ * the world stage — previewing and regenerating maps cannot advance
+ * authoritative time because there is no authoritative time yet.
+ */
+type AppStage = { kind: "start" } | { kind: "new-world" } | { kind: "world"; start: WorldStart };
+
 export function App(): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const sessionRef = useRef<WorldSession | null>(null);
@@ -164,10 +184,20 @@ export function App(): React.JSX.Element {
   );
   const [requestedSeed] = useState(() => readSeedFromLocation(globalThis.location?.search ?? ""));
 
+  // A `?seed=` link deep-links into the New World screen with that seed
+  // previewed; otherwise the app opens on the start screen. Creating or loading
+  // a world is always an explicit action (ADR 0025).
+  const [stage, setStage] = useState<AppStage>(() =>
+    hasSeedInLocation(globalThis.location?.search ?? "") ? { kind: "new-world" } : { kind: "start" },
+  );
+  const [startWorlds, setStartWorlds] = useState<readonly StartWorldView[] | null>(null);
+  const [startWorldsError, setStartWorldsError] = useState<string | null>(null);
+
   const [world, setWorld] = useState<WorldSummaryDto | null>(null);
   const [hostRuntime, setHostRuntime] = useState<HostRuntimeConfig | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryDto | null>(null);
-  const [speed, setSpeed] = useState<SimulationSpeed>("x1");
+  // Worlds open PAUSED: the user starts time by pressing Play (ADR 0025).
+  const [speed, setSpeed] = useState<SimulationSpeed>("paused");
   const lastRunSpeedRef = useRef<SimulationSpeed>("x1");
   const [selectedEntityId, setSelectedEntityId] = useState<number | null>(null);
   const [details, setDetails] = useState<EntityDetailsDto | null>(null);
@@ -202,6 +232,8 @@ export function App(): React.JSX.Element {
   const [storedWorlds, setStoredWorlds] = useState<readonly StoredWorld[]>([]);
   const [persistence, setPersistence] = useState<PersistenceStatus | null>(null);
   const [historical, setHistorical] = useState<HistoricalStatus | null>(null);
+  /** "You are now inside the branch" banner; cleared by pressing Play (ADR 0025). */
+  const [branchNotice, setBranchNotice] = useState<string | null>(null);
 
   // --- Species and history state (Milestone 8) --------------------------------
   const [tree, setTree] = useState<TreeSnapshotDto | null>(null);
@@ -210,7 +242,29 @@ export function App(): React.JSX.Element {
   const [events, setEvents] = useState<readonly WorldEventDto[]>([]);
   const [eventsDropped, setEventsDropped] = useState(0);
 
+  // Read the stored-world list while the start screen is up. A one-shot,
+  // short-lived database connection: no session exists yet.
   useEffect(() => {
+    if (stage.kind !== "start") {
+      return;
+    }
+    let cancelled = false;
+    void listStartWorlds().then((result) => {
+      if (!cancelled) {
+        setStartWorlds(result.worlds);
+        setStartWorldsError(result.error);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage.kind !== "world") {
+      return;
+    }
+    const start = stage.start;
     const viewport = viewportRef.current;
     if (viewport === null) {
       return;
@@ -225,15 +279,46 @@ export function App(): React.JSX.Element {
     const session = WorldSession.start({
       canvas,
       viewport,
-      seed: requestedSeed,
-      // Worlds open running: open the page, watch organisms live.
-      initialSpeed: "x1",
+      seed: start.kind === "new" ? start.seed : requestedSeed,
+      // A newly created world begins at exact tick 0, PAUSED; a loaded world
+      // reopens paused at its restored tick. Play is the user's act (ADR 0025).
+      initialSpeed: "paused",
+      ...(start.kind === "load" ? { startFrom: { worldId: start.worldId } } : {}),
+      ...(start.kind === "new" ? { persistBaseline: { name: start.name } } : {}),
       callbacks: {
         onWorldReady: (readyWorld, runtime) => {
+          // The preview-identity invariant (ADR 0025): the world the user
+          // accepted on the New World screen and the world the Worker built
+          // must be the same map. Same seed + same config is guaranteed to
+          // produce it; if this ever fires, determinism itself is broken.
+          if (start.kind === "new" && readyWorld.environmentHash !== start.environmentHash) {
+            setError({
+              message:
+                `world identity mismatch: the previewed map hashed ${start.environmentHash} ` +
+                `but the authoritative world generated ${readyWorld.environmentHash}`,
+              fatal: true,
+              tick: 0,
+              seed: readyWorld.seed,
+              engineVersion: readyWorld.engineVersion,
+              whileHandling: "WORLD_READY",
+            });
+          }
           // A fresh world's charts must not continue a previous world's lines.
           history.clear();
           setWorld(readyWorld);
           setHostRuntime(runtime);
+          // Nor may any other panel keep describing the replaced world: a stale
+          // tree, species inspector or selection would attribute the previous
+          // world's data to this one (ADR 0025).
+          setTree(null);
+          setSelectedSpeciesId(null);
+          setSpeciesDetails(null);
+          setSelectedEntityId(null);
+          setDetails(null);
+          setSelectionGone(false);
+          setFollowing(false);
+          setEvents([]);
+          setEventsDropped(0);
         },
         // Speed state deliberately does NOT sync from telemetry: a frame
         // produced before a just-clicked speed change was processed would
@@ -329,12 +414,14 @@ export function App(): React.JSX.Element {
       sessionRef.current = null;
       canvas.remove();
     };
-  }, [history, requestedSeed]);
+  }, [history, stage, requestedSeed]);
 
   const changeSpeed = useCallback((next: SimulationSpeed) => {
     setSpeed(next);
     if (next !== "paused") {
       lastRunSpeedRef.current = next;
+      // Pressing Play answers the branch banner's invitation; retire it.
+      setBranchNotice(null);
     }
     sessionRef.current?.setSpeed(next);
   }, []);
@@ -525,21 +612,44 @@ export function App(): React.JSX.Element {
     sessionRef.current?.saveWorld(name);
   }, []);
 
-  const rewindTo = useCallback((tick: number) => {
-    void sessionRef.current?.rewindTo(tick);
-  }, []);
+  const rewindTo = useCallback(
+    (tick: number) => {
+      // The session pauses the live world before reconstructing; mirror that in
+      // the UI's speed state so the time controls tell the truth (ADR 0025).
+      changeSpeed("paused");
+      void sessionRef.current?.rewindTo(tick);
+    },
+    [changeSpeed],
+  );
 
   const returnToPresent = useCallback(() => {
     sessionRef.current?.returnToPresent();
   }, []);
 
-  const branchHere = useCallback((name: string) => {
-    // The new world is written but NOT opened: the preview stays on screen so
-    // the branch point is still visible, and the worlds list is where a world
-    // gets opened. Switching automatically would also discard the charts of the
-    // world you were looking at without asking.
-    void sessionRef.current?.branchHere(name);
-  }, []);
+  const branchHere = useCallback(
+    (name: string) => {
+      // Capture the parent's identity now: once the branch opens, the
+      // persistence status describes the branch itself.
+      const parentName = persistence?.worldName ?? "the original world";
+      const branchTick = historical?.tick ?? 0;
+      void (async () => {
+        const branchWorldId = await sessionRef.current?.branchHere(name);
+        if (branchWorldId == null) {
+          return;
+        }
+        // The branch is now the open world, paused at the branch tick
+        // (ADR 0025). Reflect the pause in the UI's speed state and say
+        // plainly where the user is; Play is what starts the new history.
+        setSpeed("paused");
+        setBranchNotice(
+          `Now in branch “${name}” — created from “${parentName}” at tick ` +
+            `${branchTick.toLocaleString()}. The world is paused; press Play to grow ` +
+            `an alternative history.`,
+        );
+      })();
+    },
+    [persistence?.worldName, historical?.tick],
+  );
 
   const loadWorld = useCallback(
     (worldId: string) => {
@@ -612,6 +722,7 @@ export function App(): React.JSX.Element {
     () =>
       storedWorlds.map((stored) => {
         const newest = stored.saves[0];
+        const parentId = stored.manifest.parentWorldId;
         return {
           worldId: stored.manifest.worldId,
           worldName: stored.manifest.worldName,
@@ -628,13 +739,29 @@ export function App(): React.JSX.Element {
           // A save from another engine build would run a different history, so
           // the button is disabled rather than allowed to fail on click.
           loadable: stored.manifest.engineVersion === ENGINE_VERSION,
+          // Lineage (ADR 0025): name the parent when it still exists.
+          branch:
+            parentId === undefined
+              ? null
+              : {
+                  parentName:
+                    storedWorlds.find((candidate) => candidate.manifest.worldId === parentId)
+                      ?.manifest.worldName ?? null,
+                  branchTick: stored.manifest.branchTick ?? 0,
+                },
         };
       }),
     [storedWorlds, persistence?.worldId],
   );
 
-  const persistenceStatusView = useMemo(
-    () => ({
+  const persistenceStatusView = useMemo(() => {
+    const parentId = currentStored?.manifest.parentWorldId;
+    const parentName =
+      parentId === undefined
+        ? null
+        : (storedWorlds.find((candidate) => candidate.manifest.worldId === parentId)?.manifest
+            .worldName ?? "a deleted world");
+    return {
       worldId: persistence?.worldId ?? null,
       worldName: persistence?.worldName ?? null,
       busy: persistence?.busy ?? false,
@@ -646,9 +773,14 @@ export function App(): React.JSX.Element {
       lastSavedTick: persistence?.lastSavedTick ?? null,
       message: persistence?.message ?? "Not saved yet",
       failed: persistence?.failed ?? false,
-    }),
-    [persistence],
-  );
+      // "You are inside a branch" stays visible for as long as that is true.
+      branchNote:
+        parentId === undefined
+          ? null
+          : `This is a branch of “${parentName}”, diverging from tick ` +
+            `${(currentStored?.manifest.branchTick ?? 0).toLocaleString()}.`,
+    };
+  }, [persistence, currentStored, storedWorlds]);
 
   /** Compact save state for the top bar (docs/06 §9). */
   const saveStateLabel =
@@ -668,8 +800,42 @@ export function App(): React.JSX.Element {
     statsOpen || layersOpen || speciesOpen || treeOpen || timelineOpen || toolsOpen || worldsOpen;
   const inspectorVisible = !narrow || !anySheetOpen;
 
+  // --- The start flow (ADR 0025; docs/01 §9 states 1-2) -----------------------
+  // No world exists in these stages: no Worker, no engine, no autosave, and
+  // regenerating previews cannot advance authoritative time.
+  if (stage.kind === "start") {
+    return (
+      <StartScreen
+        worlds={startWorlds}
+        error={startWorldsError}
+        onNewWorld={() => {
+          setStage({ kind: "new-world" });
+        }}
+        onLoadWorld={(worldId) => {
+          setStage({ kind: "world", start: { kind: "load", worldId } });
+        }}
+      />
+    );
+  }
+
+  if (stage.kind === "new-world") {
+    return (
+      <NewWorldScreen
+        initialSeed={requestedSeed}
+        onCreate={(accepted: AcceptedWorld) => {
+          setStage({ kind: "world", start: { kind: "new", ...accepted } });
+        }}
+        onBack={() => {
+          // Show the fresh read, not the list from the last visit.
+          setStartWorlds(null);
+          setStage({ kind: "start" });
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="app">
+    <div className="app" data-environment-hash={world?.environmentHash ?? ""}>
       <div className="viewport" ref={viewportRef} />
 
       <TopBar
@@ -703,9 +869,15 @@ export function App(): React.JSX.Element {
       {world === null && error === null ? (
         <div className="banner">
           <strong>
-            Generating world 0x{requestedSeed.toString(16).toUpperCase().padStart(8, "0")}…
+            {stage.start.kind === "new"
+              ? `Creating world 0x${stage.start.seed.toString(16).toUpperCase().padStart(8, "0")}…`
+              : "Loading world…"}
           </strong>
-          <p className="hint">Procedural terrain, plants and the founder population.</p>
+          <p className="hint">
+            {stage.start.kind === "new"
+              ? "The authoritative world from the seed you accepted; it opens paused at tick 0."
+              : "Restoring the saved world; it opens paused at its saved tick."}
+          </p>
         </div>
       ) : null}
 
@@ -792,7 +964,9 @@ export function App(): React.JSX.Element {
       {worldsOpen ? (
         <HistoryPanel
           mode={historical?.mode ?? "live"}
-          presentTick={telemetry?.tick ?? 0}
+          // While previewing, telemetry describes the historical engine, so the
+          // present's tick comes from the historical status (ADR 0025).
+          presentTick={historical?.presentTick ?? telemetry?.tick ?? 0}
           originTick={currentBranchTick}
           historicalTick={historical?.tick ?? null}
           progress={historical?.progress ?? null}
@@ -809,6 +983,21 @@ export function App(): React.JSX.Element {
       {commandNotice !== null ? (
         <div className="command-notice" role="status">
           {commandNotice}
+        </div>
+      ) : null}
+
+      {branchNotice !== null ? (
+        <div className="branch-notice" role="status" data-testid="branch-opened-notice">
+          {branchNotice}
+          <button
+            type="button"
+            onClick={() => {
+              setBranchNotice(null);
+            }}
+            aria-label="Dismiss branch notice"
+          >
+            ×
+          </button>
         </div>
       ) : null}
 

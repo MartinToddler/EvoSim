@@ -27,6 +27,7 @@ import {
   collectTelemetryAggregates,
   estimateEngineMemory,
   memoryCategories,
+  hashEnvironment,
   queryEntity,
   queryHistory,
   querySpecies,
@@ -453,6 +454,12 @@ export class SimulationHost {
     // world while the first one's loop is still scheduled is exactly the race
     // that would produce two engines stepping into one port.
     this.#stopLoop();
+    // A preview belongs to the world being replaced. Without this, a LOAD_WORLD
+    // issued while a historical preview was open (the branch auto-open path,
+    // ADR 0025) would leave the host reporting the OLD world's past over the
+    // new world's projections.
+    this.#cancelReplay();
+    this.#historical = null;
     this.#fatal = false;
 
     const merged: HostRuntimeConfig = {
@@ -477,6 +484,9 @@ export class SimulationHost {
       configSchemaVersion: CONFIG_SCHEMA_VERSION,
       snapshotSchemaVersion: SNAPSHOT_SCHEMA_VERSION,
       configHash: engine.configHash,
+      // Computed once per adopted world: the identity check the New World flow
+      // uses to prove preview and authoritative environment agree (ADR 0025).
+      environmentHash: hashEnvironment(environment),
       worldSizeLU: engine.config.world.sizeLU,
       gridSize: environment.size,
       cellSizeLU: environment.cellSizeLU,

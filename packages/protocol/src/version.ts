@@ -52,9 +52,15 @@
  * performance HUD; nothing authoritative reads it, and no existing message
  * changed shape.
  *
+ * Protocol 9 (ADR 0025) adds `WorldSummaryDto.environmentHash`: the digest of
+ * the generated environment arrays, computed once when a world is adopted. It
+ * exists so the New World flow can prove the map the user previewed and
+ * accepted is byte-for-byte the map the authoritative world runs — an identity
+ * check, not a behaviour. No message type changed shape otherwise.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;

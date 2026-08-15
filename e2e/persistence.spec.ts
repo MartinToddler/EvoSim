@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { openWorld, readTick, topBarButton, waitForTicks } from "./support";
+import { openWorld, pressPlay, readTick, topBarButton, waitForTicks } from "./support";
 
 /**
  * docs/07 PART E scenarios 6, 8 and 9: save/reload, rewind and branch
- * (task L08).
+ * (task L08; corrected by ADR 0025).
  *
  * These are the flows that cross every boundary the project has — engine,
  * protocol, Worker, IndexedDB and back — so they are the ones a browser test
@@ -43,51 +43,123 @@ test.describe("persistence, rewind and branching", () => {
       .toBeLessThan(beforeLoad);
   });
 
-  test("8+9. rewinds to an earlier tick and branches from it", async ({ page }) => {
+  test("8. dragging selects; View this time rewinds; Return to present restores", async ({
+    page,
+  }) => {
     await openWorld(page);
-    await waitForTicks(page, 20);
-
-    // Rewind needs a save at or before the target tick (ADR 0018 §7).
+    // The tick-0 baseline from Create World already makes history explorable;
+    // add a later save so the reconstruction genuinely replays forward.
+    await waitForTicks(page, 40);
     await topBarButton(page, "Save this world, or load one you saved earlier").click();
     const worlds = page.locator(".worlds-panel");
-    await worlds.getByLabel("World name").fill("e2e rewind");
     await worlds.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(worlds.locator(".world-row", { hasText: "e2e rewind" })).toBeVisible({
-      timeout: 60_000,
-    });
-    const savedTick = await readTick(page);
+    await expect(worlds.locator(".worlds-status")).toContainText(/Saved/, { timeout: 60_000 });
 
-    await waitForTicks(page, 60);
-
-    await topBarButton(page, "World history: splits, extinctions, booms, crashes").click();
+    await waitForTicks(page, 40);
     const history = page.locator(".history-panel");
     await expect(history).toBeVisible();
 
-    // The scrubber commits on POINTER UP, not on change — a drag must not fire a
-    // reconstruction per pixel. So the rewind is a real click on the track,
-    // which lands the handle mid-history: past the save, so the reconstruction
-    // genuinely has to replay forward from it.
+    // Selecting a time must NOT start anything: no pointer release launches a
+    // replay (docs/06 §13). The scrubber click lands mid-track.
     const scrubber = history.getByTestId("history-scrubber");
     await expect(scrubber).toBeEnabled({ timeout: 30_000 });
-    expect(savedTick).toBeGreaterThan(0);
     await scrubber.click();
+    await page.waitForTimeout(1_000);
+    await expect(history.locator(".history-panel__badge--live")).toContainText("Live");
+
+    // The selection is visible, and the explicit action is what rewinds.
+    const chosen = await history.getByTestId("history-position").innerText();
+    const presentBefore = await readTick(page);
+    await history.getByTestId("view-this-time").click();
 
     await expect(history.locator(".history-panel__badge")).toContainText(/Historical preview/, {
       timeout: 90_000,
     });
-    await expect(history.getByTestId("return-to-present")).toBeEnabled();
+    // The preview is read-only and names both ticks; the previewed tick is the
+    // selected one.
+    await expect(history).toContainText("interventions are disabled");
+    await expect(history.getByTestId("history-position")).toHaveText(chosen);
 
-    // 9. Branch from the previewed tick. The branch is WRITTEN, not opened: the
-    // preview deliberately stays on screen so the branch point is still visible,
-    // and the worlds list is where a world gets opened. So the observable is a
-    // new stored world, not a switch.
-    const branchTick = await history.getByTestId("history-position").innerText();
-    await history.getByTestId("create-branch").click();
+    // Return to present restores the exact live tick, still paused.
+    await history.getByTestId("return-to-present").click();
+    await expect(history.locator(".history-panel__badge--live")).toContainText("Live", {
+      timeout: 60_000,
+    });
+    await expect
+      .poll(async () => readTick(page), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(presentBefore);
+    expect(await readTick(page)).toBe(presentBefore);
+  });
 
-    await expect(worlds.locator(".world-row", { hasText: /^Branch at/ })).toBeVisible({
+  test("9. Branch From Here opens the branch, paused at the branch tick; the parent is untouched", async ({
+    page,
+  }) => {
+    await openWorld(page);
+    await waitForTicks(page, 30);
+
+    // Name the parent so the lineage note is checkable, and save a checkpoint.
+    await topBarButton(page, "Save this world, or load one you saved earlier").click();
+    const worlds = page.locator(".worlds-panel");
+    await worlds.getByLabel("World name").fill("Parent");
+    await worlds.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(worlds.locator(".world-row", { hasText: "Parent" })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    await waitForTicks(page, 30);
+
+    // Rewind to a checkpoint tick (the chips select exactly a saved tick).
+    const history = page.locator(".history-panel");
+    await expect(history.getByTestId("history-save-ticks")).toBeVisible();
+    await history.locator(".history-panel__save-chip").last().click();
+    await history.getByTestId("view-this-time").click();
+    await expect(history.locator(".history-panel__badge")).toContainText(/Historical preview/, {
       timeout: 90_000,
     });
-    // The original is untouched and still previewing the same tick.
-    await expect(history.getByTestId("history-position")).toHaveText(branchTick);
+    const previewedTick = await history.getByTestId("history-position").innerText();
+    const parentRow = worlds.locator(".world-row", { hasText: "Parent" });
+    const parentHashBefore = await parentRow
+      .locator("span[title='Canonical state hash at the saved tick']")
+      .innerText();
+
+    // Branch. The branch becomes the OPEN world automatically (ADR 0025).
+    await history.getByTestId("branch-name").fill("Alt Reality");
+    await history.getByTestId("create-branch").click();
+
+    await expect(page.getByTestId("branch-opened-notice")).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId("branch-opened-notice")).toContainText("Alt Reality");
+    await expect(page.getByTestId("branch-opened-notice")).toContainText("Parent");
+
+    // Now inside the branch: live (not previewing), paused, at the branch tick.
+    await expect(history.locator(".history-panel__badge--live")).toContainText("Live", {
+      timeout: 60_000,
+    });
+    await expect(page.locator(".topbar")).toContainText("Paused");
+    await expect
+      .poll(async () => readTick(page), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(0);
+    expect(`tick ${(await readTick(page)).toLocaleString("en-US")}`).toBe(previewedTick);
+
+    // The Worlds panel says where we are, with lineage.
+    await expect(page.getByTestId("branch-note")).toContainText("branch of");
+    const branchRow = worlds.locator(".world-row", { hasText: "Alt Reality" });
+    await expect(branchRow).toContainText("• open");
+    await expect(branchRow).toContainText(/branched from\s+Parent/);
+
+    // Press Play: the branch grows its own history…
+    await pressPlay(page);
+    await waitForTicks(page, 20);
+
+    // …while the parent is exactly what it was: same newest save, same hash.
+    await expect(parentRow).not.toContainText("• open");
+    const parentHashAfter = await parentRow
+      .locator("span[title='Canonical state hash at the saved tick']")
+      .innerText();
+    expect(parentHashAfter).toBe(parentHashBefore);
+
+    // Switching back to the parent reopens it at its own saved tick.
+    await parentRow.getByRole("button", { name: "Load" }).click();
+    await expect(page.getByTestId("branch-note")).toHaveCount(0, { timeout: 60_000 });
+    await expect(worlds.locator(".world-row", { hasText: "Parent" })).toContainText("• open");
   });
 });

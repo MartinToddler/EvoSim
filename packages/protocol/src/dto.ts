@@ -113,6 +113,16 @@ export interface WorldSummaryDto {
   snapshotSchemaVersion: number;
   /** Canonical digest of the authoritative config this world runs on. */
   configHash: string;
+  /**
+   * Digest of the generated environment arrays alone — "is this the same map?".
+   *
+   * The New World flow previews a map on the main thread and then asks the
+   * Worker to create the authoritative world from the same seed and config;
+   * this digest is what lets the app (and the E2E suite) PROVE the world the
+   * user accepted is the world the simulation runs, rather than assume it
+   * (ADR 0025).
+   */
+  environmentHash: string;
   /** World edge length in location units. */
   worldSizeLU: number;
   /** Environment grid edge length in cells. */

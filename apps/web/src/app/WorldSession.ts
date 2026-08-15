@@ -165,6 +165,19 @@ export interface WorldSessionOptions {
   viewport: HTMLElement;
   seed: number;
   initialSpeed: SimulationSpeed;
+  /**
+   * Open a STORED world instead of generating a new one from `seed`
+   * (the Load World startup path, ADR 0025). The seed is ignored; the world's
+   * own seed comes back with WORLD_READY.
+   */
+  startFrom?: { worldId: string };
+  /**
+   * Persist a tick-0 baseline save under this name as soon as the new world is
+   * ready (the Create World startup path, ADR 0025). Creating a world is an
+   * explicit persistence intent: the baseline binds the manifest, guarantees
+   * rewind-to-origin, and arms autosave. Never applied to loaded worlds.
+   */
+  persistBaseline?: { name: string };
   callbacks: WorldSessionCallbacks;
   /** Test seam: supply a fake Worker. Defaults to the real simulation Worker. */
   createWorker?: () => SessionWorker;
@@ -293,6 +306,15 @@ export class WorldSession {
   /** Speed to restore after a load; a loaded world resumes as it was running. */
   #speed: SimulationSpeed;
 
+  /** Tick of the last telemetry that described the LIVE world (ADR 0025). */
+  #lastLiveTick = 0;
+
+  /**
+   * World name for the tick-0 baseline save the Create World flow requested;
+   * consumed by the first WORLD_READY of a brand-new world (ADR 0025).
+   */
+  #pendingBaselineName: string | null = null;
+
   // --- Species and history (Milestone 8) --------------------------------------
   #selectedSpeciesId: number | null = null;
   /** True while a species/tree panel is open, so populations stay live. */
@@ -361,6 +383,13 @@ export class WorldSession {
         }
       },
       onTelemetry: (telemetry) => {
+        // Remember the live world's tick while we are IN the live world. During
+        // a reconstruction or preview the Worker's telemetry describes the
+        // historical view engine, so this is the one honest source for "what
+        // tick is the present" when a rewind starts (ADR 0025).
+        if (this.#persistence.historical.mode === "live") {
+          this.#lastLiveTick = telemetry.tick;
+        }
         options.callbacks.onTelemetry(freezeTelemetry(telemetry));
         // Autosave cadence is measured in authoritative ticks, not seconds, so
         // it means the same thing at 1x and at MAX (Milestone 10).
@@ -408,6 +437,20 @@ export class WorldSession {
 
   static start(options: WorldSessionOptions): WorldSession {
     const session = new WorldSession(options);
+    if (options.startFrom !== undefined) {
+      // Boot straight into a stored world: the Worker accepts LOAD_WORLD
+      // without a prior INIT_NEW_WORLD, so no throwaway world is generated.
+      session.#loadingStoredWorld = true;
+      void session.#persistence.load(options.startFrom.worldId, options.initialSpeed).then(
+        (loaded) => {
+          if (!loaded) {
+            session.#loadingStoredWorld = false;
+          }
+        },
+      );
+      return session;
+    }
+    session.#pendingBaselineName = options.persistBaseline?.name ?? null;
     session.#client.initNewWorld({ seed: options.seed, speed: options.initialSpeed });
     return session;
   }
@@ -442,15 +485,41 @@ export class WorldSession {
    */
   async rewindTo(targetTick: number): Promise<boolean> {
     this.setSpeed("paused");
-    return await this.#persistence.rewindTo(targetTick);
+    return await this.#persistence.rewindTo(targetTick, this.#lastLiveTick);
   }
 
   returnToPresent(): void {
     this.#persistence.returnToPresent();
   }
 
+  /**
+   * Branch the open historical preview into a new world AND make that world the
+   * open one, paused at the branch tick (ADR 0025).
+   *
+   * The original behaviour — write the branch, stay in the parent's preview —
+   * made the feature look broken: the screen kept showing the world the user
+   * had just chosen to leave. The flow is now: persist the branch, leave the
+   * preview, load the branch paused. The parent is never written (the store
+   * refuses a branch origin over an existing world), and pressing Play is what
+   * starts the alternative history.
+   */
   async branchHere(name: string): Promise<string | null> {
-    return await this.#persistence.createBranch(name);
+    const branchWorldId = await this.#persistence.createBranch(name);
+    if (branchWorldId === null || this.#destroyed) {
+      return branchWorldId;
+    }
+    // Leave the parent's preview BEFORE adopting the branch, so the host frees
+    // its view engine and the historical status returns to live.
+    this.#persistence.returnToPresent();
+    // The branch must open paused at its origin tick; the user starts time.
+    this.#speed = "paused";
+    this.#loadingStoredWorld = true;
+    const loaded = await this.#persistence.load(branchWorldId, "paused");
+    if (!loaded) {
+      this.#loadingStoredWorld = false;
+      return null;
+    }
+    return branchWorldId;
   }
 
   setSpeed(speed: SimulationSpeed): void {
@@ -894,8 +963,19 @@ export class WorldSession {
     this.#persistence.onWorldReady(hostRuntime.autosaveCheckInterval, {
       keepBinding: this.#loadingStoredWorld,
     });
+    const wasLoad = this.#loadingStoredWorld;
     this.#loadingStoredWorld = false;
     this.#options.callbacks.onWorldReady(frozenWorld, Object.freeze(hostRuntime));
+
+    // Create World is an explicit persistence intent (ADR 0025): the accepted
+    // world gets its exact tick-0 baseline written immediately, which binds the
+    // manifest and arms autosave. Discarded previews were never here at all,
+    // and a loaded world already has its own history.
+    if (!wasLoad && this.#pendingBaselineName !== null) {
+      const baselineName = this.#pendingBaselineName;
+      this.#pendingBaselineName = null;
+      void this.#persistence.save({ kind: "manual", name: baselineName });
+    }
   }
 
   /**

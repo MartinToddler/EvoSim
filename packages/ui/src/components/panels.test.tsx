@@ -102,6 +102,7 @@ function worldFixture(): WorldSummaryDto {
     configSchemaVersion: 6,
     snapshotSchemaVersion: 6,
     configHash: "abc",
+    environmentHash: "feedfacefeedface",
     worldSizeLU: 4096,
     gridSize: 256,
     cellSizeLU: 16,
