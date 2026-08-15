@@ -326,6 +326,10 @@ export class WorldSession {
         // unhandled and the page shows an empty canvas with no explanation.
         this.#handleWorldReady(payload.world, payload.hostRuntime, payload.terrain).catch(
           (error: unknown) => {
+            // The error banner says the simulation stopped, so stop it: without
+            // this the Worker keeps ticking a world nobody can ever see, at
+            // full CPU, behind a page that claims the opposite.
+            this.#client.setSpeed("paused");
             options.callbacks.onError({
               message: `renderer failed to start: ${error instanceof Error ? error.message : String(error)}`,
               fatal: true,
@@ -904,7 +908,15 @@ export class WorldSession {
       }
       return;
     }
-    renderer.applyRenderSnapshot(viewRenderSnapshot(buffer));
+    // Validation failure is contained here for the same reason the host
+    // contains a malformed message: a throw inside a message listener surfaces
+    // as an unattributable page error, and it would take the whole snapshot
+    // stream down with it rather than costing one frame.
+    try {
+      renderer.applyRenderSnapshot(viewRenderSnapshot(buffer));
+    } catch (error) {
+      this.#reportMalformedBuffer("RENDER_SNAPSHOT", error);
+    }
   }
 
   #handleVegetation(buffer: ArrayBuffer): void {
@@ -916,8 +928,23 @@ export class WorldSession {
       this.#client.recycleVegetationBuffer(buffer);
       return;
     }
-    // applyVegetation consumes the field and recycles the buffer itself.
-    renderer.applyVegetation(viewVegetationSnapshot(buffer));
+    try {
+      // applyVegetation consumes the field and recycles the buffer itself.
+      renderer.applyVegetation(viewVegetationSnapshot(buffer));
+    } catch (error) {
+      this.#reportMalformedBuffer("VEGETATION_SNAPSHOT", error);
+    }
+  }
+
+  #reportMalformedBuffer(whileHandling: string, error: unknown): void {
+    this.#options.callbacks.onError({
+      message: `malformed snapshot buffer: ${error instanceof Error ? error.message : String(error)}`,
+      fatal: false,
+      tick: null,
+      seed: this.#world?.seed ?? null,
+      engineVersion: this.#world?.engineVersion ?? "unknown",
+      whileHandling,
+    });
   }
 
   // --- Selection and follow ----------------------------------------------------

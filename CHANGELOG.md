@@ -6,6 +6,39 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Recovered: the Milestone 6 architecture review
+
+Found by auditing every remote branch against the trunk during Milestone 11. An entire independent
+review of the worker/renderer line (`claude/m6-architecture-review-56mj9k`) had never been merged:
+a _different_ Milestone 6 review reached the trunk instead, and this one's five fixes and its
+adversarial test suite were left behind. Its ADR is restored as 0019 — it was filed as 0011, which
+the surviving line had already used for the Milestone 7 observation UI, and that collision is the
+clearest evidence the two lines diverged. No hash moved.
+
+### Fixed
+
+- **A renderer that failed to start left the world running invisibly.** The page said the
+  simulation had stopped while the Worker kept ticking at full CPU, forever, behind a canvas nobody
+  could see. The session now pauses on that path.
+- **A replacement world inherited the previous world's stream state.** Adopting a world rebuilt the
+  pools and cadence clocks but not `renderStreamEnabled` or `behindTarget`, so a second world
+  opened through a worker whose stream had been suspended opened blind, and its first telemetry
+  could report "behind" about a loop that no longer existed.
+- **Both buffer pools accepted a release while nothing was in flight.** A same-shape buffer — most
+  plausibly a previous same-config world's — grew `idle` past `created` and broke the documented
+  `created === idle + inFlight` invariant; a stray detached recycle could erode the allocation
+  ceiling for a slot that was never occupied.
+- **A malformed snapshot buffer threw inside the message listener**, surfacing as an
+  unattributable page error and taking the whole snapshot stream down instead of costing one frame.
+- **`VELOCITY_UNITS_PER_LU` hardcoded 256** instead of deriving from `VELOCITY_SCALE`, so the
+  inspector's speed readout would have drifted silently the moment that constant changed.
+
+### Added
+
+- The review's adversarial host suite: worker-vs-headless hash equality under malformed messages,
+  wrong protocol versions, foreign and detached recycle buffers, dead-entity queries, a starved
+  render pool, a pause/resume storm, rapid speed cycling and a mid-run DISPOSE.
+
 ## [Unreleased] — 2026-08-15 — Milestone 11: rewind, historical mode and branching
 
 Versions: `PROTOCOL_VERSION` 6 → **7**. `ENGINE_VERSION` stays 0.7.0 and every golden hash is

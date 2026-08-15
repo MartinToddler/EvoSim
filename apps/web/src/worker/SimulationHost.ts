@@ -543,6 +543,12 @@ export class SimulationHost {
     this.#lastAppliedCommandCursor = engine.commands.cursor;
     this.#telemetryWindowStart = this.#clock.now();
     this.#telemetryWindowTicks = 0;
+    // A new world must not inherit the previous one's stream state: a viewer
+    // who suspended the old world's pictures still expects the new world to
+    // open with one on screen, and "behind target" is a claim about a loop
+    // that no longer exists.
+    this.#renderStreamEnabled = true;
+    this.#behindTarget = false;
     this.#profiler.resetWindow();
 
     const terrainBuffer = createTerrainBuffer(world.gridSize);

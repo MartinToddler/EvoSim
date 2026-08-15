@@ -259,11 +259,12 @@ export class VegetationBufferPool {
 
   /** Same counter discipline as `RenderBufferPool.release`; see the note there. */
   release(buffer: ArrayBuffer): boolean {
+    if (this.#inFlight === 0) {
+      return false;
+    }
     if (buffer.byteLength === 0) {
-      if (this.#inFlight > 0) {
-        this.#inFlight -= 1;
-        this.#created -= 1;
-      }
+      this.#inFlight -= 1;
+      this.#created -= 1;
       return false;
     }
     try {
@@ -273,9 +274,7 @@ export class VegetationBufferPool {
     } catch {
       return false;
     }
-    if (this.#inFlight > 0) {
-      this.#inFlight -= 1;
-    }
+    this.#inFlight -= 1;
     this.#idle.push(buffer);
     return true;
   }

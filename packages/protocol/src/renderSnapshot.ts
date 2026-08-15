@@ -412,14 +412,20 @@ export class RenderBufferPool {
    * because the alternative is a rendering thread quietly reading garbage.
    */
   release(buffer: ArrayBuffer): boolean {
+    // Nothing of ours can come back while nothing of ours is out. Without this
+    // check, a same-shape buffer from elsewhere — most plausibly a previous
+    // world whose config had identical caps — would be adopted into `idle`
+    // without a matching `inFlight` decrement, and the pool would end up
+    // holding more buffers than it ever created.
+    if (this.#inFlight === 0) {
+      return false;
+    }
     // A detached buffer reports byteLength 0. It was almost certainly one of
     // ours whose transfer crossed with this recycle, so its slot is freed for a
     // replacement — but there is nothing left to reuse.
     if (buffer.byteLength === 0) {
-      if (this.#inFlight > 0) {
-        this.#inFlight -= 1;
-        this.#created -= 1;
-      }
+      this.#inFlight -= 1;
+      this.#created -= 1;
       return false;
     }
     try {
@@ -435,9 +441,7 @@ export class RenderBufferPool {
       // ignoring it keeps `created === idle + inFlight` true.
       return false;
     }
-    if (this.#inFlight > 0) {
-      this.#inFlight -= 1;
-    }
+    this.#inFlight -= 1;
     this.#idle.push(buffer);
     return true;
   }

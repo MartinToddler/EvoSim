@@ -118,4 +118,12 @@ describe("VegetationBufferPool", () => {
     expect(pool.acquire()).not.toBeNull();
     expect(pool.acquire()).toBeNull();
   });
+  it("refuses any release while nothing is in flight, even a same-grid buffer", () => {
+    // Same invariant as RenderBufferPool: a release with nothing out cannot be
+    // a return of ours, so adopting it would grow `idle` past `created`.
+    const pool = new VegetationBufferPool(8, 2);
+    expect(pool.release(createVegetationBuffer(8))).toBe(false);
+    expect(pool.created).toBe(pool.idle + pool.inFlight);
+    expect(pool.idle).toBe(1);
+  });
 });
