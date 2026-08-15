@@ -11,6 +11,8 @@ import {
   type SimulationSpeed,
   type SpeciesDetailsPayload,
   type SnapshotDataPayload,
+  type RewindProgressPayload,
+  type HistoricalModeReadyPayload,
   type StateHashPayload,
   type TelemetryDto,
   type TerrainSnapshotPayload,
@@ -61,6 +63,14 @@ export interface WorkerClientHandlers {
   /** Terrain re-shipped after a player command edited the world (Milestone 9). */
   onTerrainSnapshot?: (payload: TerrainSnapshotPayload) => void;
   onTelemetry?: (payload: TelemetryDto) => void;
+  /**
+   * Replay progress while a rewind is in flight (Milestone 11).
+   *
+   * A stream, not an answer: a reconstruction reports many times and resolves
+   * once, so progress must not consume the pending request. `requestId` lets a
+   * caller ignore reports from a rewind it has already superseded.
+   */
+  onRewindProgress?: (payload: RewindProgressPayload, requestId: number) => void;
   onError?: (payload: WorkerErrorDto) => void;
   /** Reported when a message could not be decoded — a protocol-level fault. */
   onProtocolViolation?: (reason: string) => void;
@@ -75,6 +85,7 @@ interface PendingRequest {
     | "TREE_SNAPSHOT"
     | "HISTORY_EVENTS"
     | "STATE_HASH"
+    | "HISTORICAL_MODE_READY"
     | "SNAPSHOT_DATA"
     | "COMMAND_RESULT";
 }
@@ -268,6 +279,57 @@ export class WorkerClient {
    * by the ordinary WORLD_READY handler, exactly as a new world is; failure
    * arrives as a non-fatal ERROR, and the world already running keeps running.
    */
+  /**
+   * Reconstruct `targetTick` from `snapshot` and enter historical mode.
+   *
+   * The caller supplies the save because only the main thread can see the
+   * database. Resolves with the preview's identity once the replay lands;
+   * progress arrives through `onRewindProgress` in the meantime.
+   */
+  requestRewind(
+    snapshot: ArrayBuffer,
+    targetTick: number,
+    /**
+     * Called synchronously with the id this request was issued under, so the
+     * caller can match the progress stream to it. Without it the caller would
+     * have to guess, and progress from a superseded rewind would be
+     * indistinguishable from progress on the current one.
+     */
+    onIssued?: (requestId: number) => void,
+  ): Promise<HistoricalModeReadyPayload> {
+    return this.#request<HistoricalModeReadyPayload>("HISTORICAL_MODE_READY", (requestId) => {
+      onIssued?.(requestId);
+      return {
+        protocolVersion: PROTOCOL_VERSION,
+        requestId,
+        type: "REQUEST_REWIND",
+        payload: { snapshot, targetTick },
+      };
+    });
+  }
+
+  /** Leave historical mode. Fire-and-forget: the present never stopped existing. */
+  returnToPresent(): void {
+    this.#send({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "RETURN_TO_PRESENT",
+      payload: {},
+    });
+  }
+
+  /**
+   * Ask for the bytes that become a branch's origin, taken from the open
+   * preview at `branchTick`.
+   */
+  createBranch(branchTick: number): Promise<SnapshotDataPayload> {
+    return this.#request<SnapshotDataPayload>("SNAPSHOT_DATA", (requestId) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      type: "CREATE_BRANCH",
+      payload: { branchTick },
+    }));
+  }
+
   loadWorld(options: {
     snapshot: ArrayBuffer;
     speed: SimulationSpeed;
@@ -333,6 +395,14 @@ export class WorkerClient {
       return;
     }
     const message: WorkerToMainMessage = decoded.message;
+
+    // Progress is correlated but is not the answer: routing it through the
+    // pending map would either resolve the rewind early or reject it for
+    // arriving as the wrong type.
+    if (message.type === "REWIND_PROGRESS") {
+      this.#handlers.onRewindProgress?.(message.payload, message.requestId ?? 0);
+      return;
+    }
 
     if (message.requestId !== undefined) {
       const pending = this.#pending.get(message.requestId);

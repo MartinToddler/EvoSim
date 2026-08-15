@@ -28,7 +28,12 @@ import type {
 } from "@eon/protocol";
 import { WorkerClient, workerPort, type RawWorker } from "../worker/WorkerClient";
 import type { StoredWorld, WorldStore } from "@eon/persistence";
-import { WorldPersistence, defaultWorldName, type PersistenceStatus } from "./WorldPersistence";
+import {
+  WorldPersistence,
+  defaultWorldName,
+  type HistoricalStatus,
+  type PersistenceStatus,
+} from "./WorldPersistence";
 
 /**
  * Composition root for one open world (docs/10 §22).
@@ -68,6 +73,8 @@ export interface WorldSessionCallbacks {
   onEntityDetails: (payload: EntityDetailsPayload) => void;
   /** Follow started (entityId) or stopped (null, with the reason why). */
   onFollowChange: (entityId: number | null, reason: FollowEndReason | "started") => void;
+  /** Historical mode entered, progressed, left or failed (Milestone 11). */
+  onHistorical?: (status: HistoricalStatus) => void;
   /** Fresh Tree of Life snapshot (Milestone 8). */
   onTree?: (tree: TreeSnapshotDto) => void;
   /** Selected-species inspector refresh (Milestone 8). */
@@ -305,6 +312,14 @@ export class WorldSession {
             type: "module",
           });
     this.#client = new WorkerClient(workerPort(this.#worker), {
+      onRewindProgress: (payload, requestId) => {
+        // Correlation is checked by the coordinator, not here: this handler
+        // cannot know which rewind is still wanted.
+        this.#persistence.reportRewindProgress(
+          { ticksReplayed: payload.ticksReplayed, ticksTotal: payload.ticksTotal },
+          requestId,
+        );
+      },
       onWorldReady: (payload) => {
         // Renderer creation is async and can genuinely fail — a machine with no
         // WebGL at all, or a lost context. Without this catch the rejection is
@@ -366,6 +381,9 @@ export class WorldSession {
 
     this.#persistence = new WorldPersistence({
       client: this.#client,
+      onHistorical: (status) => {
+        options.callbacks.onHistorical?.(status);
+      },
       appVersion: options.appVersion ?? "dev",
       onStatus: (status) => {
         options.callbacks.onPersistenceStatus?.(status);
@@ -397,6 +415,31 @@ export class WorldSession {
 
   get worldLayer(): WorldLayerId {
     return this.#worldLayer;
+  }
+
+  // --- Historical mode (Milestone 11) ----------------------------------------
+
+  get historical(): HistoricalStatus {
+    return this.#persistence.historical;
+  }
+
+  /**
+   * Look at `targetTick`.
+   *
+   * The live world is paused first: a preview of a world that is still running
+   * would be a preview of a tick that has already stopped being the present.
+   */
+  async rewindTo(targetTick: number): Promise<boolean> {
+    this.setSpeed("paused");
+    return await this.#persistence.rewindTo(targetTick);
+  }
+
+  returnToPresent(): void {
+    this.#persistence.returnToPresent();
+  }
+
+  async branchHere(name: string): Promise<string | null> {
+    return await this.#persistence.createBranch(name);
   }
 
   setSpeed(speed: SimulationSpeed): void {

@@ -31,8 +31,10 @@
 
 import type { SimulationSpeed } from "@eon/protocol";
 import {
+  PersistenceError,
   WorldStore,
   describePersistenceError,
+  selectSaveForTick,
   type StoredWorld,
   type WorldStore as WorldStoreType,
 } from "@eon/persistence";
@@ -67,12 +69,42 @@ const IDLE_STATUS: PersistenceStatus = Object.freeze({
   failed: false,
 });
 
+/**
+ * Where historical navigation stands (Milestone 11).
+ *
+ * Separate from {@link PersistenceStatus} because it answers a different
+ * question: that one says whether the world is safely stored, this one says
+ * which tick is on screen.
+ */
+export interface HistoricalStatus {
+  mode: "live" | "reconstructing" | "historical";
+  /** Tick being reconstructed or previewed; null in the present. */
+  tick: number | null;
+  /** Tick the live world is paused at while a preview is open. */
+  presentTick: number | null;
+  /** Replay progress, or null when nothing is replaying. */
+  progress: { ticksReplayed: number; ticksTotal: number } | null;
+  message: string;
+  failed: boolean;
+}
+
+const LIVE_HISTORICAL_STATUS: HistoricalStatus = Object.freeze({
+  mode: "live" as const,
+  tick: null,
+  presentTick: null,
+  progress: null,
+  message: "",
+  failed: false,
+});
+
 export interface WorldPersistenceOptions {
   client: WorkerClient;
   /** App build identifier, recorded in every manifest. */
   appVersion: string;
   onStatus: (status: PersistenceStatus) => void;
   onWorldsChanged: (worlds: readonly StoredWorld[]) => void;
+  /** Historical mode changes: entering, progress, leaving, failing. */
+  onHistorical?: (status: HistoricalStatus) => void;
   /** Test seam: supply a store backed by a fake IndexedDB. */
   createStore?: () => WorldStoreType;
 }
@@ -86,6 +118,18 @@ export class WorldPersistence {
   /** Tick of the last autosave attempt, so cadence survives speed changes. */
   #lastAutosaveTick = 0;
   #inFlight = false;
+  #historical: HistoricalStatus = LIVE_HISTORICAL_STATUS;
+  /**
+   * Token of the newest rewind request.
+   *
+   * A scrubber asks for ticks far faster than a replay can answer, so an older
+   * request can resolve after a newer one and install a state nobody asked to
+   * see. Every request captures the token it was issued under and discards its
+   * own result — and its own progress reports — once it is no longer the newest.
+   */
+  #rewindToken = 0;
+  /** Worker request id of the rewind whose progress is worth showing. */
+  #activeRewindRequestId = -1;
   /** The save or load currently running, so a manual save can wait for it. */
   #current: Promise<unknown> = Promise.resolve();
   #disposed = false;
@@ -280,6 +324,162 @@ export class WorldPersistence {
     } finally {
       this.#inFlight = false;
     }
+  }
+
+  // --- Historical mode (Milestone 11, tasks K07-K10) --------------------------
+
+  get historical(): HistoricalStatus {
+    return this.#historical;
+  }
+
+  /** Progress from the Worker, ignored once its request has been superseded. */
+  reportRewindProgress(
+    progress: { ticksReplayed: number; ticksTotal: number },
+    requestId: number,
+  ): void {
+    if (requestId !== this.#activeRewindRequestId || this.#historical.mode !== "reconstructing") {
+      return;
+    }
+    this.#updateHistorical({ ...this.#historical, progress });
+  }
+
+  /**
+   * Reconstruct `targetTick` and enter historical mode.
+   *
+   * The save is chosen here because only this side can see the database: the
+   * newest one at or before the target, by the rule in `selectSaveForTick`. A
+   * world with no save that early cannot be rewound there at all, and says so
+   * rather than silently landing somewhere else.
+   */
+  async rewindTo(targetTick: number): Promise<boolean> {
+    const worldId = this.#status.worldId;
+    if (this.#disposed || worldId === null) {
+      this.#updateHistorical({
+        ...LIVE_HISTORICAL_STATUS,
+        message: "Save this world before exploring its history",
+        failed: true,
+      });
+      return false;
+    }
+
+    const token = ++this.#rewindToken;
+    this.#updateHistorical({
+      mode: "reconstructing",
+      tick: targetTick,
+      presentTick: this.#historical.presentTick,
+      progress: { ticksReplayed: 0, ticksTotal: 0 },
+      message: `Reconstructing tick ${targetTick.toLocaleString()}…`,
+      failed: false,
+    });
+
+    try {
+      const worlds = await this.#store.listWorlds();
+      const stored = worlds.find((world) => world.manifest.worldId === worldId);
+      const save = selectSaveForTick(stored?.saves ?? [], targetTick);
+      if (save === null) {
+        throw new PersistenceError(
+          "not-found",
+          `no save at or before tick ${targetTick.toLocaleString()}`,
+        );
+      }
+
+      const loaded = await this.#store.load(worldId, save.snapshotId);
+      if (token !== this.#rewindToken) {
+        return false;
+      }
+
+      const ready = await this.#options.client.requestRewind(loaded.bytes, targetTick, (id) => {
+        this.#activeRewindRequestId = id;
+      });
+      if (token !== this.#rewindToken) {
+        // A newer rewind is already running or the user returned to the
+        // present. Its answer owns the screen, not this one.
+        return false;
+      }
+
+      this.#updateHistorical({
+        mode: "historical",
+        tick: ready.tick,
+        presentTick: ready.presentTick,
+        progress: null,
+        message: `Viewing tick ${ready.tick.toLocaleString()} of ${ready.presentTick.toLocaleString()}`,
+        failed: false,
+      });
+      return true;
+    } catch (error) {
+      if (token !== this.#rewindToken) {
+        return false;
+      }
+      this.#updateHistorical({
+        ...LIVE_HISTORICAL_STATUS,
+        message: `Rewind failed: ${describePersistenceError(error)}`,
+        failed: true,
+      });
+      return false;
+    }
+  }
+
+  /** Leave historical mode; any rewind still in flight stops mattering. */
+  returnToPresent(): void {
+    if (this.#historical.mode === "live") {
+      return;
+    }
+    this.#rewindToken += 1;
+    this.#activeRewindRequestId = -1;
+    this.#options.client.returnToPresent();
+    this.#updateHistorical({ ...LIVE_HISTORICAL_STATUS, message: "Back in the present" });
+  }
+
+  /**
+   * Branch the open preview into a new world.
+   *
+   * The Worker produces the origin bytes; this side writes them under a NEW
+   * manifest that records the parent and the branch tick. The source world is
+   * never written to, which is what makes branching safe to try.
+   */
+  async createBranch(name: string): Promise<string | null> {
+    const parentWorldId = this.#status.worldId;
+    const branchTick = this.#historical.tick;
+    if (this.#disposed || parentWorldId === null || this.#historical.mode !== "historical") {
+      return null;
+    }
+
+    this.#updateHistorical({
+      ...this.#historical,
+      message: `Branching at tick ${(branchTick ?? 0).toLocaleString()}…`,
+    });
+
+    try {
+      const origin = await this.#options.client.createBranch(branchTick ?? 0);
+      const saved = await this.#store.save({
+        worldName: name,
+        kind: "branch",
+        bytes: new Uint8Array(origin.buffer),
+        appVersion: this.#options.appVersion,
+        configSchemaVersion: origin.snapshotSchemaVersion,
+        branchedFrom: { parentWorldId, branchTick: origin.tick },
+      });
+
+      this.#updateHistorical({
+        ...this.#historical,
+        message: `Branched “${name}” at tick ${origin.tick.toLocaleString()}`,
+        failed: false,
+      });
+      void this.refresh();
+      return saved.manifest.worldId;
+    } catch (error) {
+      this.#updateHistorical({
+        ...this.#historical,
+        message: `Branch failed: ${describePersistenceError(error)}`,
+        failed: true,
+      });
+      return null;
+    }
+  }
+
+  #updateHistorical(status: HistoricalStatus): void {
+    this.#historical = status;
+    this.#options.onHistorical?.(status);
   }
 
   /** Delete a stored world. Unbinds the session if it was the one loaded. */
