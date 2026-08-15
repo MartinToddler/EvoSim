@@ -129,17 +129,34 @@ function scenarioConfig(options: Options) {
     config.world.climate.poleTemperatureDropCentiC = options.dropCentiC;
   }
 
-  for (let biome = 1; biome < config.plants.baseCapacityByBiome.length; biome += 1) {
-    config.plants.baseCapacityByBiome[biome] = Math.floor(
-      ((config.plants.baseCapacityByBiome[biome] as number) * options.capacityFactorPct) / 100,
-    );
-  }
+  config.plants.baseCapacityByBiome = config.plants.baseCapacityByBiome.map((base, biome) =>
+    biome === 0 ? base : Math.floor((base * options.capacityFactorPct) / 100),
+  );
 
   config.species.splitDistanceThresholdQ = options.splitThresholdQ;
   config.species.candidateCentroidContinuityThresholdQ = options.continuityQ;
   validateConfig(config);
   return config;
 }
+
+/** Names for {@link GENE_DIMS}, for the widest-separation diagnostic. */
+const GENE_DIM_NAMES: readonly string[] = [
+  "size",
+  "speed",
+  "accel",
+  "turn",
+  "visRange",
+  "visFov",
+  "diet",
+  "attack",
+  "armor",
+  "pace",
+  "thermalOpt",
+  "thermalTol",
+  "maturity",
+  "maxAge",
+  "invest",
+];
 
 /** The fifteen gene dimensions mirroring the engine's trait vector, normalized 0..Q. */
 const GENE_DIMS: readonly number[] = [
@@ -167,6 +184,12 @@ interface ClusterReport {
   /** Mean thermal-optimum gene per cluster, in Q. */
   thermalA: number;
   thermalB: number;
+  /** Mean diet gene per cluster, in Q (0 herbivore … Q carnivore; founder ~819). */
+  dietA: number;
+  dietB: number;
+  /** The dimension with the largest centroid separation, and that separation. */
+  widestDim: string;
+  widestDeltaQ: number;
 }
 
 /**
@@ -233,10 +256,17 @@ function twoMeans(engine: SimulationEngine): ClusterReport | null {
   }
 
   let sumSq = 0;
+  let widestDim = 0;
+  let widestDelta = 0;
   for (let d = 0; d < dims; d += 1) {
     const delta = (centroidA[d] as number) - (centroidB[d] as number);
     sumSq += delta * delta;
+    if (Math.abs(delta) > widestDelta) {
+      widestDelta = Math.abs(delta);
+      widestDim = d;
+    }
   }
+  const dietIndex = GENE_DIMS.indexOf(Gene.Diet);
   const sizeA = assign.filter((bucket) => bucket === 0).length;
   return {
     separationRmsQ: Math.round(Math.sqrt(sumSq / dims)),
@@ -244,6 +274,10 @@ function twoMeans(engine: SimulationEngine): ClusterReport | null {
     sizeB: rows.length - sizeA,
     thermalA: Math.round(centroidA[thermalIndex] as number),
     thermalB: Math.round(centroidB[thermalIndex] as number),
+    dietA: Math.round(centroidA[dietIndex] as number),
+    dietB: Math.round(centroidB[dietIndex] as number),
+    widestDim: GENE_DIM_NAMES[widestDim] as string,
+    widestDeltaQ: Math.round(widestDelta),
   };
 }
 
@@ -320,7 +354,9 @@ function main(): void {
         ? " | clusters n/a"
         : ` | 2-means rms ${String(clusters.separationRmsQ).padStart(4)}Q ` +
           `(${clusters.sizeA}/${clusters.sizeB}) ` +
-          `thermal ${clusters.thermalA} vs ${clusters.thermalB}`);
+          `thermal ${clusters.thermalA}/${clusters.thermalB} ` +
+          `diet ${clusters.dietA}/${clusters.dietB} ` +
+          `widest ${clusters.widestDim} Δ${clusters.widestDeltaQ}`);
     console.log(line);
     if (live === 0) {
       console.log("extinct — scenario over");
