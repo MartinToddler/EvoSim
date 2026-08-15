@@ -56,6 +56,12 @@ test.describe("persistence, rewind and branching", () => {
     await expect(worlds.locator(".worlds-status")).toContainText(/Saved/, { timeout: 60_000 });
 
     await waitForTicks(page, 40);
+    // docs/06 §29 step 1: pause the present. It also makes "exact present
+    // restored" a testable number instead of a moving one.
+    await topBarButton(page, "Pause the simulation").click();
+    await page.waitForTimeout(1_000);
+    const presentBefore = await readTick(page);
+
     const history = page.locator(".history-panel");
     await expect(history).toBeVisible();
 
@@ -66,10 +72,10 @@ test.describe("persistence, rewind and branching", () => {
     await scrubber.click();
     await page.waitForTimeout(1_000);
     await expect(history.locator(".history-panel__badge--live")).toContainText("Live");
+    expect(await readTick(page)).toBe(presentBefore);
 
     // The selection is visible, and the explicit action is what rewinds.
     const chosen = await history.getByTestId("history-position").innerText();
-    const presentBefore = await readTick(page);
     await history.getByTestId("view-this-time").click();
 
     await expect(history.locator(".history-panel__badge")).toContainText(/Historical preview/, {
@@ -117,7 +123,11 @@ test.describe("persistence, rewind and branching", () => {
       timeout: 90_000,
     });
     const previewedTick = await history.getByTestId("history-position").innerText();
-    const parentRow = worlds.locator(".world-row", { hasText: "Parent" });
+    // Match by the NAME element: the branch row's lineage line also contains
+    // the word "Parent", so a text filter over the whole row is ambiguous.
+    const parentRow = worlds
+      .locator(".world-row")
+      .filter({ has: page.locator(".world-name", { hasText: /^Parent/ }) });
     const parentHashBefore = await parentRow
       .locator("span[title='Canonical state hash at the saved tick']")
       .innerText();
@@ -160,6 +170,6 @@ test.describe("persistence, rewind and branching", () => {
     // Switching back to the parent reopens it at its own saved tick.
     await parentRow.getByRole("button", { name: "Load" }).click();
     await expect(page.getByTestId("branch-note")).toHaveCount(0, { timeout: 60_000 });
-    await expect(worlds.locator(".world-row", { hasText: "Parent" })).toContainText("• open");
+    await expect(parentRow).toContainText("• open");
   });
 });

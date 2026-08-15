@@ -6,6 +6,7 @@ import {
   pressPlay,
   readTick,
   topBarButton,
+  waitForTelemetry,
 } from "./support";
 
 /**
@@ -116,7 +117,10 @@ test.describe("the world-start flow", () => {
     await expect(worlds.locator(".worlds-status")).toContainText(/Saved/, { timeout: 60_000 });
     const savedTick = await readTick(page);
 
-    await page.reload();
+    // Return to the app root, as a user reopening the app does. A plain
+    // reload would keep `?seed=` and correctly land back on the New World
+    // screen for that seed — the deep link doing its job, not this flow.
+    await page.goto("./");
     const start = page.getByTestId("start-screen");
     await expect(start).toBeVisible();
     const row = page.getByTestId("start-world-row").first();
@@ -124,9 +128,7 @@ test.describe("the world-start flow", () => {
     await page.getByTestId("start-load-world").first().click();
 
     await expect(page.locator(".topbar")).toBeVisible({ timeout: 90_000 });
-    await expect
-      .poll(async () => readTick(page), { timeout: 90_000 })
-      .toBeGreaterThanOrEqual(0);
+    await waitForTelemetry(page);
     const reloadedTick = await readTick(page);
     expect(reloadedTick).toBeGreaterThan(0);
     expect(reloadedTick).toBeLessThanOrEqual(savedTick);

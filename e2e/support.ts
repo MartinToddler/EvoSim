@@ -67,11 +67,21 @@ export async function createWorldPaused(page: Page, seedHex = FIXTURE_SEED_HEX):
   await create.click();
 
   await expect(page.locator(".topbar")).toBeVisible({ timeout: 90_000 });
-  await expect
-    .poll(async () => readTick(page), { timeout: 90_000, message: "world summary never arrived" })
-    .toBeGreaterThanOrEqual(0);
+  await waitForTelemetry(page);
   // A created world begins at exact tick 0, paused: the user starts time.
   expect(await readTick(page)).toBe(0);
+}
+
+/**
+ * Wait until REAL telemetry is on screen. The top bar renders `0` placeholders
+ * before the first telemetry frame, so a tick read taken too early describes
+ * the placeholder, not the world. Population is the honest signal: a live
+ * world always has organisms, a placeholder always shows zero.
+ */
+export async function waitForTelemetry(page: Page): Promise<void> {
+  await expect
+    .poll(async () => readPopulation(page), { timeout: 90_000, message: "telemetry never arrived" })
+    .toBeGreaterThan(0);
 }
 
 /** Press Play (1×) and wait for authoritative time to actually advance. */
