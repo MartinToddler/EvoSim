@@ -119,6 +119,17 @@ the milestone's acceptance test, and it runs in CI (engine 0.7.0 unchanged, snap
 config schema 7, protocol 5 → 6). The pre-J05 foundation-gate mandate is closed: its six fixes
 are ported (ADR 0015 §0).
 
+And rewind, historical mode and branching (ADR 0018): any earlier tick is reconstructed from the
+newest save at or before it plus the command log plus deterministic forward simulation, previewed
+read-only in a second engine while the live one stays exactly where it was, and left again by a
+mode switch rather than a reload. A branch is an independent world that inherits its parent's
+history only through the branch point — the parent's queued future is stripped, its identity
+counters are kept — and the milestone's acceptance test proves it on the populated world: a control
+run to 10 000 ticks, a branch taken at 5 000 with no new commands, and a branch taken at 6 234 that
+needed save + replay to reconstruct all reach the identical canonical hash, while a branch-only
+command diverges the branch and leaves the original untouched (protocol 6 → 7; engine 0.7.0 and
+every golden hash unchanged).
+
 **The world is now watchable and legible — live at <https://martintoddler.github.io/EvoSim/>.**
 Locally, `pnpm --filter @eon/web dev` opens a canvas showing the terrain,
 the plants, and the organisms living in it — pan, zoom, run at 1×, 5×, 20×, 100× or MAX. Click an

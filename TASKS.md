@@ -383,11 +383,23 @@ reused into. Details and per-fix disposition in ADR 0015 §0.
 - [x] K04 manual save/load.
 - [x] K05 autosave.
 - [x] K06 deterministic save/reload test (independently re-verified, ADR 0017).
-- [ ] K07 rewind reconstruction.
-- [ ] K08 historical preview.
-- [ ] K09 return present.
-- [ ] K10 branch.
-- [ ] K11 branch deterministic test.
+- [x] K07 rewind reconstruction.
+- [x] K08 historical preview.
+- [x] K09 return present.
+- [x] K10 branch.
+- [x] K11 branch deterministic test.
+
+Milestone 11 gate: **PASS** (protocol 6 → 7, engine 0.7.0 and every golden hash unchanged, ADR
+0018). Any earlier tick is reconstructed from the newest save at or before it plus the command log
+plus deterministic forward simulation, previewed read-only in a second engine, and left again by a
+mode switch rather than a reload. A branch is an independent world inheriting its parent's history
+only through the branch point: control to 10 000 ticks equals a branch taken at 5 000 with no new
+commands, and equals one taken at 6 234 that needed save + replay to reconstruct — on the populated
+world, with organisms, species and events. A branch-only command diverges the branch and leaves the
+original untouched. A preview cannot reach the present: it is a second engine, the host refuses
+interventions and saves while it is open, and a superseded rewind is cancelled on both sides.
+Limitation recorded in ADR 0018 §7: a world must have a save at or before a tick to be rewound
+there.
 
 ## L Quality/performance
 - [ ] L01 benchmark CLI.

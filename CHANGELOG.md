@@ -6,6 +6,54 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Milestone 11: rewind, historical mode and branching
+
+Versions: `PROTOCOL_VERSION` 6 → **7**. `ENGINE_VERSION` stays 0.7.0 and every golden hash is
+unmoved — this milestone reads history, it does not change what history is. Decisions in
+`docs/adr/0018-milestone-11-rewind-and-branching.md`.
+
+### Added
+
+- **Historical reconstruction** (K07): newest save at or before the target, plus the command log
+  that save carries, plus deterministic forward simulation. Resumable in slices so the Worker keeps
+  answering messages and can report progress; the stepping stays inside the engine, so yielding
+  cannot change where a replay lands.
+- **Historical preview** (K08): a second engine, never the live one. Read-only projections follow
+  the previewed world, so the inspector, tree and event feed describe the tick on screen. The host
+  refuses interventions and saves while previewing and ignores time controls.
+- **Return to present** (K09): a mode switch, not a reload — the live engine was never stepped.
+- **Branching** (K10): a branch is a new world with its own manifest, saves and future, inheriting
+  its parent's history only through the branch point. `prepareBranchSnapshot` drops the pending
+  command suffix (the parent's queued future) and keeps the identity counters so a branch's own
+  commands cannot collide with inherited ones.
+- **Branch equivalence suite** (K11) on the populated world: control to 10 000 ticks equals a
+  branch taken at 5 000 with no new commands, and equals a branch taken at 6 234 that had to be
+  reconstructed from the 5 000 save plus 1 234 replayed ticks. A branch-only command diverges the
+  branch and leaves the original's hash untouched.
+- **Protocol 7**: `REQUEST_REWIND`, `RETURN_TO_PRESENT`, `CREATE_BRANCH`, `REWIND_PROGRESS`,
+  `HISTORICAL_MODE_READY`, and the `"branch"` save reason. Rewinding is split across the port
+  because neither side can do it alone: the main thread owns the saves and picks one, the Worker
+  owns the engine and replays it.
+- **Manifest provenance**: `parentWorldId` and `branchTick`, plus `worldOriginTick` and
+  `selectSaveForTick` (newest save at or before a tick, ties on the lowest id so two clients cannot
+  replay from different bytes). Branch origins are retained like manual saves, never pruned.
+- **History panel**: a scrubber over the world's own range with stored saves marked, replay
+  progress, an unmistakable read-only preview state, return to present, and branch from this tick.
+  Dragging selects; releasing rewinds (docs/06 §13).
+
+### Changed
+
+- `REQUEST_SAVE` refuses the `"branch"` reason: a branch origin needs the parent's queued future
+  stripped, which only `CREATE_BRANCH` can do.
+- A superseded rewind is cancelled in the Worker and discarded on the main thread, on both the
+  answer and the progress channel, so a scrubber burst cannot install an older state.
+
+### Known limitation
+
+- A world can only be rewound to a tick that has a save at or before it. Reconstruction replays
+  _from_ a save, so an unsaved world has no earliest point and a tick older than the oldest save is
+  unreachable. Both are refused explicitly and explained in the panel (ADR 0018 §7).
+
 ## [Unreleased] — 2026-08-15 — Milestone 10 review: persistence
 
 Independent release-critical review of K01–K06 (ADR 0017). **No P0 defects; four P2s fixed**, none
