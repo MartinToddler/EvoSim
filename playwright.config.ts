@@ -129,7 +129,18 @@ if (browserInstalled("webkit")) {
  * the kind of check that quietly stops happening.
  */
 const externalBaseUrl = process.env["EON_E2E_BASE_URL"];
-const baseURL = externalBaseUrl ?? "http://127.0.0.1:4173";
+/*
+ * A trailing slash is load-bearing. Playwright resolves a test's path as
+ * `new URL(path, baseURL)`, and `new URL("./x", "http://host/EvoSim")` drops
+ * "EvoSim" — so a base naming a project Pages path must end in "/", and the
+ * tests must use relative paths with no leading slash.
+ */
+const baseURL =
+  externalBaseUrl === undefined
+    ? "http://127.0.0.1:4173/"
+    : externalBaseUrl.endsWith("/")
+      ? externalBaseUrl
+      : `${externalBaseUrl}/`;
 
 export default defineConfig({
   testDir: "./e2e",

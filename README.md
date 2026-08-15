@@ -286,6 +286,9 @@ schema 7, command schema 1, host runtime schema 2. Design decisions are recorded
   kill-attribution tie-break test that could not have failed because slot order and entity-ID order
   agreed in it, and the twenty-three risks that were examined and found clean — including a 600-tick
   same-seed comparison and save/load restored at every tick of a live combat window.
+- `0024-final-mvp-audit.md` — the final audit against docs/01 §12's seven release gates: which five
+  pass with what evidence, which two do not and why they share one cause, the CLAUDE.md contract
+  audit, and the one defect the audit itself found.
 - `0023-milestone-13-pwa-and-mobile.md` — the installable shell: why the service worker is
   hand-written and why its cache generation rides on the script URL, why the icons are generated
   rather than committed, why lifecycle pausing cannot move a hash, the eviction problem that

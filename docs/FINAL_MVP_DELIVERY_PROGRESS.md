@@ -173,7 +173,66 @@ viewport. The remaining risk is native-shell-specific.
 | ------ | -------------------------------------------------------------- |
 | Status | PASS WITH NOTES (M05/M06 blocked on hardware)                  |
 | Branch | `claude/evosim-a22-a25-delivery-t4itkl`                        |
-| Commit | _this commit_                                                  |
+| Commit | `00e29bb6efa93034f75ddfb8330c32f4029b5df9`                     |
 | Verify | **PASS** — 104 files, 1 294 tests; every golden hash unchanged  |
 | E2E    | **PASS** — 44 tests, Chromium / Firefox / WebKit / phone        |
+| Pages  | **PASS** — the live bundle carries the A24 SHA; manifest, service worker and icons all served |
+
+---
+
+## A25 / Final EON MVP audit
+
+The last gate before the MVP can be called finished, against docs/01 §12's seven
+release conditions. Full evidence in `docs/adr/0024-final-mvp-audit.md`.
+
+### Verdict: five of seven gates pass
+
+| Gate                                                | Verdict                                     |
+| --------------------------------------------------- | ------------------------------------------- |
+| 1. Headless determinism                              | **PASS** — fixture, 100k and 1M soaks, cross-platform matrix |
+| 2. Save / replay                                     | **PASS** — M10 acceptance, M11 branch equality, 1M round trip |
+| 3. 10+ calibration seeds survive startup             | **PASS** — 12/12, median final population 5 156 |
+| 4. Population does not normally slam into the cap    | **FAIL** — 4/12 seeds at the cap, and that is a floor |
+| 5. Controlled selection experiment shifts success    | **PASS** — the diet-selection experiment    |
+| 6. A divergent run creates an automatic split        | **FAIL** — synthetic both ways; no ecological split |
+| 7. Web UI makes the outcomes inspectable             | **PASS** — live, installable, offline       |
+
+**The two failures share one cause**: the reference world is too productive, so
+no region is scarce enough to push population off the cap or to make a different
+strategy pay. The lever is measured (halving base plant capacity zeroes cap
+refusals on every capped seed and produced the project's first emergent
+carnivory) and the remaining work is scoped as **L11** — a factor pass over
+0.6–0.8 across twelve seeds, then the config change, which bumps
+`ENGINE_VERSION` and regenerates every golden hash.
+
+**The MVP is feature-complete and not yet calibration-complete.** Every mechanism
+docs/01 asks for exists, is tested, is deterministic and is inspectable in a
+browser a user can install.
+
+### One defect found and fixed by the audit
+
+**`EON_E2E_BASE_URL`, added by the A23 review so the suite could verify a
+published build, did not work for the deployment it was built for.** The tests
+navigated to `"/"`, and `new URL("/", "http://host/EvoSim/")` resolves to the
+origin root — so pointed at the real project Pages site it loaded a directory
+listing and failed eleven scenarios with "topbar not found", which reads like an
+application failure and is not one. Fixed; the bytes GitHub Pages actually serves
+now pass twelve browser scenarios including the offline reload.
+
+### Contract audit
+
+Engine purity, determinism, SoA layout, the React and renderer boundaries, the
+four required version constants, the mandatory fixture, the workspace layout and
+every scope exclusion: all clean (ADR 0024 §2).
+
+### Status
+
+| Field  | Value                                                          |
+| ------ | -------------------------------------------------------------- |
+| Status | COMPLETE                                                       |
+| Branch | `claude/evosim-a22-a25-delivery-t4itkl`                        |
+| Commit | _this commit_                                                  |
+| Verify | **PASS** — 104 files, 1 294 tests; every golden hash unchanged  |
+| E2E    | **PASS** — against the bytes GitHub Pages is serving            |
 | Pages  | _deployed immediately after this commit_                       |
+| URL    | <https://martintoddler.github.io/EvoSim/>                      |

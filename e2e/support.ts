@@ -50,7 +50,11 @@ export async function openWorld(page: Page, seedHex = FIXTURE_SEED_HEX): Promise
   });
   (page as Page & { __eonConsoleErrors?: string[] }).__eonConsoleErrors = consoleErrors;
 
-  await page.goto(`/?seed=${seedHex}`);
+  // Relative, with no leading slash: `page.goto` resolves against `baseURL` as
+  // `new URL(path, baseURL)`, and a leading "/" would resolve to the ORIGIN
+  // ROOT and throw away the deployment path. A project Pages site lives at
+  // `/<repo>/`, which is exactly the case EON_E2E_BASE_URL exists for.
+  await page.goto(`./?seed=${seedHex}`);
   await expect(page.locator(".topbar")).toBeVisible();
   await expect
     .poll(async () => readTick(page), { timeout: 90_000, message: "world never started ticking" })

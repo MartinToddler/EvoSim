@@ -544,3 +544,35 @@ WebKit can answer are covered by the other tests.
 **The note is M05/M06.** They are blocked on hardware this delivery environment does not have, and
 nothing here claims otherwise. The native projects are deliberately absent too: `npx cap add` needs
 Xcode or the Android SDK, and generating scaffolding nobody has built is worse than an honest gap.
+
+
+## Final EON MVP audit (ADR 0024)
+
+**Five of seven docs/01 §12 release gates pass.** Headless determinism, save/replay, ten-plus
+surviving calibration seeds, a controlled selection experiment that shifts lineage success, and a
+web UI that makes the outcomes inspectable — all met, with evidence in ADR 0024 §1.
+
+**Two do not, and they share one cause.**
+
+- **Gate 4, "population does not normally slam into engine cap":** 4 of 12 seeds reach the 8 192 cap
+  by tick 10 000, and that is a floor — population is still rising in 8 of 12 at that tick. Capped
+  seeds carry 30% less inherited variation. The lever is measured: halving base plant capacity takes
+  cap refusals to zero on every capped seed, but 0.5 overshoots the population target.
+- **Gate 6, "a calibrated divergent run creates an automatic species split":** the detector is proven
+  in both directions on synthetic populations, but every long run of the real world ends with one
+  species — 100 000 ticks, and now 1 000 000. The detector is correctly refusing to split a
+  continuous cloud; it is the world that is not producing divergent pressure, for the same reason as
+  gate 4.
+
+The MVP is **feature-complete and not yet calibration-complete**: every mechanism exists, is tested,
+is deterministic and is inspectable. What remains is one ecological tuning pass (**L11**) and the
+speciation scenario it enables.
+
+One defect found and fixed by this audit: **the A23 review's `EON_E2E_BASE_URL` did not work for the
+deployment it was built for** — the tests navigated to `"/"`, which resolves to the origin root and
+discards the `/EvoSim/` path a project Pages site lives under. With it fixed, the bytes GitHub Pages
+is actually serving pass twelve browser scenarios, including the offline reload.
+
+Contract audit (CLAUDE.md): engine purity, determinism, SoA layout, the React and renderer
+boundaries, the four required version constants, the mandatory fixture, the workspace layout and
+every scope exclusion — all clean. Details in ADR 0024 §2.

@@ -6,6 +6,28 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Final EON MVP audit
+
+The last gate before calling the MVP finished, against docs/01 §12's seven conditions. Decisions and
+evidence in ADR 0024.
+
+**Five of seven gates pass**: headless determinism, save/replay, ten-plus surviving calibration
+seeds, a controlled selection experiment, and an inspectable web UI.
+
+**Two do not, and share one cause** — the reference world is too productive. 4 of 12 seeds reach the
+population cap (a floor, since 8 of 12 are still rising at tick 10 000), and every long run of the
+real world ends with one species because the detector correctly refuses to split a continuous cloud.
+The lever is measured and the work is scoped as L11; neither gate is a repair.
+
+### Fixed
+
+- **`EON_E2E_BASE_URL` did not work for the deployment it was built for.** The browser tests
+  navigated to `"/"`, and `new URL("/", "http://host/EvoSim/")` resolves to the origin root — so
+  pointed at a real project Pages site the suite loaded a directory listing and failed eleven
+  scenarios with "topbar not found", which reads like an application failure and is not one. The
+  tests navigate relatively now and the configured base always ends in a slash. With the fix, the
+  bytes GitHub Pages is actually serving pass twelve browser scenarios including the offline reload.
+
 ## [Unreleased] — 2026-08-15 — Milestone 13: installable shell, lifecycle and the Capacitor boundary
 
 EON is now installable, works with the network switched off, and stops running when a phone takes

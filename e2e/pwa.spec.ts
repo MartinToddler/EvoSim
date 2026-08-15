@@ -13,12 +13,13 @@ import { openWorld, readTick } from "./support";
 
 test.describe("installable app shell", () => {
   test("serves a manifest with everything an install needs", async ({ page, baseURL }) => {
-    await page.goto("/");
+    await page.goto("./");
 
     const href = await page.locator('link[rel="manifest"]').getAttribute("href");
     expect(href, "index.html must link a manifest").not.toBeNull();
 
-    const response = await page.request.get(new URL(href as string, baseURL).href);
+    const base = baseURL?.endsWith("/") === true ? baseURL : `${baseURL ?? ""}/`;
+    const response = await page.request.get(new URL(href as string, base).href);
     expect(response.ok()).toBe(true);
 
     const manifest = (await response.json()) as {
@@ -45,15 +46,18 @@ test.describe("installable app shell", () => {
     // with a blank icon and nothing warns.
     for (const icon of icons) {
       const iconResponse = await page.request.get(
-        new URL(icon.src, new URL(href as string, baseURL)).href,
+        new URL(icon.src, new URL(href as string, base)).href,
       );
       expect(iconResponse.ok(), `${icon.src} must be served`).toBe(true);
     }
   });
 
   test("serves the service worker at the deployment base", async ({ page, baseURL }) => {
-    await page.goto("/");
-    const response = await page.request.get(new URL("sw.js", baseURL).href);
+    await page.goto("./");
+    // `baseURL` may name a subdirectory, so the worker is resolved relative to
+    // it — the same reason the app registers `<base>sw.js` rather than `/sw.js`.
+    const base = baseURL?.endsWith("/") === true ? baseURL : `${baseURL ?? ""}/`;
+    const response = await page.request.get(new URL("sw.js", base).href);
     expect(response.ok()).toBe(true);
     expect(await response.text()).toContain("eon-shell-");
   });
@@ -64,7 +68,7 @@ test.describe("offline app shell", () => {
     // `vite preview` serves the production build over http on 127.0.0.1, which
     // browsers treat as a secure context, so this is the same code path as the
     // deployed site.
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.locator(".topbar")).toBeVisible();
 
     const active = await page.evaluate(async () => {
@@ -85,7 +89,7 @@ test.describe("offline app shell", () => {
       "Playwright WebKit: page.reload() errors internally in an offline context",
     );
 
-    await page.goto("/");
+    await page.goto("./");
     await expect(page.locator(".topbar")).toBeVisible();
     await page.evaluate(() => navigator.serviceWorker.ready);
 
