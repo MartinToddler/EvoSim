@@ -162,6 +162,11 @@ export class WorldPersistence {
     this.#lastAutosaveTick = 0;
     if (!options.keepBinding) {
       this.#update({ ...IDLE_STATUS });
+    } else if (this.#status.worldId !== null) {
+      // A load that started the session binds BEFORE the interval is known, so
+      // the armed flag is refreshed here — autosave itself always checked the
+      // live interval, this keeps the status honest about it (ADR 0025).
+      this.#update({ ...this.#status, autosaveArmed: autosaveCheckInterval > 0 });
     }
   }
 

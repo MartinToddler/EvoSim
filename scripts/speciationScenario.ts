@@ -42,6 +42,7 @@ interface Options {
   interval: number;
   /** Flatten the cline: the noise-control world. */
   flat: boolean;
+  grid: number;
   equatorCentiC: number;
   dropCentiC: number;
   splitThresholdQ: number;
@@ -55,6 +56,7 @@ function parseArgs(argv: string[]): Options {
     ticks: 40_000,
     interval: 2_000,
     flat: false,
+    grid: 96,
     equatorCentiC: 6_000,
     dropCentiC: 7_000,
     splitThresholdQ: DEFAULT_CONFIG.species.splitDistanceThresholdQ,
@@ -76,6 +78,9 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--flat":
         options.flat = true;
+        break;
+      case "--grid":
+        options.grid = next();
         break;
       case "--equator":
         options.equatorCentiC = next();
@@ -102,7 +107,7 @@ function parseArgs(argv: string[]): Options {
 /** Build the scenario config: soak-world geometry plus the climate forcing. */
 function scenarioConfig(options: Options) {
   const config = cloneConfig(DEFAULT_CONFIG);
-  const grid = 96;
+  const grid = options.grid;
   config.world.envGridSize = grid;
   config.world.sizeLU = grid * config.world.envCellSizeLU;
   config.world.generation.edgeFalloffCells = Math.max(1, Math.floor(grid / 8));
@@ -242,6 +247,51 @@ function twoMeans(engine: SimulationEngine): ClusterReport | null {
   };
 }
 
+interface HemisphereReport {
+  northPop: number;
+  southPop: number;
+  /** Mean thermal-optimum gene per hemisphere, Q-normalized. */
+  northThermal: number;
+  southThermal: number;
+  /** Mean signed diet per hemisphere, Q-normalized (0..Q; founder ~819). */
+  northDiet: number;
+  southDiet: number;
+}
+
+/** Where the population actually lives, split at the equator row. */
+function hemispheres(engine: SimulationEngine): HemisphereReport {
+  const organisms = engine.organisms;
+  const genomes = engine.genomes;
+  const halfPos = (engine.config.world.sizeLU / 2) * 256; // POS_SCALE
+  const report: HemisphereReport = {
+    northPop: 0,
+    southPop: 0,
+    northThermal: 0,
+    southThermal: 0,
+    northDiet: 0,
+    southDiet: 0,
+  };
+  for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
+    if (organisms.alive[slot] !== 1) continue;
+    const thermal = geneToQ(genomes.gene(slot, Gene.ThermalOptimum));
+    const diet = geneToQ(genomes.gene(slot, Gene.Diet));
+    if ((organisms.y[slot] as number) < halfPos) {
+      report.northPop += 1;
+      report.northThermal += thermal;
+      report.northDiet += diet;
+    } else {
+      report.southPop += 1;
+      report.southThermal += thermal;
+      report.southDiet += diet;
+    }
+  }
+  report.northThermal = Math.round(report.northThermal / Math.max(1, report.northPop));
+  report.southThermal = Math.round(report.southThermal / Math.max(1, report.southPop));
+  report.northDiet = Math.round(report.northDiet / Math.max(1, report.northPop));
+  report.southDiet = Math.round(report.southDiet / Math.max(1, report.southPop));
+  return report;
+}
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const config = scenarioConfig(options);
@@ -260,9 +310,12 @@ function main(): void {
     engine.stepMany(Math.min(options.interval, options.ticks - done));
     const live = engine.organisms.liveCount;
     const clusters = live >= 8 ? twoMeans(engine) : null;
+    const bands = hemispheres(engine);
     const line =
       `tick ${String(engine.tick).padStart(7)} | pop ${String(live).padStart(5)} ` +
       `| species ${engine.species.activeCount}` +
+      ` | N ${String(bands.northPop).padStart(5)} (th ${bands.northThermal}, diet ${bands.northDiet})` +
+      ` S ${String(bands.southPop).padStart(5)} (th ${bands.southThermal}, diet ${bands.southDiet})` +
       (clusters === null
         ? " | clusters n/a"
         : ` | 2-means rms ${String(clusters.separationRmsQ).padStart(4)}Q ` +
