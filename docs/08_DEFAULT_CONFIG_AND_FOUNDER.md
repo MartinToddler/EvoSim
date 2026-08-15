@@ -82,6 +82,14 @@ Wall-clock values affect hosting/render frequency only. They never enter authori
 
 Base capacities:
 
+> **Amended by ADR 0025 (engine 0.8.0, closing task L11).** The v0.1 capacities made the
+> world productive enough that roughly half the calibration seeds slammed into the
+> `maxOrganisms` safety cap (ADR 0006 §7 at n=6, ADR 0021 §5a at n=12), which docs/01 §12
+> names a release-gate failure. Calibrated at **0.6×** through the named factor sweep
+> recorded in ADR 0025 §2b: `[0, 21600, 31200, 4200, 6000, 2400]`. The v0.1 values below
+> stand as the original hypothesis (§24: implemented faithfully first, tuned through named
+> experiments after).
+
 ```ts
 Water: 0
 Grassland: 36000

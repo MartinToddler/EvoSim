@@ -99,7 +99,19 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
 
   plants: {
     // Indexed by Biome: Water, Grassland, Forest, Desert, Tundra, Mountain.
-    baseCapacityByBiome: [0, 36000, 52000, 7000, 10000, 4000],
+    //
+    // Calibrated at 0.6x the docs/08 v0.1 values (ADR 0025 §2b, closing L11).
+    // The v0.1 world was productive enough to push a third of calibration
+    // seeds into the maxOrganisms safety cap (ADR 0021 §5a) — the cap, not
+    // the ecology, was setting the carrying capacity, and docs/01 §12 makes
+    // that a release-gate failure. Factors 1.0/0.8/0.7/0.6 were swept over
+    // twelve seeds at 10 000 ticks, with the survivors re-run to 25 000 on
+    // the worst cap seeds: 0.8 and 1.0 cap 3/12 seeds by tick 10 000, 0.7
+    // caps both risk seeds by 25 000, and 0.6 leaves every seed under the
+    // cap with headroom while keeping 12/12 survival and universal
+    // scavenging. docs/08 §24: tuned through named experiments, recorded
+    // here and in the changelog.
+    baseCapacityByBiome: [0, 21600, 31200, 4200, 6000, 2400],
     growthRateQByBiome: [0, 49, 37, 12, 12, 6], // ~.012 .009 .003 .003 .0015
     plantSeedBankRegenUnits: 4,
     plantMinRegenThreshold: 16,
