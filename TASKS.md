@@ -382,7 +382,7 @@ reused into. Details and per-fix disposition in ADR 0015 §0.
 - [x] K03 snapshot serializer/checksum.
 - [x] K04 manual save/load.
 - [x] K05 autosave.
-- [x] K06 deterministic save/reload test.
+- [x] K06 deterministic save/reload test (independently re-verified, ADR 0017).
 - [ ] K07 rewind reconstruction.
 - [ ] K08 historical preview.
 - [ ] K09 return present.

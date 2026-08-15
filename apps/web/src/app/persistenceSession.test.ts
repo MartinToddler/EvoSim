@@ -445,6 +445,39 @@ describe("autosave", () => {
     harness.session.destroy();
   });
 
+  it("does not swallow a manual save that lands while an autosave is running", async () => {
+    // The click has already been acknowledged on screen, and it carries a name.
+    // Dropping it because an autosave happened to be in flight would discard
+    // both the save and the rename with nothing said (A19 review).
+    const harness = createHarness();
+    await harness.ready();
+    harness.session.saveWorld("Eden");
+    await harness.answerSave(0);
+
+    const interval = DEFAULT_HOST_RUNTIME_CONFIG.autosaveCheckInterval;
+    harness.telemetry(interval);
+    await harness.flush();
+    expect(harness.worker.last("REQUEST_SAVE")?.payload["reason"]).toBe("autosave");
+
+    // The user clicks Save, renaming the world, while that autosave is still
+    // waiting on the Worker.
+    harness.session.saveWorld("Renamed mid-autosave");
+    await harness.answerSave(interval); // completes the autosave
+    await harness.flush();
+    await harness.answerSave(interval + 5); // completes the manual save
+
+    const status = harness.status();
+    expect(status.worldName).toBe("Renamed mid-autosave");
+    expect(status.message).toMatch(/Saved/);
+    expect(status.failed).toBe(false);
+
+    const listed = harness.latestWorlds();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.manifest.worldName).toBe("Renamed mid-autosave");
+    expect(listed[0]?.saves.length).toBeGreaterThanOrEqual(3);
+    harness.session.destroy();
+  });
+
   it("does not fire twice within one interval", async () => {
     const harness = createHarness();
     await harness.ready();

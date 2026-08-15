@@ -86,6 +86,8 @@ export class WorldPersistence {
   /** Tick of the last autosave attempt, so cadence survives speed changes. */
   #lastAutosaveTick = 0;
   #inFlight = false;
+  /** The save or load currently running, so a manual save can wait for it. */
+  #current: Promise<unknown> = Promise.resolve();
   #disposed = false;
 
   constructor(options: WorldPersistenceOptions) {
@@ -147,12 +149,28 @@ export class WorldPersistence {
     if (this.#disposed) {
       return false;
     }
-    if (this.#inFlight) {
-      // Serialized rather than queued: two saves of the same world a
-      // millisecond apart are the same save, and the later tick is about to
-      // come around again anyway.
+    if (this.#inFlight && options.kind === "autosave") {
+      // An autosave that collides with anything is simply redundant: the next
+      // one is due in a couple of thousand ticks and will capture more.
       return false;
     }
+    // A manual save is not redundant. It is an explicit act, it may carry a
+    // rename, and the click that started it has already been acknowledged in
+    // the UI — dropping it because an autosave happened to be in flight would
+    // discard both the save and the new name without telling anyone. Wait for
+    // whatever is running and then take it.
+    while (this.#inFlight) {
+      await this.#current.catch(() => undefined);
+      if (this.#disposed) {
+        return false;
+      }
+    }
+    const run = this.#saveNow(options);
+    this.#current = run;
+    return await run;
+  }
+
+  async #saveNow(options: { kind: "manual" | "autosave"; name?: string }): Promise<boolean> {
     this.#inFlight = true;
     this.#update({
       ...this.#status,
@@ -214,6 +232,12 @@ export class WorldPersistence {
       return false;
     }
     this.#inFlight = true;
+    const done = this.#loadNow(worldId, speed, snapshotId);
+    this.#current = done;
+    return await done;
+  }
+
+  async #loadNow(worldId: string, speed: SimulationSpeed, snapshotId?: string): Promise<boolean> {
     this.#update({ ...this.#status, busy: true, message: "Loading…", failed: false });
     try {
       // The store validates as it reads, so a damaged newest save is detected

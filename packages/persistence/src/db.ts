@@ -96,8 +96,19 @@ export function resolveIndexedDb(factory?: IndexedDbFactoryLike): IndexedDbFacto
   return ambient;
 }
 
-/** Open (and upgrade) the world database. */
-export async function openWorldDatabase(factory?: IndexedDbFactoryLike): Promise<IDBDatabase> {
+/**
+ * Open (and upgrade) the world database.
+ *
+ * `onClosed` fires when this connection stops being usable — another tab
+ * upgrading the schema (`versionchange`), or the browser force-closing it. The
+ * caller must drop its handle when that happens: every later call on a closed
+ * connection throws `InvalidStateError`, which would turn one background event
+ * into a store that fails forever.
+ */
+export async function openWorldDatabase(
+  factory?: IndexedDbFactoryLike,
+  onClosed?: () => void,
+): Promise<IDBDatabase> {
   const indexedDb = resolveIndexedDb(factory);
   return await new Promise<IDBDatabase>((resolve, reject) => {
     let request: IDBOpenDBRequest;
@@ -141,12 +152,34 @@ export async function openWorldDatabase(factory?: IndexedDbFactoryLike): Promise
       // holding a stale handle and blocking that upgrade forever.
       database.onversionchange = (): void => {
         database.close();
+        onClosed?.();
+      };
+      // Fired when the connection is closed abnormally (the browser reclaiming
+      // storage, a deleted database). Same consequence, same response.
+      database.onclose = (): void => {
+        onClosed?.();
       };
       resolve(database);
     };
 
     request.onerror = (): void => {
-      reject(new PersistenceError("unavailable", `could not open ${DATABASE_NAME}`, request.error));
+      // A VersionError means the stored database is NEWER than this build
+      // expects — another tab, running a later version of the app, upgraded it.
+      // That is not "IndexedDB is unavailable"; it is "this page is out of
+      // date", and the user's fix is to reload, not to enable storage.
+      const error = request.error;
+      if (error?.name === "VersionError") {
+        reject(
+          new PersistenceError(
+            "version",
+            "the saved-world database was upgraded by a newer version of this app " +
+              "(probably in another tab); reload the page to catch up",
+            error,
+          ),
+        );
+        return;
+      }
+      reject(new PersistenceError("unavailable", `could not open ${DATABASE_NAME}`, error));
     };
   });
 }

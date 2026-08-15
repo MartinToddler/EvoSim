@@ -244,6 +244,11 @@ schema 6, host runtime schema 2. Design decisions are recorded in `docs/adr/`:
 - `0014-milestone-8-review.md` — the independent Milestone 8 review: the twenty-one-point audit,
   the validator-accepted degenerate range that crashed construction (now a constant dimension),
   and the zero-pass candidate save/load assertion.
+- `0017-milestone-10-review.md` — the independent Milestone 10 review: the field-by-field
+  completeness audit re-derived from the store classes, the save-tick lattice that hid a whole class
+  of environment-cache bug from the shipped suite, a manifest that kept advertising a save nobody
+  could read, a load that took the highest tick instead of the manifest's, a manual save an autosave
+  could swallow, and a connection another tab closed that stayed closed forever.
 - `0016-milestone-10-persistence.md` — persistence: the durable container's header and its two
   checksums, why the payload is written by one self-describing codec instead of 150 hand-written
   fields, the shape contract that fails the build when the engine serializes something the format

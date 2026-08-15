@@ -173,7 +173,12 @@ export class WorldStore {
       throw new PersistenceError("io", "this WorldStore has been closed");
     }
     if (this.#database === null) {
-      this.#database = await openWorldDatabase(this.#options.indexedDb);
+      this.#database = await openWorldDatabase(this.#options.indexedDb, () => {
+        // Another tab upgraded the schema, or the browser closed us. Drop the
+        // handle so the next call opens a fresh connection instead of throwing
+        // InvalidStateError on a dead one for the rest of the session.
+        this.#database = null;
+      });
     }
     return this.#database;
   }
@@ -397,9 +402,16 @@ export class WorldStore {
       "reading a world's saves",
     );
 
+    // Order matters, and it is the manifest's order, not the clock's. The
+    // manifest records which save this world is *on* — that is what the world
+    // list displays and what "Load" means — so it is tried first, and the rest
+    // follow newest-first as fallbacks. Today every save advances the tick and
+    // the two orders agree; they stop agreeing the moment a world is restored
+    // from an older save and saved again, which is precisely what rewind and
+    // branch will do.
     const candidates =
       snapshotId === undefined
-        ? [...all].sort(compareSavesNewestFirst)
+        ? orderByManifestThenNewest(all, manifest.latestSnapshotId)
         : all.filter((save) => save.snapshotId === snapshotId);
     if (candidates.length === 0) {
       throw new PersistenceError(
@@ -429,6 +441,23 @@ export class WorldStore {
       }
       try {
         const decoded = decodeDurableSnapshot(new Uint8Array(blob.bytes));
+        if (rejected.length > 0) {
+          // Something newer than this save is unreadable. Leaving the manifest
+          // pointed at it would keep the world list advertising a tick and a
+          // state hash nobody can open, while Load quietly delivers this older
+          // world instead. Repoint to what actually opened and say why. The
+          // damaged save is kept (docs/06 §27) — only the pointer moves.
+          const detail = `a newer save (tick ${rejected[0]?.tick ?? 0}) could not be read: ${
+            rejected[0]?.reason ?? "unknown"
+          }`;
+          const repointed = await this.#repointManifest(
+            worldId,
+            save,
+            rejected[0]?.reason.includes("engine") === true ? "legacy" : "corrupt",
+            detail,
+          );
+          return { manifest: repointed ?? manifest, save, decoded, bytes: blob.bytes, rejected };
+        }
         return { manifest, save, decoded, bytes: blob.bytes, rejected };
       } catch (cause) {
         if (!(cause instanceof SnapshotFormatError)) {
@@ -445,6 +474,45 @@ export class WorldStore {
       "corrupt",
       `no usable save for world ${worldId}: ${rejected.map((entry) => `tick ${entry.tick} — ${entry.reason}`).join("; ")}`,
     );
+  }
+
+  /**
+   * Point a manifest at the save that actually loaded and record why.
+   *
+   * Returns the stored manifest, or `null` when a save landed while the load
+   * was reading: that save is newer than anything this load saw, so it owns the
+   * pointer and this repoint must not overwrite it.
+   */
+  async #repointManifest(
+    worldId: string,
+    save: SnapshotSummary,
+    status: WorldManifest["status"],
+    detail: string,
+  ): Promise<WorldManifest | null> {
+    return await this.#enqueue(async () => {
+      const database = await this.#open();
+      const transaction = database.transaction(WORLD_STORE, "readwrite");
+      const worlds = transaction.objectStore(WORLD_STORE);
+      const current = await requestToPromise(
+        worlds.get(worldId) as IDBRequest<WorldManifest | undefined>,
+        "reading a world manifest",
+      );
+      if (current === undefined || current.latestSnapshotId === save.snapshotId) {
+        abortQuietly(transaction);
+        return current ?? null;
+      }
+      const updated: WorldManifest = {
+        ...current,
+        latestSnapshotId: save.snapshotId,
+        latestTick: save.tick,
+        latestStateHash: save.stateHash,
+        status,
+        statusDetail: detail,
+      };
+      worlds.put(updated);
+      await transactionDone(transaction, "updating a world manifest");
+      return updated;
+    });
   }
 
   /** Record a world's health without touching its saves. */
@@ -508,6 +576,25 @@ export class WorldStore {
       await transactionDone(transaction, "deleting a world");
     });
   }
+}
+
+/**
+ * The manifest's save first, then everything else newest-first.
+ *
+ * A missing pointer (a manifest written before this ordering existed, or one
+ * whose save was pruned) simply degrades to newest-first.
+ */
+function orderByManifestThenNewest(
+  saves: readonly SnapshotRecord[],
+  latestSnapshotId: string,
+): SnapshotRecord[] {
+  const ordered = [...saves].sort(compareSavesNewestFirst);
+  const pointed = ordered.findIndex((save) => save.snapshotId === latestSnapshotId);
+  if (pointed <= 0) {
+    return ordered;
+  }
+  const [current] = ordered.splice(pointed, 1);
+  return current === undefined ? ordered : [current, ...ordered];
 }
 
 /** Newest first: by tick, then by save time, then by id for stability. */

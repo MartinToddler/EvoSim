@@ -6,6 +6,45 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-15 — Milestone 10 review: persistence
+
+Independent release-critical review of K01–K06 (ADR 0017). **No P0 defects; four P2s fixed**, none
+able to move a hash: engine 0.7.0, snapshot schema 8, config schema 7 and protocol 6 all unchanged,
+every golden hash reproduced. The completeness audit was re-derived from the store classes rather
+than from the shape table meant to describe them; every future-affecting field is captured,
+restored and — where two worlds could differ — hashed.
+
+### Fixed
+
+- **The manifest kept advertising a save nobody could read.** After a load fell back past a damaged
+  save, the manifest still pointed at the damaged one with status `ok`, so the world list showed a
+  tick and state hash that Load would never deliver. The manifest is now repointed at the save that
+  actually opened, with `corrupt`/`legacy` status and the failing tick in the detail; nothing is
+  deleted, and a later healthy save clears it.
+- **`load` took the highest tick instead of the manifest's save.** Those orders agree only while
+  every save advances the clock — which rewind and branch will end. The manifest's pointer is tried
+  first, the rest follow as fallbacks.
+- **A manual save could be silently swallowed by an autosave**, discarding the click _and_ the
+  rename it carried. Autosaves still skip when busy; a manual save now waits its turn.
+- **A connection closed by another tab's schema upgrade stayed closed forever**, failing every
+  later call with `InvalidStateError`. The dead handle is dropped so the next call reopens, and a
+  `VersionError` is reported as a version problem ("another tab upgraded this; reload") rather than
+  as missing IndexedDB.
+
+### Added
+
+- **Independent acceptance run** (`reviewAcceptance.test.ts`): control to tick 10 000 against
+  save-at-2 500 → destroy → fresh load → continue, on a world carrying six interventions, with the
+  meteor aimed at the save tick so the snapshot straddles the command cursor.
+- **An off-lattice save at tick 2 503.** Every save tick in the shipped suite is a multiple of
+  `environmentInterval` (20), so phase 1 ran on the first tick after every load and would have
+  hidden a mis-restored environment cache. 2 503 is a multiple of none of the four scheduled
+  intervals.
+- **Statistics round-trip through the engine**, which the canonical hash deliberately cannot police.
+- Storage probes for manifest truthfulness, manifest-ordered loads, and the closed-connection path;
+  header guards pinning that an over-long or non-ASCII engine version fails at save time rather
+  than being truncated into a false identity.
+
 ## [Unreleased] — 2026-08-14 — Milestone 10: persistence
 
 Engine **0.7.0 unchanged**, snapshot schema **8 unchanged**, config schema **7 unchanged**,
