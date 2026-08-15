@@ -13,6 +13,7 @@ import {
   InterventionKind,
   POS_SCALE,
   Q,
+  Reconstruction,
   SNAPSHOT_SCHEMA_VERSION,
   SPECIES_END_REASON_NAMES,
   SimulationEngine,
@@ -27,6 +28,7 @@ import {
   queryHistory,
   querySpecies,
   queryTree,
+  prepareBranchSnapshot,
   writeRenderSnapshot,
   writeTerrainFields,
   writeVegetationField,
@@ -35,6 +37,7 @@ import {
   type SimulationConfig,
   type SpeciesDetails,
   type SpeciesSummary,
+  type ReconstructionProgress,
 } from "@eon/engine";
 import {
   decodeDurableSnapshot,
@@ -147,6 +150,14 @@ export interface SimulationHostOptions {
  */
 const MAX_MODE_CLOCK_CHECK_EVERY_TICK = true;
 
+/** A replay in flight: what it is reconstructing, for whom, and its timer. */
+interface ReplayJob {
+  reconstruction: Reconstruction;
+  /** Correlates every progress report and the final answer with one request. */
+  requestId: number;
+  handle: HostTimerHandle | null;
+}
+
 export class SimulationHost {
   readonly #clock: HostClock;
   readonly #scheduler: HostScheduler;
@@ -188,6 +199,19 @@ export class SimulationHost {
   #behindTarget = false;
   /** Command-log cursor at the last terrain check; a move means terrain may have changed. */
   #lastAppliedCommandCursor = 0;
+
+  /**
+   * The reconstructed world being previewed, or null in the present
+   * (Milestone 11).
+   *
+   * A SECOND engine, never the live one. The live engine is not rewound, not
+   * advanced and not commanded while this is set, which is what makes "return
+   * to present" a mode switch rather than a reload — and what makes it
+   * impossible for a preview to leak into the world it was taken from.
+   */
+  #historical: SimulationEngine | null = null;
+  /** The replay in flight, or null. Only one at a time; a newer one cancels it. */
+  #replay: ReplayJob | null = null;
 
   #disposed = false;
   #fatal = false;
@@ -276,9 +300,29 @@ export class SimulationHost {
         this.#setSpeed(message.payload.speed);
         return;
       case "SET_RUN_STATE":
+        if (this.previewing) {
+          // Time controls belong to the present. Ignored rather than refused:
+          // a speed button is not a request that can fail, and the UI disables
+          // them anyway.
+          return;
+        }
         this.#setSpeed(message.payload.speed);
         return;
       case "QUEUE_COMMAND":
+        if (this.previewing) {
+          // The read-only rule, enforced where it cannot be forgotten. A tool
+          // left enabled by a UI bug would otherwise edit the present while the
+          // screen shows the past — the exact confusion historical mode exists
+          // to prevent.
+          this.#reportError(
+            "interventions are disabled while previewing history; return to the present or " +
+              "branch from this tick first",
+            false,
+            "QUEUE_COMMAND",
+            message.requestId ?? null,
+          );
+          return;
+        }
         this.#queueCommand(message.payload.command, message.requestId ?? 0);
         return;
       case "QUERY_ENTITY":
@@ -298,6 +342,17 @@ export class SimulationHost {
         return;
       case "REQUEST_SAVE": {
         const reason = message.payload.reason;
+        if (this.previewing) {
+          // Saving here would store the live world under the tick the user is
+          // looking at — a save whose contents and label disagree.
+          this.#reportError(
+            "cannot save while previewing history; return to the present or branch instead",
+            false,
+            "REQUEST_SAVE",
+            message.requestId ?? null,
+          );
+          return;
+        }
         if (reason === "branch") {
           // A branch save is not this world's save. It becomes ANOTHER world's
           // origin, and it must have this world's queued future stripped first
@@ -320,6 +375,19 @@ export class SimulationHost {
           message.payload.hostRuntime,
           message.payload.speed,
         );
+        return;
+      case "REQUEST_REWIND":
+        this.#beginRewind(
+          message.payload.snapshot as ArrayBuffer,
+          message.payload.targetTick,
+          message.requestId ?? 0,
+        );
+        return;
+      case "RETURN_TO_PRESENT":
+        this.#returnToPresent();
+        return;
+      case "CREATE_BRANCH":
+        this.#answerBranchRequest(message.payload.branchTick, message.requestId ?? 0);
         return;
       case "RECYCLE_RENDER_BUFFER":
         this.#renderPool?.release(message.payload.buffer);
@@ -508,6 +576,24 @@ export class SimulationHost {
   }
 
   // --- Run state -------------------------------------------------------------
+
+  /**
+   * The engine the UI is looking at: the preview when one is open, otherwise
+   * the live world.
+   *
+   * Every read-only projection — render snapshots, telemetry, the inspector,
+   * the tree, the event feed, the state hash — goes through here, so the
+   * inspector describes the tick on screen rather than a present nobody is
+   * watching. Everything that CHANGES state deliberately does not.
+   */
+  #viewEngine(): SimulationEngine | null {
+    return this.#historical ?? this.#engine;
+  }
+
+  /** True while a historical preview is open or being reconstructed. */
+  get previewing(): boolean {
+    return this.#historical !== null || this.#replay !== null;
+  }
 
   #setSpeed(speed: SimulationSpeed): void {
     if (this.#engine === null) {
@@ -707,6 +793,22 @@ export class SimulationHost {
       return;
     }
     this.#lastAppliedCommandCursor = engine.commands.cursor;
+    this.#emitTerrainNow();
+  }
+
+  /**
+   * Send the terrain of whichever world is on screen, unconditionally.
+   *
+   * The change-gated path above cannot serve historical mode: entering a
+   * preview changes the terrain without applying a single command, and leaving
+   * it changes the terrain back.
+   */
+  #emitTerrainNow(): void {
+    const engine = this.#viewEngine();
+    const world = this.#world;
+    if (engine === null || world === null) {
+      return;
+    }
     const terrainBuffer = createTerrainBuffer(world.gridSize);
     const terrain = viewTerrainSnapshot(terrainBuffer);
     writeTerrainFields(engine, terrain);
@@ -760,7 +862,7 @@ export class SimulationHost {
   }
 
   #emitRenderSnapshot(): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     const pool = this.#renderPool;
     if (engine === null || pool === null || !this.#renderStreamEnabled) {
       return;
@@ -784,7 +886,7 @@ export class SimulationHost {
   }
 
   #emitVegetationIfDue(): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     const pool = this.#vegetationPool;
     if (engine === null || pool === null || !this.#renderStreamEnabled) {
       return;
@@ -823,7 +925,7 @@ export class SimulationHost {
    * an input to anything. Nothing in the engine can read it.
    */
   #emitTelemetry(): void {
-    if (this.#engine === null) {
+    if (this.#viewEngine() === null) {
       return;
     }
     const now = this.#clock.now();
@@ -840,7 +942,7 @@ export class SimulationHost {
   }
 
   #buildTelemetry(achievedTicksPerSecond: number): TelemetryDto {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     if (engine === null) {
       throw new Error("telemetry requested before a world exists");
     }
@@ -888,7 +990,7 @@ export class SimulationHost {
   // --- Queries ---------------------------------------------------------------
 
   #answerEntityQuery(entityId: number, requestId: number): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     if (engine === null) {
       throw new Error("cannot query an entity before a world is initialized");
     }
@@ -902,7 +1004,7 @@ export class SimulationHost {
   }
 
   #answerSpeciesQuery(speciesId: number, requestId: number): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     if (engine === null) {
       throw new Error("cannot query a species before a world is initialized");
     }
@@ -921,7 +1023,7 @@ export class SimulationHost {
   }
 
   #answerTreeRequest(requestId: number): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     if (engine === null) {
       throw new Error("cannot snapshot the tree before a world is initialized");
     }
@@ -936,7 +1038,7 @@ export class SimulationHost {
   }
 
   #answerHistoryRequest(sinceEventId: number, requestId: number): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     if (engine === null) {
       throw new Error("cannot fetch history before a world is initialized");
     }
@@ -950,7 +1052,7 @@ export class SimulationHost {
   }
 
   #answerStateHashQuery(targetTick: number | null, requestId: number): void {
-    const engine = this.#engine;
+    const engine = this.#viewEngine();
     if (engine === null) {
       throw new Error("cannot hash state before a world is initialized");
     }
@@ -1019,6 +1121,236 @@ export class SimulationHost {
           configHash: engine.configHash,
           seed: engine.seed,
           reason,
+        },
+        requestId,
+      ),
+      [buffer],
+    );
+  }
+
+  // --- Historical mode (Milestone 11, tasks K07-K10) --------------------------
+
+  /**
+   * Reconstruct `targetTick` from the supplied save and enter historical mode.
+   *
+   * The main thread chose the save — it owns the database — and this side does
+   * the only thing it can do with it: restore it into a second engine and step
+   * that engine forward. The replay runs in slices on the host's own timer,
+   * bounded by the same budget as the tick loop, so a 10 000-tick rewind
+   * reports progress and leaves the port responsive instead of freezing the
+   * Worker for half a minute.
+   *
+   * The live world is paused first. Replaying towards a moving present would
+   * make the target a goalpost that shifts while you approach it.
+   */
+  #beginRewind(snapshot: ArrayBuffer, targetTick: number, requestId: number): void {
+    const live = this.#engine;
+    if (live === null) {
+      throw new Error("cannot rewind before a world is initialized");
+    }
+    if (targetTick > live.tick) {
+      throw new Error(
+        `cannot rewind to tick ${targetTick}: the world has only reached ${live.tick}`,
+      );
+    }
+
+    // A newer request supersedes an older one outright. Two replays sharing
+    // the timer would interleave slices and the loser could still win the race
+    // to install itself as "the state you are looking at".
+    this.#cancelReplay();
+    this.#setSpeed("paused");
+
+    const { header, snapshot: state } = decodeDurableSnapshot(new Uint8Array(snapshot));
+    const restored = SimulationEngine.fromSnapshot(state);
+    verifyRestoredStateHash(header, restored.computeStateHash());
+
+    if (restored.tick > targetTick) {
+      throw new Error(
+        `the supplied save is at tick ${restored.tick}, after the requested ${targetTick}; ` +
+          "a rewind replays forward from an earlier save",
+      );
+    }
+
+    const reconstruction = new Reconstruction({ snapshot: state, targetTick });
+    this.#replay = { reconstruction, requestId, handle: null };
+    this.#postRewindProgress(reconstruction.progress, requestId);
+    this.#scheduleReplaySlice();
+  }
+
+  /** Run one replay slice, then either schedule the next or finish. */
+  #runReplaySlice(): void {
+    const job = this.#replay;
+    if (job === null || this.#disposed) {
+      return;
+    }
+    job.handle = null;
+
+    const runtime = this.#hostRuntime;
+    const sliceStart = this.#clock.now();
+    while (!job.reconstruction.done) {
+      job.reconstruction.advance(1);
+      if (this.#clock.now() - sliceStart >= runtime.maxWorkerSliceMs) {
+        break;
+      }
+    }
+
+    this.#postRewindProgress(job.reconstruction.progress, job.requestId);
+
+    if (!job.reconstruction.done) {
+      this.#scheduleReplaySlice();
+      return;
+    }
+
+    this.#replay = null;
+    this.#historical = job.reconstruction.engine;
+    this.#enterHistoricalMode(job.requestId);
+  }
+
+  #scheduleReplaySlice(): void {
+    const job = this.#replay;
+    if (job === null) {
+      return;
+    }
+    job.handle = this.#scheduler.schedule(() => {
+      this.#runReplaySlice();
+    }, 0);
+  }
+
+  #cancelReplay(): void {
+    const job = this.#replay;
+    if (job === null) {
+      return;
+    }
+    if (job.handle !== null) {
+      this.#scheduler.cancel(job.handle);
+    }
+    this.#replay = null;
+  }
+
+  #postRewindProgress(progress: ReconstructionProgress, requestId: number): void {
+    this.#port.post(
+      requestEnvelope(
+        "REWIND_PROGRESS",
+        {
+          targetTick: progress.targetTick,
+          fromTick: progress.fromTick,
+          currentTick: progress.currentTick,
+          ticksReplayed: progress.ticksReplayed,
+          ticksTotal: progress.ticksTotal,
+        },
+        requestId,
+      ),
+    );
+  }
+
+  /** Announce the preview and paint it once; a paused world needs no stream. */
+  #enterHistoricalMode(requestId: number): void {
+    const historical = this.#historical;
+    const live = this.#engine;
+    if (historical === null || live === null) {
+      return;
+    }
+    this.#port.post(
+      requestEnvelope(
+        "HISTORICAL_MODE_READY",
+        {
+          tick: historical.tick,
+          presentTick: live.tick,
+          stateHash: historical.computeStateHash(),
+          earliestTick: 0,
+        },
+        requestId,
+      ),
+    );
+    this.#emitHistoricalProjection();
+  }
+
+  /**
+   * Push one full projection of whichever world is now on screen.
+   *
+   * Entering or leaving a preview replaces every pixel: terrain, vegetation and
+   * organisms all belong to a different tick. The cadence timers are bypassed
+   * on purpose — this is not a frame of an animation, it is the answer to
+   * "show me that tick".
+   */
+  #emitHistoricalProjection(): void {
+    this.#emitTerrainNow();
+    // The cadence timers are reset rather than respected: this is the answer to
+    // "show me that tick", not a frame of a stream, and a preview that painted
+    // 200 ms late would look like the rewind had failed.
+    this.#lastRenderAt = Number.NEGATIVE_INFINITY;
+    this.#lastVegetationAt = Number.NEGATIVE_INFINITY;
+    this.#lastTelemetryAt = Number.NEGATIVE_INFINITY;
+    this.#emitRenderSnapshot();
+    this.#emitVegetationIfDue();
+    this.#emitTelemetry();
+  }
+
+  /**
+   * Leave historical mode. The live world is exactly where it was left: it was
+   * never stepped, so there is nothing to restore and nothing to reload.
+   */
+  #returnToPresent(): void {
+    this.#cancelReplay();
+    if (this.#historical === null) {
+      return;
+    }
+    this.#historical = null;
+    this.#emitHistoricalProjection();
+  }
+
+  /**
+   * Answer with the bytes that become a new world's origin (task K10).
+   *
+   * Serializes the PREVIEW, not the live world, and strips the parent's queued
+   * future first: commands the parent has waiting for a later tick are its
+   * future, not the history this branch inherits. The main thread writes the
+   * result under a new manifest; nothing here touches the source world, which
+   * is why branching cannot damage it.
+   */
+  #answerBranchRequest(branchTick: number, requestId: number): void {
+    const historical = this.#historical;
+    if (historical === null) {
+      this.#reportError(
+        "a branch can only be created from an open historical preview",
+        false,
+        "CREATE_BRANCH",
+        requestId,
+      );
+      return;
+    }
+    if (historical.tick !== branchTick) {
+      this.#reportError(
+        `branch point ${branchTick} does not match the previewed tick ${historical.tick}`,
+        false,
+        "CREATE_BRANCH",
+        requestId,
+      );
+      return;
+    }
+
+    const origin = prepareBranchSnapshot(historical.serialize(), branchTick);
+    const restored = SimulationEngine.fromSnapshot(origin);
+    const stateHash = restored.computeStateHash();
+    const bytes = encodeDurableSnapshot({
+      snapshot: origin,
+      stateHash,
+      configHash: restored.configHash,
+    });
+    const buffer = bytes.buffer as ArrayBuffer;
+
+    this.#port.post(
+      requestEnvelope(
+        "SNAPSHOT_DATA",
+        {
+          buffer,
+          tick: branchTick,
+          stateHash,
+          engineVersion: ENGINE_VERSION,
+          snapshotSchemaVersion: SNAPSHOT_SCHEMA_VERSION,
+          configHash: restored.configHash,
+          seed: restored.seed,
+          reason: "branch" as const,
         },
         requestId,
       ),
