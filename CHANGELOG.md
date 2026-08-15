@@ -6,6 +6,88 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [0.8.0] — 2026-08-15 — Post-A25 integrity pass: the corrective release
+
+Versions: `ENGINE_VERSION` 0.7.0 → **0.8.0**, `PROTOCOL_VERSION` 8 → **9**,
+`CONFIG_SCHEMA_VERSION` unchanged (7, values moved but no field changed shape),
+`SNAPSHOT_SCHEMA_VERSION` unchanged (8). Decisions and all measurements in ADR 0025.
+Every finding of the original product review was re-reproduced against the A22–A25 tip
+before anything was changed; the ADR 0021 calibration table was reproduced exactly.
+
+**All golden hashes are intentionally regenerated** for two authoritative changes that
+land together:
+
+1. **The food-target rule is expected obtainable energy** (docs/04 §20 as amended):
+   `min(bite, available) × energyPerUnit × own efficiency` per candidate source, plant on
+   ties. The old categorical gate (carcass only when meat digests at least as well as
+   plants) was a measured fitness valley — twelve seeds ate 0–300 meat units in 10 000
+   ticks and scavenging intermediates were evolutionarily unreachable. Under the new rule
+   a herbivore on a rich cell still grazes, a herbivore on a stripped cell scavenges
+   rather than starves, and a carnivore abandons a nearly-empty carcass for grass. No
+   role is declared anywhere; the carcass query is gated by a full-bite upper bound so
+   the common grazing case costs what it did before.
+2. **Plant capacities calibrated to 0.6× the v0.1 hypothesis** (docs/08 §5 as amended,
+   closing L11 and the docs/01 §12 carrying-capacity gate): factors 1.0/0.8/0.7/0.6 swept
+   over twelve seeds at 10 000 ticks with the cap-risk seeds re-run to 25 000. 1.0 and
+   0.8 cap 3/12 seeds; 0.7 caps both risk seeds by 25 000; 0.6 leaves every seed under
+   the cap with headroom (max peak 6 874), 12/12 survival, and universal scavenging
+   (12/12 seeds, 0.55–2.4M meat units — against 2/12 seeds and ≤300 units before).
+
+On the regenerated reference fixture the world now holds 994 organisms at tick 10 000
+with 2 929 live carcasses — under the 4 096 cap that every previous world saturated —
+and 531.6k meat units eaten. The mutation golden's values are byte-identical (the pass
+never touches a genome); only its version stamp moved.
+
+### Added
+
+- **The world-start flow** (docs/01 §9 states 1–2): a start screen (New World / Load
+  World), a New World screen with explicit seed, random seed, regenerate, all environment
+  layers and a summary — previewing runs no engine and advances no time — and an explicit
+  Create World action. A created world opens at exact tick 0 PAUSED with a tick-0
+  baseline save persisted (manifest bound, autosave armed); Play starts evolution.
+  Discarded previews are never persisted. `?seed=` deep-links into the New World screen.
+  `WorldSummaryDto.environmentHash` (protocol 9) lets the app and the E2E suite prove the
+  previewed map is byte-for-byte the world the simulation runs.
+- **The ecological speciation scenario** (release gate 6): one founder lineage, one
+  continent, an equatorial channel flooded at tick 8 000 by ordinary LowerTerrain
+  commands, and the engine's own detector declares a species split at ~tick 45 000 that
+  persists for 60 000 ticks. Fixture + test pin it with a horizon assertion, on pinned
+  absolute capacities and a threshold calibrated 2–3× above the measured noise ceiling.
+- Branch lineage in the UI: rows name their parent and branch tick; the Worlds panel
+  carries a standing note while a branch is open.
+
+### Fixed
+
+- **The history scrubber offered ticks that cannot be reconstructed.** Its floor is now
+  the earliest stored save (tick 0 by construction for newly created worlds); a legacy
+  world's unreachable early history is stated, never offered. Stored checkpoints are
+  visible chips. **Dragging only selects; the explicit View This Time button rewinds**
+  (docs/06 §13) — releasing the pointer no longer launches replays, and a release at the
+  present tick no longer silently paused the world.
+- **The panel's "present" collapsed to the previewed tick during a preview**, because it
+  read the view engine's telemetry; it now reads the live world's tick through
+  `HistoricalStatus`. Starting a rewind also pauses the UI's speed state, so the time
+  controls tell the truth while a preview is open.
+- **Branch From Here now opens the branch**, paused at the branch tick, instead of
+  leaving the user in the parent's preview to find the new world by hand. Charts, tree,
+  species details, selection and the event log reset on every world switch (stale species
+  panels survived a load before). The Worker host clears stale preview state when a load
+  replaces the world — a load issued mid-preview used to keep reporting the old world's
+  past.
+- A world loaded at session start reported autosave as unarmed even though it was armed
+  (the interval arrives with WORLD_READY, after the load binds).
+
+### Verified
+
+- Preview identity: two constructions of the same seed produce identical environment
+  digests and tick-0 state hashes (Node), and the digest shown on the New World screen
+  equals the created world's (browser E2E).
+- Browser E2E on the production bundle: the full New World flow (create → tick 0 paused →
+  baseline stored → Play → ticks advance), save/reload from the start screen at the saved
+  tick paused, drag-select + explicit rewind + exact-present restore, branch auto-open
+  with the parent's newest save hash unchanged, offline world creation, mobile viewport,
+  performance HUD.
+
 ## [Unreleased] — 2026-08-15 — Final EON MVP audit
 
 The last gate before calling the MVP finished, against docs/01 §12's seven conditions. Decisions and

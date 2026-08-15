@@ -1,11 +1,15 @@
 {
-  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 §3). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + the fixed command log below (one command of every intervention kind, Milestone 9). Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000 --fixture-commands) and a CHANGELOG entry. Engine 0.7.0 regenerated every hash: the canonical stream gained the founder region and the command log, event payloads became signed 32-bit words, the config gained the interventions section, and the fixture now RUNS the command log — the trajectory legitimately diverges from 0.6.0 once the first command applies at tick 50 (by tick 10000: population 4381 vs 4364, 26 drowning deaths from the flooded LOWER_TERRAIN stroke, a meteor crater at the founder centre). Tick 0 and 1 differ from 0.6.0 only through the hash-stream and config changes; the organism trajectory is identical until the first command applies.",
-  "engineVersion": "0.7.0",
+  "description": "Mandatory deterministic fixture (CLAUDE.md, docs/07 \u00a73). Canonical state hashes for the fixed seed + DEFAULT_CONFIG + the fixed command log below (one command of every intervention kind, Milestone 9). Intentional engine behavior changes require an ENGINE_VERSION bump, regenerated hashes (pnpm headless --seed 0xE0A12026 --ticks 10000 --checkpoints 0,1,10,100,1000,10000 --fixture-commands) and a CHANGELOG entry. Engine 0.7.0 regenerated every hash: the canonical stream gained the founder region and the command log, event payloads became signed 32-bit words, the config gained the interventions section, and the fixture now RUNS the command log \u2014 the trajectory legitimately diverges from 0.6.0 once the first command applies at tick 50 (by tick 10000: population 4381 vs 4364, 26 drowning deaths from the flooded LOWER_TERRAIN stroke, a meteor crater at the founder centre). Tick 0 and 1 differ from 0.6.0 only through the hash-stream and config changes; the organism trajectory is identical until the first command applies. Engine 0.8.0 regenerated every hash again, for two intentional authoritative changes (ADR 0025): the expected-gain food-target rule replaced the categorical carcass gate (docs/04 \u00a720 as amended), and the plant capacities were calibrated to 0.6x the v0.1 hypothesis (docs/08 \u00a75 as amended, closing L11). The tick-0 hash moves through the config digest alone; the trajectory diverges once feeding decisions begin. By tick 10000 the leaner, scavenging world holds population 994 (was 4381), 2929 live carcasses UNDER the 4096 cap (was pinned at it), and has eaten 531.6k meat units (was 0 on the pre-policy reference world).",
+  "engineVersion": "0.8.0",
   "configSchemaVersion": 7,
   "seedHex": "0xE0A12026",
-  "configHash": "a1157fd0201ed348",
+  "configHash": "701eeb422f60c932",
   "commands": [
-    { "kind": 0, "offsetCentiC": 300, "targetTick": 50 },
+    {
+      "kind": 0,
+      "offsetCentiC": 300,
+      "targetTick": 50
+    },
     {
       "kind": 1,
       "radiusLU": 48,
@@ -69,14 +73,20 @@
       "samplesYLU": [2520],
       "targetTick": 2500
     },
-    { "kind": 8, "centerXLU": 3752, "centerYLU": 2520, "radiusLU": 128, "targetTick": 5000 }
+    {
+      "kind": 8,
+      "centerXLU": 3752,
+      "centerYLU": 2520,
+      "radiusLU": 128,
+      "targetTick": 5000
+    }
   ],
   "checkpoints": {
-    "0": "b23df0e3e21a2e63",
-    "1": "9811b3459a2708a5",
-    "10": "ea766aca0000c592",
-    "100": "40ab509570db71d9",
-    "1000": "ee04bc0729533257",
-    "10000": "a55b02d3da4564a3"
+    "0": "13c6f022f13cb4d2",
+    "1": "a7b34ff628818aee",
+    "10": "014bb7e5be0dd6ad",
+    "100": "0445a5ea960f244e",
+    "1000": "52598205ad5d53c9",
+    "10000": "2c5a5946e45952a2"
   }
 }
