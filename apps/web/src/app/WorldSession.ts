@@ -441,13 +441,13 @@ export class WorldSession {
       // Boot straight into a stored world: the Worker accepts LOAD_WORLD
       // without a prior INIT_NEW_WORLD, so no throwaway world is generated.
       session.#loadingStoredWorld = true;
-      void session.#persistence.load(options.startFrom.worldId, options.initialSpeed).then(
-        (loaded) => {
+      void session.#persistence
+        .load(options.startFrom.worldId, options.initialSpeed)
+        .then((loaded) => {
           if (!loaded) {
             session.#loadingStoredWorld = false;
           }
-        },
-      );
+        });
       return session;
     }
     session.#pendingBaselineName = options.persistBaseline?.name ?? null;

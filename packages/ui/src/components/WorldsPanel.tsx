@@ -220,10 +220,13 @@ export function WorldsPanel(props: WorldsPanelProps): React.JSX.Element {
                 <span>{formatSavedAt(world.savedAtIso)}</span>
               </div>
               {world.branch === null ? null : (
-                <div className="world-branch" title="This world is a branch: an alternative history">
+                <div
+                  className="world-branch"
+                  title="This world is a branch: an alternative history"
+                >
                   branched from{" "}
-                  {world.branch.parentName === null ? "a deleted world" : world.branch.parentName} at
-                  tick {formatInt(world.branch.branchTick)}
+                  {world.branch.parentName === null ? "a deleted world" : world.branch.parentName}{" "}
+                  at tick {formatInt(world.branch.branchTick)}
                 </div>
               )}
               {world.status === "ok" ? null : (

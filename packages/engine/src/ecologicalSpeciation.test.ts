@@ -78,9 +78,9 @@ describe("ecological speciation reachability (release gate 6)", () => {
       ).not.toBeNull();
 
       // The split is the engine's own event, attributed and typed.
-      expect(
-        engine.events.events.some((event) => event.type === WorldEventType.SpeciesSplit),
-      ).toBe(true);
+      expect(engine.events.events.some((event) => event.type === WorldEventType.SpeciesSplit)).toBe(
+        true,
+      );
     },
   );
 });

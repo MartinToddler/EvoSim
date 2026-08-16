@@ -64,9 +64,7 @@ test.describe("the world-start flow", () => {
     await expect(page.locator(".topbar")).toBeVisible({ timeout: 90_000 });
 
     // Exact tick 0, and PAUSED: time does not move until Play.
-    await expect
-      .poll(async () => readTick(page), { timeout: 90_000 })
-      .toBeGreaterThanOrEqual(0);
+    await expect.poll(async () => readTick(page), { timeout: 90_000 }).toBeGreaterThanOrEqual(0);
     expect(await readTick(page)).toBe(0);
     await page.waitForTimeout(2_000);
     expect(await readTick(page)).toBe(0);

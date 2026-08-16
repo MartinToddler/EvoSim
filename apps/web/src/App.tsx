@@ -188,7 +188,9 @@ export function App(): React.JSX.Element {
   // previewed; otherwise the app opens on the start screen. Creating or loading
   // a world is always an explicit action (ADR 0025).
   const [stage, setStage] = useState<AppStage>(() =>
-    hasSeedInLocation(globalThis.location?.search ?? "") ? { kind: "new-world" } : { kind: "start" },
+    hasSeedInLocation(globalThis.location?.search ?? "")
+      ? { kind: "new-world" }
+      : { kind: "start" },
   );
   const [startWorlds, setStartWorlds] = useState<readonly StartWorldView[] | null>(null);
   const [startWorldsError, setStartWorldsError] = useState<string | null>(null);

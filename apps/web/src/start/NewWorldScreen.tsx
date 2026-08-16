@@ -41,8 +41,7 @@ export interface NewWorldScreenProps {
 }
 
 type PreviewState =
-  | { status: "ready"; model: DebugWorldModel }
-  | { status: "failed"; seed: number; message: string };
+  { status: "ready"; model: DebugWorldModel } | { status: "failed"; seed: number; message: string };
 
 function generatePreview(seed: number): PreviewState {
   const result = createDebugWorld(seed);

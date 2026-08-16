@@ -124,8 +124,8 @@ export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
 
       {rewindable && earliestSaveTick !== null && earliestSaveTick > originTick ? (
         <p className="history-panel__notice" data-testid="history-unavailable-note">
-          History before tick {formatInt(earliestSaveTick)} was not stored for this world and
-          cannot be viewed. The earliest stored save is the earliest reachable time.
+          History before tick {formatInt(earliestSaveTick)} was not stored for this world and cannot
+          be viewed. The earliest stored save is the earliest reachable time.
         </p>
       ) : null}
 

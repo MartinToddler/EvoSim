@@ -26,9 +26,7 @@ describe("preview identity (ADR 0025)", () => {
       const preview = new SimulationEngine({ seed, config: DEFAULT_CONFIG });
       const authoritative = new SimulationEngine({ seed, config: DEFAULT_CONFIG });
 
-      expect(hashEnvironment(authoritative.environment)).toBe(
-        hashEnvironment(preview.environment),
-      );
+      expect(hashEnvironment(authoritative.environment)).toBe(hashEnvironment(preview.environment));
       expect(authoritative.computeStateHash()).toBe(preview.computeStateHash());
       expect(authoritative.tick).toBe(0);
       expect(preview.tick).toBe(0);

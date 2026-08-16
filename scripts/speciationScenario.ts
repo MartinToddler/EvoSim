@@ -425,7 +425,9 @@ function main(): void {
   console.log(`seed       0x${options.seed.toString(16).toUpperCase()}`);
   if (options.channelTick > 0) {
     const queued = queueChannelCommands(engine, options.channelTick);
-    console.log(`channel    ${queued} LowerTerrain commands queued for tick ${options.channelTick}`);
+    console.log(
+      `channel    ${queued} LowerTerrain commands queued for tick ${options.channelTick}`,
+    );
   }
 
   for (let done = 0; done < options.ticks; done += options.interval) {

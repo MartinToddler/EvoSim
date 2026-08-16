@@ -145,9 +145,7 @@ test.describe("persistence, rewind and branching", () => {
       timeout: 60_000,
     });
     await expect(page.locator(".topbar")).toContainText("Paused");
-    await expect
-      .poll(async () => readTick(page), { timeout: 60_000 })
-      .toBeGreaterThanOrEqual(0);
+    await expect.poll(async () => readTick(page), { timeout: 60_000 }).toBeGreaterThanOrEqual(0);
     expect(`tick ${(await readTick(page)).toLocaleString("en-US")}`).toBe(previewedTick);
 
     // The Worlds panel says where we are, with lineage.

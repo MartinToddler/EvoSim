@@ -83,9 +83,7 @@ describe("HistoryPanel", () => {
   it("offers exactly the reconstructable range: the scrubber floor is the earliest save", () => {
     // A legacy world saved for the first time at tick 2 500: ticks 0…2 499
     // exist but cannot be rebuilt (ADR 0018 §7), so they are not offered.
-    const html = renderToStaticMarkup(
-      <HistoryPanel {...props({ saveTicks: [2_500, 10_000] })} />,
-    );
+    const html = renderToStaticMarkup(<HistoryPanel {...props({ saveTicks: [2_500, 10_000] })} />);
     expect(html).toContain('min="2500"');
     expect(html).toContain("History before tick 2,500 was not stored");
   });
@@ -109,7 +107,9 @@ describe("HistoryPanel", () => {
     expect(html).toContain("View this time");
     // No selection yet: the button is disabled — releasing the scrubber handle
     // must never be what starts a replay (docs/06 §13).
-    expect(html).toMatch(/data-testid="view-this-time"[^>]*disabled|disabled[^>]*data-testid="view-this-time"/);
+    expect(html).toMatch(
+      /data-testid="view-this-time"[^>]*disabled|disabled[^>]*data-testid="view-this-time"/,
+    );
   });
 
   it("marks a branch's timeline as starting at its branch point", () => {
