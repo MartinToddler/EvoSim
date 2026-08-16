@@ -576,3 +576,42 @@ is actually serving pass twelve browser scenarios, including the offline reload.
 Contract audit (CLAUDE.md): engine purity, determinism, SoA layout, the React and renderer
 boundaries, the four required version constants, the mandatory fixture, the workspace layout and
 every scope exclusion — all clean. Details in ADR 0024 §2.
+
+## Post-A25 integrity pass (ADR 0025)
+
+- [x] N01 world-start flow — start screen (New World / Load World), New World preview
+      screen (explicit seed, random, regenerate, layers, summary), explicit CREATE WORLD;
+      created worlds open at exact tick 0 PAUSED with a persisted tick-0 baseline;
+      discarded previews never persisted; `?seed=` deep-links into the New World screen;
+      preview identity proven end to end (`environmentHash`, protocol 9).
+- [x] N02 rewind as a user workflow — the scrubber offers exactly the reconstructable
+      range (floor = earliest stored save; legacy gaps stated); stored checkpoints are
+      visible chips; dragging only selects and the explicit View This Time button
+      reconstructs; the present tick shown while previewing comes from the live world.
+- [x] N03 branch auto-open — Branch From Here persists the branch, leaves the preview and
+      opens the branch paused at the branch tick, with a banner, a standing lineage note,
+      parent named on every branch row and per-world UI state rebound on switch; parent
+      isolation re-verified down to the newest save hash in a real browser.
+- [x] N04 expected-gain food choice — the docs/04 §20 categorical carcass gate (a measured
+      fitness valley) replaced by expected obtainable energy with an explicit plant
+      tie-break; scavenging becomes evolutionarily reachable without declaring roles.
+- [x] N05 carrying-capacity calibration (closes L11) — plant capacities ×0.6 and carcass
+      decay 20 → 48, chosen from a four-factor twelve-seed sweep plus 25 000-tick re-runs
+      and head-to-head carcass levers (bigger store and 2× rot both measured and rejected
+      for destabilizing the population gate). ENGINE_VERSION 0.8.0; every golden hash
+      regenerated and independently re-verified.
+- [x] N06 ecological speciation (closes release gate 6) — one continent, an equatorial
+      channel flooded at tick 8 000 by ordinary LowerTerrain commands, two isolated demes,
+      and the engine's own detector splits them at ~tick 45 000 (persisting 60 000 ticks);
+      pinned as `fixtures/speciationScenario.ts` + `ecologicalSpeciation.test.ts` with a
+      horizon assertion.
+
+Post-A25 integrity gate: **PASS** (engine 0.7.0 → 0.8.0, protocol 8 → 9, ADR 0025). Every
+original finding re-reproduced against the A22–A25 tip before changing anything (the
+ADR 0021 table byte-identical on a four-seed subset). Final twelve-seed evidence on the
+shipped config: 12/12 survive, **0/12 at the population cap** (max peak 6 677), **12/12
+scavenging** (median 1.58M meat units against ≤300 before), carcass saturation episodic
+instead of permanent (7/12 under the cap at tick 10 000, median skips 3 082 against
+12/12 saturated), and the docs/01 §12 speciation gate covered by a deterministic test.
+Costs stated in ADR 0025 §6: the suite gains the ~40-minute speciation run; the golden
+fixture suite runs 2.6× faster on the leaner world.
