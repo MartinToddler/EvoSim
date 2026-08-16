@@ -153,6 +153,30 @@ population gate depends on. Finding E closes as "calibrated and understood", not
 "warning suppressed": normal operation sits under the cap, saturation is episodic, and
 both alternative levers were measured and rejected for cause.
 
+### 2d. The shipped configuration, measured (the after-table)
+
+Twelve seeds, 10 000 ticks, plain `DEFAULT_CONFIG` on engine 0.8.0:
+
+| Measure                              | Before (0.7.0)                  | After (0.8.0)                       |
+| ------------------------------------ | ------------------------------- | ----------------------------------- |
+| Survival                             | 12/12                           | **12/12**                           |
+| Seeds refusing births at the cap     | 4/12 (a floor; 8/12 still rising) | **0/12**, max peak 6 677          |
+| Seeds eating meat                    | 2/12 (300 and 103 units)        | **12/12** (median 1 580 620 units)  |
+| Carcass store at tick 10 000         | saturated on 12/12, 4 751–28 929 skipped | 7/12 under the cap; 3 seeds zero skips; median 3 082 skipped |
+| Median final population              | 5 156                           | 2 699 (leaner by design; equilibria still rising on several seeds) |
+| Median per-gene trait sd             | 0.0509 uncapped / 0.0357 capped | 0.0347                              |
+| Kills                                | 0                               | 0                                   |
+
+Two honest costs, stated: the leaner world carries somewhat less standing variation
+(median sd 0.0347 — smaller populations hold less; ADR 0021 §5b predicted exactly this
+trade at 0.5×, and 0.6 + the carrion food web keeps it milder), and active predation
+(kills) has still not appeared at 10 000-tick horizons — the demonstrated reachability is
+opportunistic scavenging and diet-gene movement (population means to −0.65/−0.84 on
+single seeds, deme means to 0.05–0.20 of the gene range in the scenario worlds), with
+attack evolution left to longer horizons now that kills finally pay (a kill's carcass is
+immediately edible under the expected-gain rule). Attack ATTEMPTS are not instrumented —
+only landed kills are observable — noted as a diagnostics gap, not an engine one.
+
 ## 3. Speciation (finding G): the split is reachable, and what it took to prove it
 
 Gate 6 asks for a calibrated fragmented/environmentally divergent run that creates an
