@@ -103,9 +103,43 @@ cell it scavenges rather than starves; a carnivore abandons a nearly-empty carca
 grass. The carcass query is gated by a full-bite upper bound, so the common
 herbivore-on-grass case costs exactly what it did before.
 
-### 2b. Calibration (L11): capacity ×0.7 — MEASURED NUMBERS TO BE FILLED
+### 2b. Calibration (L11): the factor sweep, and why 0.6
 
-### 2c. Carcass saturation (finding E) — MEASURED NUMBERS TO BE FILLED
+Four factors, twelve seeds each, 10 000 ticks, on the NEW feeding rule (the old-policy
+baseline was first reproduced exactly against ADR 0021's table on a four-seed subset):
+
+| Variant       | Capped seeds | Median pop | Max peak  | Seeds eating meat | Median meat eaten | Median trait sd |
+| ------------- | ------------ | ---------- | --------- | ----------------- | ----------------- | --------------- |
+| policy + ×1.0 | **3/12**     | 4 864      | **8 192** | 12/12             | 2 404 449         | 0.0512          |
+| policy + ×0.8 | **3/12**     | 4 044      | **8 192** | 12/12             | 1 905 973         | 0.0462          |
+| policy + ×0.7 | 0/12 at 10k  | 3 670      | 7 931     | 12/12             | 1 551 180         | 0.0429          |
+| policy + ×0.6 | 0/12 at 10k  | 3 234      | 6 874     | 12/12             | 1 237 666         | 0.0429          |
+
+Ten thousand ticks is not equilibrium, so the cap-risk seeds were re-run to 25 000:
+**×0.7 fails there** — both risk seeds hit 8 192, one refusing 2.42 million births —
+while ×0.6 leaves one transient boom spike on the single worst seed (122 k refusals at
+the peak of an overshoot that immediately recedes) and nothing on the others. Against the
+pre-fix norm — half the worlds pinned at the cap for the whole back half of their runs —
+that is the "exceptional, not defining" the gate asks for. The scavenging column is the
+new policy speaking: every seed, at every factor, eats meat at five to seven orders of
+magnitude above the old baseline (0–300 units), which is finding D's fitness valley
+closed on population-scale evidence.
+
+### 2c. Carcass saturation (finding E): consumption, then persistence — not a bigger box
+
+Three candidate levers were measured head-to-head on the three decisive seeds at 25 000
+ticks (capacity ×0.6 throughout):
+
+- **A bigger cap (16 384) is counterproductive.** The natural standing stock at these
+  death rates is 13–16 k carcasses; storing it all feeds the food web so richly (3–7 M
+  meat eaten) that the REFERENCE seed then slams the organism cap. Carrion is not a free
+  reservoir; it is carrying capacity in another form.
+- **Faster rot (decay 20 → 48) fixes the population side** — all three seeds: zero
+  refusals, peaks under the cap, scavenging intact at 1.7–2.9 M meat — but the standing
+  stock still rides the 4 096 cap.
+- **decay 96** (measured next, see the changelog for the final numbers) halves the
+  standing stock again, putting the natural equilibrium under the cap so `maxCarcasses`
+  returns to being a safety mechanism, exactly the role the organism cap was restored to.
 
 ## 3. Speciation (finding G): the split is reachable, and what it took to prove it
 
