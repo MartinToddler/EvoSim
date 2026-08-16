@@ -232,3 +232,39 @@ DEFAULT_CONFIG retunes cannot shift the world the calibration measured.
   default VALUES moved, which the config hash captures.
 - `SNAPSHOT_SCHEMA_VERSION` unchanged: serialization is untouched. Snapshots from 0.7.0
   are unloadable by the exact-version MVP policy, as every engine bump before this one.
+
+## 5. The final audit matrix
+
+Every original finding, re-reproduced against the A22–A25 tip (`474d926`) before any
+change, and re-checked against the final build:
+
+| Finding | Reproduced after A25? | Fix | Regression test | Evidence | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| World generator disconnected from game flow | Yes — app booted a running sim; generator on `?view=generator` | Start screen + New World screen + explicit Create World | `worldStart.spec.ts` (4 browser scenarios) | E2E green on the production bundle | **PASS** |
+| Authoritative time starts before world acceptance | Yes — `initialSpeed: "x1"` at mount | No engine exists before Create World; worlds open at exact tick 0 PAUSED | `worldStart.spec.ts` asserts tick 0 twice 2 s apart, then Play | E2E green | **PASS** |
+| Missing tick-0 baseline persistence | Yes — worlds started unbound; autosave armed only after manual save | Create World persists the tick-0 baseline, binds the manifest, arms autosave; discarded previews never persisted | `persistenceSession.test.ts` baseline tests; `worldStart.spec.ts` | Unit + E2E green | **PASS** |
+| Unreachable ticks exposed by history UI | Yes — scrubber offered `[originTick, presentTick]` regardless of saves | Scrubber floor = earliest stored save; legacy gaps stated, never offered; checkpoints are chips | `historyPanel.test.tsx` (11 tests) | Unit green; backend `selectSaveForTick` unchanged | **PASS** |
+| Pointer-release unexpectedly launching rewind | Yes — `onPointerUp`/`onKeyUp` committed; release at present tick silently paused the world | Dragging only selects; explicit View This Time; rewind pauses the UI speed state; present tick read from `HistoricalStatus` | `persistence.spec.ts` scenario 8 (drag → still Live → button → preview → exact present restored) | E2E green | **PASS** |
+| Branch created but not automatically opened | Yes — deliberate "written but NOT opened" comment in App.tsx | createBranch → leave preview → load branch paused at branch tick; banner + standing lineage note; per-world UI state reset | `historicalSession.test.ts` auto-open tests; `persistence.spec.ts` scenario 9 | Unit + E2E green | **PASS** |
+| Branch parent isolation | Not broken (store refuses branch-origin-over-parent) — re-verified | Saves after the switch land in the branch's manifest | `historicalSession.test.ts` "keeps later saves inside the branch"; E2E compares the parent's newest save hash before/after | Unit + E2E green | **PASS** |
+| Spontaneous carnivory reachability | Yes — 2/12 seeds ate ≤300 units; mean diet pinned at founder | Expected-gain food rule + calibration | `carcassFeeding.test.ts` scavenging tests; shipped-config sweep | 12/12 seeds scavenge (median 1.58M units); diet-gene movement observed; kills still 0 at ≤150k (limitation, §2d) | **PASS** (scavenging) |
+| Food-selection fitness valley | Yes — categorical gate at `feedingClaims.ts` | `expectedGain = min(bite, available) × energyPerUnit × ownEfficiency`, plant tie-break, gated carcass query | "lets a herbivore scavenge a carcass on a stripped cell" + 4 more policy tests | Unit green; population-scale effect in §2b | **PASS** |
+| Carcass cap saturation | Yes — 12/12 seeds saturated, 4.7k–29k skipped | Calibration (×0.6 + decay 48); bigger store and faster rot measured and REJECTED for cause | Shipped-config sweep | 7/12 under cap at tick 10 000, 3 seeds zero skips, median skips 3 082; reference fixture at 1 382 live | **PASS** (episodic saturation retained as measured overflow valve) |
+| Population hard-cap saturation | Yes — 4/12 at 10k (a floor) | Plant capacities ×0.6 | Shipped-config sweep + 25k-tick risk-seed re-runs | 0/12 capped, max peak 6 677; one transient overshoot episode on the worst seed at ×0.6-plain 25k, none with decay 48 | **PASS** |
+| Evolutionary diversity / generalist collapse | Partially — capped seeds carried 30% less variation | Cap removed from the ecology; variation now mutation-selection limited | Sweep trait-sd column | Median sd 0.0347; no cap-order filtering remains; leaner-world cost stated in §2d | **PASS** (with stated trade-off) |
+| Ecological automatic-speciation reachability | Yes — gate 6 failed; every real run ended one species | Channel-fragmentation scenario (ordinary LowerTerrain commands), detector calibrated from measured noise/divergence | `ecologicalSpeciation.test.ts` (split by tick 60 000; measured at ~45 000, persisting 60k ticks) | Test green on the final build (2 539 s) | **PASS** |
+
+New regressions introduced by A22–A25 found by this pass: none in engine behaviour; the
+one A23–A24-era defect encountered (`EON_E2E_BASE_URL` path resolution) had already been
+fixed by ADR 0024. New regressions introduced by THIS pass and caught before landing:
+the E2E telemetry-placeholder race (fixed in the helpers), the branch-row locator
+ambiguity (fixed), and the speciation fixture initially inheriting the retuned decay
+(pinned before the fixture ever ran in CI).
+
+## 6. Costs
+
+- `pnpm test` gains the ecological speciation run (~40 minutes standalone) beside the
+  100 000-tick soak; both are inherently long determinism tests under docs/07 §8's
+  hang-detector policy, and both are the release-gate evidence docs/01 §12 demands.
+- The golden fixture suite runs ~2.6× FASTER on the calibrated engine (155 s against
+  408 s): the leaner reference world simulates fewer organisms.
