@@ -170,10 +170,27 @@ export default defineConfig({
   ...(externalBaseUrl === undefined
     ? {
         webServer: {
-          command: "pnpm --filter @eon/web preview --port 4173 --strictPort",
+          // The address the server BINDS and the address the suite POLLS are now
+          // the same literal string. `baseURL` names 127.0.0.1; without an
+          // explicit host `vite preview` binds to whatever "localhost" resolves
+          // to on that machine, which is not the same question. On a GitHub
+          // runner this failed as "Timed out waiting 120000ms from
+          // config.webServer" with no error from the server at all — it had
+          // started fine, just not somewhere the poller was looking — while
+          // passing on a development container where localhost is IPv4-only.
+          // Pinning both ends removes the whole class of resolver-dependent
+          // failure rather than the one spelling of it that was observed.
+          command: "pnpm --filter @eon/web preview --port 4173 --strictPort --host 127.0.0.1",
           url: baseURL,
           reuseExistingServer: process.env["CI"] === undefined,
           timeout: 120_000,
+          // Surface the server's own output. When this timed out, the log said
+          // only that Playwright gave up — the server's banner, which names the
+          // address it actually bound, was discarded by the default "ignore".
+          // A failure that cannot say where the server went costs an hour of CI
+          // per guess.
+          stdout: "pipe",
+          stderr: "pipe",
         },
       }
     : {}),
