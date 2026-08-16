@@ -226,7 +226,16 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     carcass: {
       meatPerMass: 3,
       remainingEnergyToMeatMaxFractionQ: 1024, // 0.25
-      baseCarcassDecayFractionQPerDecayStep: 20, // ~0.0049
+      // Calibrated 20 → 48 (ADR 0025 §2c). Meat persistence was measured
+      // head-to-head against a bigger carcass store and against 2x this rot
+      // rate on the decisive seeds at 25 000 ticks: a 16 384 store lets the
+      // natural 13-16k carrion stock feed runaway booms into the organism
+      // cap, decay 96 intensifies the scavenging race enough to do the same,
+      // and 48 is the measured optimum — zero cap refusals, peaks under the
+      // cap, scavenging intact. The 4 096 store deliberately stays: during
+      // mass-death episodes the deterministic skip is an overflow valve, and
+      // removing it was measured to destabilize the population gate.
+      baseCarcassDecayFractionQPerDecayStep: 48, // ~0.0117
       hotDecayBonusMaxQ: 4096, // 1.0
       // The world's temperature field runs roughly -15 °C … +35 °C (docs/03
       // §17), so rot is free at freezing and doubles at the hot end of the map.

@@ -75,8 +75,9 @@ export const SCENARIO_CONFIG: ReadonlySimulationConfig = (() => {
     DEFAULT_CONFIG.world.validity.minTotalPlantCapacity / 32,
   );
   // Pinned to the values the scenario was calibrated against (see above);
-  // deliberately NOT DEFAULT_CONFIG's retuned capacities.
+  // deliberately NOT DEFAULT_CONFIG's retuned capacities or carcass decay.
   config.plants.baseCapacityByBiome = [0, 36000, 52000, 7000, 10000, 4000];
+  config.organism.carcass.baseCarcassDecayFractionQPerDecayStep = 20;
   // The calibrated detector for this scenario's population sizes (see above).
   config.species.splitDistanceThresholdQ = 480;
   config.species.candidateCentroidContinuityThresholdQ = 160;

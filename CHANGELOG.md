@@ -14,7 +14,7 @@ Versions: `ENGINE_VERSION` 0.7.0 → **0.8.0**, `PROTOCOL_VERSION` 8 → **9**,
 Every finding of the original product review was re-reproduced against the A22–A25 tip
 before anything was changed; the ADR 0021 calibration table was reproduced exactly.
 
-**All golden hashes are intentionally regenerated** for two authoritative changes that
+**All golden hashes are intentionally regenerated** for three authoritative changes that
 land together:
 
 1. **The food-target rule is expected obtainable energy** (docs/04 §20 as amended):
@@ -32,6 +32,13 @@ land together:
    0.8 cap 3/12 seeds; 0.7 caps both risk seeds by 25 000; 0.6 leaves every seed under
    the cap with headroom (max peak 6 874), 12/12 survival, and universal scavenging
    (12/12 seeds, 0.55–2.4M meat units — against 2/12 seeds and ≤300 units before).
+3. **Carcass decay calibrated 20 → 48** (docs/08 §15 as amended, finding E): measured
+   head-to-head at 25 000 ticks, a 4× carcass store lets the natural 13–16k carrion
+   stock feed runaway booms into the organism cap, and decay 96 intensifies the
+   scavenging race enough to do the same; 48 is the optimum — zero cap refusals on every
+   decisive seed with scavenging intact (1.7–2.9M meat). `maxCarcasses` 4096 deliberately
+   stays: during mass-death episodes the deterministic skip is an overflow valve the
+   population gate was measured to depend on.
 
 On the regenerated reference fixture the world now holds 994 organisms at tick 10 000
 with 2 929 live carcasses — under the 4 096 cap that every previous world saturated —

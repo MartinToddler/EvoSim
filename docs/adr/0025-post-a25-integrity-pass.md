@@ -137,9 +137,21 @@ ticks (capacity ×0.6 throughout):
 - **Faster rot (decay 20 → 48) fixes the population side** — all three seeds: zero
   refusals, peaks under the cap, scavenging intact at 1.7–2.9 M meat — but the standing
   stock still rides the 4 096 cap.
-- **decay 96** (measured next, see the changelog for the final numbers) halves the
-  standing stock again, putting the natural equilibrium under the cap so `maxCarcasses`
-  returns to being a safety mechanism, exactly the role the organism cap was restored to.
+- **decay 96 overshoots**: faster rot intensifies the scavenging race (meat eaten jumps
+  to 3.0–4.9 M), and the higher meat throughput feeds a boom that pins the worst seed at
+  the organism cap with 2.09 M refusals. The dynamics are non-monotonic; more rot is not
+  monotonically less food web.
+
+**The decision: capacity ×0.6 + decay 48, `maxCarcasses` unchanged at 4 096.** On the
+regenerated reference fixture the world holds 1 382 live carcasses at tick 10 000 — real
+headroom under a cap every previous world saturated — while eating 511 k meat units.
+What remains, honestly stated: during mass-death episodes (the boom-crash troughs) the
+store still fills and the deterministic skip discards carrion. That is retained
+deliberately: the 16 384-store experiment shows that keeping all crash carrion converts
+it into runaway carrying capacity, so the skip is functioning as an overflow valve the
+population gate depends on. Finding E closes as "calibrated and understood", not as
+"warning suppressed": normal operation sits under the cap, saturation is episodic, and
+both alternative levers were measured and rejected for cause.
 
 ## 3. Speciation (finding G): the split is reachable, and what it took to prove it
 
@@ -185,10 +197,12 @@ DEFAULT_CONFIG retunes cannot shift the world the calibration measured.
 ## 4. Versioning
 
 - `ENGINE_VERSION` 0.7.0 → 0.8.0: the food-target policy is an authoritative behaviour
-  change, and the recalibrated `DEFAULT_CONFIG` changes every world hash. All six golden
-  fixture hashes, the populated soak hash and the config digest are regenerated; the
-  lifeless environment soak is unaffected by either change and its hash is expected to
-  hold (verified).
+  change, and the recalibrated `DEFAULT_CONFIG` (plant capacities ×0.6, carcass decay
+  20 → 48) changes every world hash. All six golden fixture hashes, both soak hashes, the
+  mutation-golden version stamp (values proven byte-identical) and the config digest
+  (`5a63593f0c0f3647`) are regenerated and independently re-verified. The lifeless soak
+  moves through the capacity values alone — a lifeless world has no feeder for the
+  expected-gain rule to steer.
 - `PROTOCOL_VERSION` 8 → 9: `WorldSummaryDto.environmentHash` (diagnostic identity).
 - `CONFIG_SCHEMA_VERSION` unchanged: no field was added, removed or reshaped — only
   default VALUES moved, which the config hash captures.

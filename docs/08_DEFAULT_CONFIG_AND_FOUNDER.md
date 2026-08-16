@@ -355,6 +355,13 @@ All fixed/integer in authoritative code.
 
 ## 15. Carcass
 
+> **Amended by ADR 0025 (engine 0.8.0).** `baseCarcassDecayFractionQPerDecayStep` is
+> calibrated 20 → **48**: measured head-to-head at 25 000 ticks against a 4× carcass store
+> (runaway carrion-fed booms into the organism cap) and against decay 96 (the intensified
+> scavenging race does the same), 48 is the optimum — zero cap refusals with scavenging
+> intact. `maxCarcasses` 4096 deliberately stays: during mass-death episodes the
+> deterministic skip is an overflow valve the population gate depends on.
+
 ```ts
 {
   meatPerMass: 3,
