@@ -430,3 +430,44 @@ export {
   type ReconstructionProgress,
 } from "./replay/reconstruct";
 export { hashEnvironment, ENVIRONMENT_HASH_MAGIC } from "./world/hashEnvironment";
+
+// M14 morphological genome (docs/11 §M14).
+export {
+  MorphGene,
+  MORPH_GENE_COUNT,
+  MORPH_GENE_NAMES,
+  MORPH_GENE_RAW_MAX,
+  MAX_MORPH_SEGMENTS,
+  MAX_MORPH_APPENDAGE_PAIRS,
+  MAX_MORPH_PATTERN_FREQUENCY,
+  STRUCTURAL_MORPH_GENES,
+  isStructuralMorphGene,
+  morphGeneToQ,
+  morphGeneFromQ,
+  structuralGeneCount,
+  structuralGeneFromCount,
+  segmentCount,
+  appendagePairCount,
+} from "./morphology/morphGenes";
+export { MorphologyStore, deriveMorphology } from "./morphology/morphDevelopment";
+export {
+  MorphMutationClass,
+  classifyMorphRoll,
+  morphDeltaRaw,
+  structuralStep,
+  mutateMorphologyGenes,
+  mutateMorphology,
+} from "./morphology/morphMutation";
+export {
+  FOUNDER_MORPH_GENE_Q,
+  FOUNDER_SEGMENTS,
+  FOUNDER_APPENDAGE_PAIRS,
+  createFounderMorphGenes,
+} from "./morphology/founderMorphGenome";
+export {
+  MorphChannelIndex,
+  MORPH_CHANNEL_STRIDE,
+  MORPH_MAGNITUDE_SCALE,
+  writeMorphChannels,
+} from "./render/renderSnapshot";
+export type { MorphologyConfig } from "./config/SimulationConfig";

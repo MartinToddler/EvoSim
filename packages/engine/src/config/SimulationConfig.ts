@@ -242,9 +242,87 @@ export interface GeneRangeConfig {
 }
 
 /** Body, energy, metabolism and health constants (docs/08 §§8–13, 15). */
+/**
+ * Morphological development bounds (M14, docs/11 §M14).
+ *
+ * Every length here is a Q-scaled MULTIPLE of the organism's adult radius,
+ * never a world unit: `Gene.AdultSize` owns scale and the morphological genome
+ * owns shape. Keeping them apart is what lets a lineage evolve a long thin body
+ * at any size, and it stops morphology from silently re-deciding a quantity the
+ * ecological genome already selects on.
+ *
+ * Hard minima and maxima on the two structural loci are what keep development
+ * bounded: there is no recursive grammar and no growth loop, so growing a body
+ * costs the same for every genome (CLAUDE.md, EvoSim 2.0 performance rule).
+ */
+export interface MorphologyConfig {
+  /** Structural: inclusive segment-count range. */
+  minSegments: number;
+  maxSegments: number;
+  /** Structural: inclusive appendage-pair range. */
+  minAppendagePairs: number;
+  maxAppendagePairs: number;
+
+  /** Body extent along the heading, Q multiple of the adult radius. */
+  bodyLengthMinQ: number;
+  bodyLengthMaxQ: number;
+  /** Body extent across the heading, Q multiple of the adult radius. */
+  bodyWidthMinQ: number;
+  bodyWidthMaxQ: number;
+  /** Per-segment size multiplier toward the rear. */
+  segmentFalloffMinQ: number;
+  segmentFalloffMaxQ: number;
+
+  /** Appendage length, Q multiple of the body half-width. */
+  appendageLengthMinQ: number;
+  appendageLengthMaxQ: number;
+  /** Appendage thickness, Q fraction of its length. */
+  appendageThicknessMinQ: number;
+  appendageThicknessMaxQ: number;
+  /** Rest angle away from the lateral axis, in heading steps. */
+  appendageAngleMinSteps: number;
+  appendageAngleMaxSteps: number;
+
+  /** Head share of the body length. */
+  headProportionMinQ: number;
+  headProportionMaxQ: number;
+  /** Feeding structure size, Q fraction of the head extent. */
+  mouthSizeMinQ: number;
+  mouthSizeMaxQ: number;
+  /** Sensory structure size, Q fraction of the head extent. */
+  sensorSizeMinQ: number;
+  sensorSizeMaxQ: number;
+
+  /** Posterior extension length, Q multiple of the body length. */
+  tailLengthMinQ: number;
+  tailLengthMaxQ: number;
+  /** Posterior extension base width, Q fraction of the body width. */
+  tailWidthMinQ: number;
+  tailWidthMaxQ: number;
+
+  /** Half-range of the primary pigment shift from the ecological hue, degrees. */
+  pigmentPrimaryShiftMaxDeg: number;
+  /** Half-range of the secondary pigment shift from the primary, degrees. */
+  pigmentSecondaryShiftMaxDeg: number;
+  /** Highest pattern repeat count; bounds the renderer's band loop. */
+  patternFrequencyMax: number;
+
+  /**
+   * Ceiling on the derived silhouette extents, Q multiple of the adult radius.
+   *
+   * A declared bound rather than a computed maximum: the renderer sizes its
+   * sprite frame from this constant, so widening any range above cannot
+   * silently push artwork outside the frame it is drawn into.
+   */
+  maxSilhouetteExtentQ: number;
+}
+
 export interface OrganismConfig {
   /** Gene → phenotype mapping ranges (docs/08 §7). */
   geneRanges: GeneRangeConfig;
+
+  /** Morphological development bounds (M14, docs/11 §M14). */
+  morphology: MorphologyConfig;
 
   /** mass = massScalePerRadiusSquared * radiusLU² (docs/04 §3). */
   massScalePerRadiusSquared: number;
@@ -441,6 +519,23 @@ export interface MutationConfig {
      * different; see ADR 0006 §3.
      */
     weightLargeSigmaQ: number;
+  };
+  /**
+   * Morphological gene mutation (M14). Sigmas are Q fractions of the
+   * NORMALIZED gene range, like the ecological block.
+   *
+   * `structuralProbabilityQ` replaces the small and large classes on the two
+   * integer-valued loci: a segment count has no meaningful "slightly bigger",
+   * so gaining or losing one is its own discrete ±1 event rather than an
+   * artefact of where a genome happens to sit inside a bucket.
+   */
+  morphology: {
+    perGeneMutationProbabilityQ: number;
+    smallSigmaQ: number;
+    largeMutationProbabilityQ: number;
+    largeSigmaQ: number;
+    resetProbabilityQ: number;
+    structuralProbabilityQ: number;
   };
 }
 

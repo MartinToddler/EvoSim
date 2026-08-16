@@ -133,3 +133,12 @@ export {
   type TerrainSnapshotView,
   type VegetationSnapshotView,
 } from "./terrainSnapshot";
+
+// M14 morphology channels in the render snapshot.
+export {
+  MorphChannel,
+  MORPH_CHANNEL_COUNT,
+  MORPH_CHANNEL_NAMES,
+  MORPH_MAGNITUDE_SCALE,
+  morphMagnitude,
+} from "./morphChannels";

@@ -106,6 +106,7 @@ const ORGANISM_FIELDS: Readonly<Record<string, FieldSpec>> = {
   kills: typed("u16"),
 
   genes: typed("u16"),
+  morphGenes: typed("u16"),
   brainWeights: typed("i16"),
 };
 

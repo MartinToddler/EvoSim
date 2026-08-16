@@ -24,9 +24,29 @@ import {
   composeTerrainRgba,
   organismTint,
   type WorldLayerId,
+  healthShade,
 } from "./palette";
 import { findOrganismIndex, pickOrganism, type PickResult } from "./selection/pickOrganism";
+import { MORPH_CHANNEL_COUNT, MorphChannel, morphMagnitude } from "@eon/protocol";
 import { SPRITE_FRAME, createRendererTextures, type RendererTextures } from "./textures";
+
+/**
+ * Presence multiplier for the particle layer (M14).
+ *
+ * At this LOD the shared teardrop is stretched to the developed body's
+ * proportions. Those proportions are literal — a founder is 1.63 radii long and
+ * 0.98 wide — and drawing them literally would make every organism noticeably
+ * smaller than the pre-M14 sprite, which spanned two radii on both axes. This
+ * constant restores that apparent size WITHOUT touching the ratio between the
+ * axes, so shape is still entirely the engine's and only overall presence is
+ * the renderer's.
+ */
+const MORPH_PARTICLE_GAIN = 1.3;
+import {
+  MORPH_TEXTURE_CACHE_LIMIT,
+  MorphologyTextureCache,
+  morphSpriteScale,
+} from "./morphology/drawMorphology";
 
 /**
  * PixiJS world renderer (tasks G05-G10, docs/06 §§1-6, docs/10 §§22, 24).
@@ -158,6 +178,7 @@ export class EonRenderer {
   readonly #organismPool: Particle[] = [];
   readonly #detailLayer = new Container();
   readonly #detailPool: Sprite[] = [];
+  readonly #morphTextures: MorphologyTextureCache;
   readonly #selectionLayer = new Graphics();
   readonly #debugLayer = new Graphics();
   /** Screen-space brush ring; drawn only while a tool is armed (Milestone 9). */
@@ -197,6 +218,12 @@ export class EonRenderer {
     this.#options = options;
     this.camera = new Camera(options.worldSizeLU);
     this.#textures = createRendererTextures(app.renderer);
+    // M14: bounded and sized above the detail budget, so the number of distinct
+    // bodies asked for in one frame can never exceed what the cache holds.
+    this.#morphTextures = new MorphologyTextureCache(
+      app.renderer,
+      Math.max(MORPH_TEXTURE_CACHE_LIMIT, options.maxDetailedOrganisms * 2),
+    );
 
     // --- Terrain ------------------------------------------------------------
     const cells = options.gridSize * options.gridSize;
@@ -615,6 +642,7 @@ export class EonRenderer {
     // from destroying them underneath us; doing it in the other order would
     // free textures that particles still point at.
     this.#app.destroy({ removeView: false }, { children: true, texture: false });
+    this.#morphTextures.destroy();
     this.#textures.destroy();
   }
 
@@ -690,10 +718,20 @@ export class EonRenderer {
         // stays roughly constant and fast animals read as streamlined rather
         // than simply bigger.
         const elongation = 1 + ((view.organismSpeed[i] as number) / 255) * (MAX_ELONGATION - 1);
-        particle.scaleX = ((radiusLU * 2) / SPRITE_FRAME) * elongation;
-        particle.scaleY = (radiusLU * 2) / SPRITE_FRAME / elongation;
+        // M14: at this LOD the shared body sprite is stretched to the DEVELOPED
+        // body's proportions and painted with its primary pigment. That is
+        // enough for a long thin lineage to look long and thin among thousands
+        // of particles in one draw call; the full procedural body is drawn only
+        // for the budgeted detail layer, which is what keeps the cost bounded.
+        const morphBase = i * MORPH_CHANNEL_COUNT;
+        const morph = view.organismMorph;
+        const bodyLength = morphMagnitude(morph[morphBase + MorphChannel.BodyLength] as number);
+        const bodyWidth = morphMagnitude(morph[morphBase + MorphChannel.BodyWidth] as number);
+        particle.scaleX =
+          ((radiusLU * bodyLength * MORPH_PARTICLE_GAIN) / SPRITE_FRAME) * elongation;
+        particle.scaleY = (radiusLU * bodyWidth * MORPH_PARTICLE_GAIN) / SPRITE_FRAME / elongation;
         particle.tint = organismTint(
-          view.organismHueDeg[i] as number,
+          (morph[morphBase + MorphChannel.PrimaryHueHalfDeg] as number) * 2,
           view.organismHealth[i] as number,
         );
       }
@@ -750,10 +788,14 @@ export class EonRenderer {
         sprite.rotation = view.organismRotation[i] as number;
         const radiusLU = view.organismRadiusLU[i] as number;
         const elongation = 1 + ((view.organismSpeed[i] as number) / 255) * (MAX_ELONGATION - 1);
-        sprite.scale.set(
-          ((radiusLU * 2) / SPRITE_FRAME) * elongation,
-          (radiusLU * 2) / SPRITE_FRAME / elongation,
-        );
+        // M14: the body this organism actually developed, generated on first
+        // sight and shared by every relative with the same proportions. The
+        // texture bakes both pigments, so the sprite tint carries only the
+        // health shading and the pattern stays readable on a wounded animal.
+        sprite.texture = this.#morphTextures.acquire(view.organismMorph, i * MORPH_CHANNEL_COUNT);
+        sprite.tint = healthShade(view.organismHealth[i] as number);
+        const scale = morphSpriteScale(radiusLU);
+        sprite.scale.set(scale * elongation, scale / elongation);
       };
 
       if (selectedIndex >= 0) {

@@ -15,6 +15,7 @@ import {
   writeVegetationField,
   type RenderSnapshotWriter,
   type StaticWorldFieldsWriter,
+  MORPH_CHANNEL_STRIDE,
 } from "./renderSnapshot";
 
 /**
@@ -78,6 +79,7 @@ function createWriter(organismCapacity: number, carcassCapacity: number): Render
     organismRotation: new Float32Array(organismCapacity),
     organismRadiusLU: new Float32Array(organismCapacity),
     organismSpeciesId: new Uint32Array(organismCapacity),
+    organismMorph: new Uint8Array(organismCapacity * MORPH_CHANNEL_STRIDE),
     organismHueDeg: new Uint16Array(organismCapacity),
     organismFlags: new Uint16Array(organismCapacity),
     organismHealth: new Uint8Array(organismCapacity),

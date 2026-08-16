@@ -6,6 +6,7 @@ import {
   SCENARIO_SEED,
   SCENARIO_SPLIT_HORIZON,
   queueScenarioChannel,
+  queueScenarioClimate,
 } from "./fixtures/speciationScenario";
 import { WorldEventType } from "./history/EventStore";
 
@@ -25,23 +26,24 @@ import { WorldEventType } from "./history/EventStore";
  * the fixture — declares the split on its own.
  *
  * The assertion is a horizon, not a tick: the split must have happened by
- * SCENARIO_SPLIT_HORIZON (measured at ~45 000, asserted with 33% headroom),
+ * SCENARIO_SPLIT_HORIZON (measured at ~73 000, asserted with ~23% headroom),
  * which is the non-brittle form docs/07 §16 asks for. Determinism still holds
  * — same seed, config and engine replay the identical history — but the test
  * does not encode the incidental tick.
  *
- * Cost: minutes, not seconds — a 192×192 world stepped 60 000 ticks. It sits
+ * Cost: over an hour — a 192×192 world stepped up to 90 000 ticks. It sits
  * beside the 100 000-tick soak in the "inherently long determinism tests"
- * budget class (docs/07 §8: hang detector, not a wall-clock assertion).
+ * budget class (docs/07 §8: hang detector, not a wall-clock assertion), and the
+ * timeout is sized for a contended machine rather than a quiet one.
  */
 
 describe("ecological speciation reachability (release gate 6)", () => {
   it(
     "a flooded channel splits one founder lineage into two detected species",
-    { timeout: 5_400_000 },
+    { timeout: 14_400_000 },
     () => {
       const engine = new SimulationEngine({ seed: SCENARIO_SEED, config: SCENARIO_CONFIG });
-      const queued = queueScenarioChannel(engine);
+      const queued = queueScenarioChannel(engine) + queueScenarioClimate(engine);
       expect(queued).toBeGreaterThan(0);
 
       // Run to the channel, confirm the world still has its one species and

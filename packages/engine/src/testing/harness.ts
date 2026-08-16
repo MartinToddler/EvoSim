@@ -15,6 +15,9 @@ import { EventStore } from "../history/EventStore";
 import { EventDetectors } from "../history/eventDetection";
 import { StatisticsStore } from "../history/StatisticsStore";
 import { POS_SCALE, Q, qmul } from "../math/fixed";
+import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
+import { MorphologyStore } from "../morphology/morphDevelopment";
+import { MORPH_GENE_COUNT, morphGeneFromQ } from "../morphology/morphGenes";
 import { GenomeStore } from "../organisms/GenomeStore";
 import { OrganismStore } from "../organisms/OrganismStore";
 import {
@@ -121,6 +124,7 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     organisms,
     genomes: new GenomeStore(config.limits.maxOrganisms),
     phenotypes: new PhenotypeStore(config.limits.maxOrganisms),
+    morphology: new MorphologyStore(config.limits.maxOrganisms),
     carcasses,
     species,
     events: new EventStore(config.limits.maxTimelineEventsInMemoryBeforeChunk),
@@ -180,6 +184,8 @@ export interface TestOrganismOptions {
   angle?: number;
   /** Normalized gene overrides, keyed by Gene index. */
   genesQ?: Partial<Record<number, number>>;
+  /** Normalized morphological gene overrides, keyed by MorphGene index. */
+  morphGenesQ?: Partial<Record<number, number>>;
   /** Brain weight overrides, keyed by packed weight index. */
   weights?: Partial<Record<number, number>>;
   /** Use an all-zero brain instead of the founder controller. */
@@ -237,11 +243,20 @@ export function spawnTestOrganism(world: TestWorld, options: TestOrganismOptions
     weights[Number(index)] = value as number;
   }
 
+  const morphGenes = createFounderMorphGenes(config.organism.morphology);
+  for (const [index, valueQ] of Object.entries(options.morphGenesQ ?? {})) {
+    const gene = Number(index);
+    if (gene >= 0 && gene < MORPH_GENE_COUNT) {
+      morphGenes[gene] = morphGeneFromQ(valueQ as number);
+    }
+  }
+
   const request: SpawnRequest = {
     xPos: options.xPos,
     yPos: options.yPos,
     angle: options.angle ?? 0,
     genes,
+    morphGenes,
     brainWeights: weights,
     generation: 0,
     parentEntityId: 0,

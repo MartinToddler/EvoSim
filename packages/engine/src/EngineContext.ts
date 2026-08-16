@@ -7,6 +7,7 @@ import type { EventStore } from "./history/EventStore";
 import type { EventDetectors } from "./history/eventDetection";
 import type { StatisticsStore } from "./history/StatisticsStore";
 import type { GenomeStore } from "./organisms/GenomeStore";
+import type { MorphologyStore } from "./morphology/morphDevelopment";
 import type { OrganismStore } from "./organisms/OrganismStore";
 import type { PhenotypeStore } from "./organisms/phenotype";
 import type { Xoshiro128 } from "./random/Xoshiro128";
@@ -34,6 +35,8 @@ export interface EngineContext {
   readonly organisms: OrganismStore;
   readonly genomes: GenomeStore;
   readonly phenotypes: PhenotypeStore;
+  /** Derived morphological phenotype cache (M14). Not hashed, not serialized. */
+  readonly morphology: MorphologyStore;
   /** Authoritative carrion (docs/03 §23). */
   readonly carcasses: CarcassStore;
   /** Authoritative species registry and split-candidate state (docs/05 §5). */

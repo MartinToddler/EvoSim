@@ -695,15 +695,39 @@ engine provides mechanisms, costs and information, never roles, strategies or ca
 - [x] P0-04 `docs/EVOSIM_2_PROGRESS.md` — per-stage evidence record opened with the baseline
       and branch-reconciliation findings.
 
-### M14 Morphological genome
-- [ ] M14-01 bounded morphology genotype (body, appendages, anterior, posterior, defensive
-      appearance, pigment).
-- [ ] M14-02 deterministic developmental interpreter -> MorphologyPhenotype.
-- [ ] M14-03 procedural geometry parameters derived from the phenotype.
-- [ ] M14-04 inheritance + bounded continuous/structural mutation.
-- [ ] M14-05 snapshot/persistence/rewind/branch coverage.
-- [ ] M14-06 renderer draws the production morphology path; morphology gallery debug view.
-- [ ] M14-07 determinism, bounds, mutation, inheritance and performance tests.
+### M14 Morphological genome (ADR 0028)
+- [x] M14-01 bounded 27-gene morphology genotype: body length/width/tapers, segment count and
+      proportion, appendage pairs/placement/length/thickness/angle/front bias, head proportion,
+      mouth and sensory size and placement, tail length/width/taper, armor coverage, plate
+      expression and distribution, pigment shifts, contrast, pattern frequency and orientation.
+      Aspect ratio is DERIVED, not a locus; scale stays with `Gene.AdultSize`.
+- [x] M14-02 deterministic developmental interpreter -> MorphologyStore. Reads genome + config
+      only; a derived cache, never hashed, never serialized, recomputed on restore.
+- [x] M14-03 procedural geometry from the phenotype, with a fit-to-frame guard that shrinks
+      rather than clips (inert for every body DEFAULT_CONFIG can grow; a test pins that).
+- [x] M14-04 inheritance plus small/large/reset continuous mutation and a dedicated bounded
+      structural class that steps a derived count by exactly +/-1 and lands mid-bucket.
+- [x] M14-05 snapshot capture/restore, hash membership, rewind and branch coverage.
+- [x] M14-06 renderer draws morphology at both LODs (proportioned particles; procedural bodies
+      from a bounded LRU on the budgeted detail layer); `?view=morphology` gallery on the exact
+      production develop -> encode -> paint path.
+- [x] M14-07 27 morphology tests plus 9 geometry tests: gene bounds, exact quantization
+      round-trip, structural bucket stability, development purity and bounds over 400 random
+      genomes, pigment wrap, mutation class partition, 5 000-generation range safety, block
+      isolation, 60 000-generation reachability of both ends and every appendage-pair count,
+      founder identity, zero-mutation clone over 4 000 ticks, ordinary-mutation divergence over
+      6 000 ticks, hash membership, snapshot equality, channel mirror and projection purity.
+
+M14 gate: **PASS** (engine 0.8.0 -> 0.9.0, protocol 9 -> 10, snapshot 8 -> 9, config 7 -> 8,
+render layout 1 -> 2; ADR 0028). Every golden hash regenerated for one intentional change: the
+morphological genome joined the canonical stream and mutation gained 27 draws per birth.
+Morphology has no physical consequence yet (that is M15), so the ecological rules did not move
+— and a twelve-seed sweep of DEFAULT_CONFIG proves the regime did not either: 12/12 survive,
+median population 2 414 (0.8.0: 2 699), 0 seeds at the cap, 12/12 scavenging, median trait sd
+0.0343 (0.8.0: 0.0347), kills 0. One instrument defect found and fixed: the populated soak
+fixture oscillates between peaks of ~2 400 and troughs of ~50, so its survival to 100 000 ticks
+was a coin flip that 0.9.0's stream lost; the fixture world is enlarged until its troughs are
+not near-extinction (ADR 0028 §5). No DEFAULT_CONFIG value changed and no assertion weakened.
 
 ### M15 Functional morphology
 - [ ] M15-01 centralized MorphologyPhenotype -> PhysicalPhenotype derivation.

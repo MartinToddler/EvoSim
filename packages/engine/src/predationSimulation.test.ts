@@ -5,6 +5,7 @@ import { cloneConfig } from "./config/cloneConfig";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import type { SimulationConfig } from "./config/SimulationConfig";
 import { GENE_COUNT, Gene, geneFromQ } from "./genetics/genes";
+import { createFounderMorphGenes } from "./morphology/founderMorphGenome";
 import { createFounderGenes } from "./genetics/founderGenome";
 import { TRAIT_DIMENSIONS } from "./evolution/traitVector";
 import { engineInternals } from "./internal";
@@ -133,6 +134,7 @@ function place(engine: SimulationEngine, options: PlacedOrganism): number {
     yPos: options.yPos,
     angle: options.angle ?? 0,
     genes,
+    morphGenes: createFounderMorphGenes(ctx.config.organism.morphology),
     brainWeights: options.brainWeights ?? PREY_BRAIN,
     generation: 0,
     parentEntityId: 0,

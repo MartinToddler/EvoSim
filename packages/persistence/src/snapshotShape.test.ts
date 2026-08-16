@@ -120,6 +120,7 @@ describe("durable shape covers everything the engine serializes", () => {
       "organisms.freeSlots",
       "organisms.nextEntityId",
       "organisms.genes",
+      "organisms.morphGenes",
       "organisms.brainWeights",
       "organisms.energy",
       "organisms.attackCooldown",

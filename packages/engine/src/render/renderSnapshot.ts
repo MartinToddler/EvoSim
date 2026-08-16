@@ -3,6 +3,7 @@ import { Q, POS_SCALE, ANGLE_STEPS, clamp } from "../math/fixed";
 import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
 import { VELOCITY_SCALE } from "../organisms/movement";
 import type { SimulationEngine } from "../SimulationEngine";
+import type { MorphologyStore } from "../morphology/morphDevelopment";
 
 /**
  * Render snapshot production — phase 18 of the tick order (task G04,
@@ -41,6 +42,55 @@ import type { SimulationEngine } from "../SimulationEngine";
  * read in the direction that keeps the engine out of the paint box).
  */
 
+/**
+ * Morphology channel indices, mirroring `MorphChannel` in `@eon/protocol`
+ * (M14). Duplicated for the same reason `RenderFlagBit` is: the engine does not
+ * depend on the protocol package, and the two are pinned to each other by a
+ * test rather than by an import.
+ */
+export const MorphChannelIndex = {
+  BodyLength: 0,
+  BodyWidth: 1,
+  FrontTaper: 2,
+  RearTaper: 3,
+  SegmentCount: 4,
+  SegmentProportion: 5,
+  AppendagePairs: 6,
+  AppendagePlacement: 7,
+  AppendageLength: 8,
+  AppendageThickness: 9,
+  AppendageAngle: 10,
+  AppendageFrontBias: 11,
+  HeadProportion: 12,
+  MouthSize: 13,
+  SensorSize: 14,
+  SensorPlacement: 15,
+  TailLength: 16,
+  TailWidth: 17,
+  TailTaper: 18,
+  ArmorCoverage: 19,
+  PlateExpression: 20,
+  ArmorDistribution: 21,
+  PrimaryHueHalfDeg: 22,
+  SecondaryHueHalfDeg: 23,
+  PigmentContrast: 24,
+  PatternFrequency: 25,
+  PatternOrientation: 26,
+} as const;
+
+/** Bytes per organism in the morphology section. */
+export const MORPH_CHANNEL_STRIDE = 27;
+
+/**
+ * Wire scale for the morphology channels that can exceed 1.0, mirroring
+ * `MORPH_MAGNITUDE_SCALE` in `@eon/protocol`: a byte of 255 means 10.0.
+ *
+ * Fixed rather than taken from the config, so the renderer can decode a
+ * snapshot without being told the simulation config. `validateConfig` keeps
+ * `maxSilhouetteExtentQ` at or below `MORPH_MAGNITUDE_SCALE * Q`.
+ */
+export const MORPH_MAGNITUDE_SCALE = 10;
+
 /** Bit flags mirroring `RenderFlag` in `@eon/protocol`. */
 export const RenderFlagBit = {
   Juvenile: 1 << 0,
@@ -69,6 +119,13 @@ export interface RenderSnapshotWriter {
   readonly organismEnergy: Uint8Array;
   readonly organismDiet: Int8Array;
   readonly organismSpeed: Uint8Array;
+  /**
+   * `MORPH_CHANNEL_STRIDE` bytes per organism, at `index * stride` (M14).
+   *
+   * The developed body, not the genome: the renderer must never re-run
+   * development, or the picture stops being a projection of the simulation.
+   */
+  readonly organismMorph: Uint8Array;
 
   readonly carcassId: Uint32Array;
   readonly carcassX: Float32Array;
@@ -92,6 +149,18 @@ function byteFromQ(value: number): number {
 }
 
 /**
+ * Scale a Q multiple of the adult radius onto a byte.
+ *
+ * Morphological extents exceed Q routinely (a body 2.4× its radius long is
+ * 9830), so `byteFromQ` would saturate them all at 255 and every long body
+ * would draw identically. The divisor is the fixed wire scale, so one byte is
+ * `MORPH_MAGNITUDE_SCALE / 255` of a radius on every build.
+ */
+function byteFromExtentQ(value: number): number {
+  return clamp(Math.round((value * 255) / (MORPH_MAGNITUDE_SCALE * Q)), 0, 255);
+}
+
+/**
  * Project the current authoritative state into `writer`.
  *
  * Returns how many organisms and carcasses were written. Both are capped by the
@@ -105,7 +174,7 @@ export function writeRenderSnapshot(
   writer: RenderSnapshotWriter,
 ): RenderSnapshotCounts {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, carcasses, config } = context;
+  const { organisms, phenotypes, morphology, carcasses, config } = context;
 
   const organismLimit = writer.organismId.length;
   const referenceMaxSpeedVel = config.organism.geneRanges.maxSpeedMaxVel;
@@ -167,6 +236,12 @@ export function writeRenderSnapshot(
       flags |= RenderFlagBit.CarnivoreLeaning;
     }
     writer.organismFlags[out] = flags;
+
+    // M14: the developed body, quantized to one byte per channel. Morphology
+    // never changes during a life, so this block is identical every frame —
+    // which is exactly why it is cheap to make small and safe for the renderer
+    // to use as a sprite-cache key.
+    writeMorphChannels(morphology, slot, writer.organismMorph, out * MORPH_CHANNEL_STRIDE);
   }
 
   const carcassLimit = writer.carcassId.length;
@@ -193,6 +268,86 @@ export function writeRenderSnapshot(
   }
 
   return { organismCount, carcassCount };
+}
+
+/**
+ * Encode one developed body into a channel block.
+ *
+ * Split out of the snapshot loop so the morphology gallery can produce exactly
+ * the bytes the production renderer consumes, instead of a parallel encoding
+ * that could drift from it.
+ */
+export function writeMorphChannels(
+  morphology: MorphologyStore,
+  slot: number,
+  morph: Uint8Array,
+  base: number,
+): void {
+  morph[base + MorphChannelIndex.BodyLength] = byteFromExtentQ(
+    morphology.bodyLengthQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.BodyWidth] = byteFromExtentQ(
+    morphology.bodyWidthQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.FrontTaper] = byteFromQ(morphology.frontTaperQ[slot] as number);
+  morph[base + MorphChannelIndex.RearTaper] = byteFromQ(morphology.rearTaperQ[slot] as number);
+  morph[base + MorphChannelIndex.SegmentCount] = morphology.segmentCount[slot] as number;
+  morph[base + MorphChannelIndex.SegmentProportion] = byteFromQ(
+    morphology.segmentFalloffQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.AppendagePairs] = morphology.appendagePairs[slot] as number;
+  morph[base + MorphChannelIndex.AppendagePlacement] = byteFromQ(
+    morphology.appendagePlacementQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.AppendageLength] = byteFromExtentQ(
+    morphology.appendageLengthQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.AppendageThickness] = byteFromQ(
+    morphology.appendageThicknessQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.AppendageAngle] = clamp(
+    Math.round(((morphology.appendageAngleSteps[slot] as number) * 255) / (ANGLE_STEPS >> 2)),
+    0,
+    255,
+  );
+  morph[base + MorphChannelIndex.AppendageFrontBias] = byteFromQ(
+    morphology.appendageFrontBiasQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.HeadProportion] = byteFromQ(
+    morphology.headProportionQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.MouthSize] = byteFromQ(morphology.mouthSizeQ[slot] as number);
+  morph[base + MorphChannelIndex.SensorSize] = byteFromQ(morphology.sensorSizeQ[slot] as number);
+  morph[base + MorphChannelIndex.SensorPlacement] = byteFromQ(
+    morphology.sensorPlacementQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.TailLength] = byteFromExtentQ(
+    morphology.tailLengthQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.TailWidth] = byteFromQ(morphology.tailWidthQ[slot] as number);
+  morph[base + MorphChannelIndex.TailTaper] = byteFromQ(morphology.tailTaperQ[slot] as number);
+  morph[base + MorphChannelIndex.ArmorCoverage] = byteFromQ(
+    morphology.armorCoverageQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.PlateExpression] = byteFromQ(
+    morphology.plateExpressionQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.ArmorDistribution] = byteFromQ(
+    morphology.armorDistributionQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.PrimaryHueHalfDeg] =
+    (morphology.primaryHueDeg[slot] as number) >> 1;
+  morph[base + MorphChannelIndex.SecondaryHueHalfDeg] =
+    (morphology.secondaryHueDeg[slot] as number) >> 1;
+  morph[base + MorphChannelIndex.PigmentContrast] = byteFromQ(
+    morphology.pigmentContrastQ[slot] as number,
+  );
+  morph[base + MorphChannelIndex.PatternFrequency] = morphology.patternFrequency[slot] as number;
+  morph[base + MorphChannelIndex.PatternOrientation] = clamp(
+    Math.round(((morphology.patternOrientationSteps[slot] as number) * 255) / (ANGLE_STEPS >> 1)),
+    0,
+    255,
+  );
 }
 
 /**

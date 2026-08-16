@@ -1,8 +1,8 @@
 /**
  * Which screen the page shows.
  *
- * The app has two: the simulation, and the world generator that Milestone 2.5
- * built and Milestone 11 recovered. ADR 0004 (the generator's own) said what
+ * The app has three: the simulation, the world generator that Milestone 2.5
+ * built and Milestone 11 recovered, and the M14 morphology gallery. ADR 0004 (the generator's own) said what
  * should happen once the real screens existed — "it becomes a route or the
  * docs/06 §18 debug overlay behind a dev toggle" — and this is that route.
  *
@@ -12,7 +12,7 @@
  * description of exactly what to look at.
  */
 
-export type AppView = "simulation" | "generator";
+export type AppView = "simulation" | "generator" | "morphology";
 
 /** Query key selecting the screen. */
 export const VIEW_PARAM = "view";
@@ -25,7 +25,10 @@ export const VIEW_PARAM = "view";
  */
 export function readViewFromLocation(search: string): AppView {
   const value = new URLSearchParams(search).get(VIEW_PARAM);
-  return value === "generator" ? "generator" : "simulation";
+  if (value === "generator" || value === "morphology") {
+    return value;
+  }
+  return "simulation";
 }
 
 /** Link to the other screen, preserving every other parameter (the seed above all). */

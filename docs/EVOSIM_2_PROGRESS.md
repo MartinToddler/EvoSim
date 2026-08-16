@@ -37,13 +37,14 @@ commits past. No unmerged valid work exists off-trunk; nothing was discarded.
 | -------------------- | --------------------------------------------------------------------------- |
 | Status               | complete                                                                    |
 | Branch               | `claude/evosim-2-0-implementation-7sjovi`                                    |
-| Commit SHA           | _recorded below on commit_                                                  |
+| Commit SHA           | `216635e261326afea2b6d28514dcde9a1849e2f4`                                  |
 | Engine version       | 0.8.0 (unchanged)                                                           |
 | Config schema        | 7 (unchanged)                                                               |
 | Snapshot schema      | 8 (unchanged)                                                               |
 | Protocol version     | 9 (unchanged)                                                               |
-| `pnpm verify`        | _recorded below_                                                            |
-| Deployment           | _recorded below_                                                            |
+| `pnpm verify`        | PASS — 106 files / 1331 tests in 3813 s, build OK                           |
+| Deployment           | success (run 31948395998), verified live                                    |
+| Deployment URL       | https://martintoddler.github.io/EvoSim/                                     |
 
 **Scope.** Documentation only — no engine, protocol, renderer, persistence or UI code changed,
 so every golden hash is unchanged by construction.
@@ -71,6 +72,101 @@ so every golden hash is unchanged by construction.
 
 **Deferred:** none.
 
+**Deployment verification.** The served bundle embeds `VITE_APP_VERSION`, so the live site was
+confirmed to be this exact commit by fetching `assets/index-*.js` and matching
+`216635e261326afea2b6d28514dcde9a1849e2f4` in it — not by trusting a green workflow.
+
 ---
 
-_Stages M14 through the final audit are appended below as they complete._
+### M14 — Morphological genome
+
+| Field            | Value                                                             |
+| ---------------- | ----------------------------------------------------------------- |
+| Status           | complete                                                          |
+| Branch           | `claude/evosim-2-0-implementation-7sjovi`                          |
+| Commit SHA       | _recorded on commit_                                              |
+| Engine version   | 0.8.0 → **0.9.0**                                                 |
+| Config schema    | 7 → **8**                                                         |
+| Snapshot schema  | 8 → **9**                                                         |
+| Protocol version | 9 → **10** (render snapshot layout 1 → 2)                          |
+| ADR              | 0028                                                              |
+
+**Delivered.** A 27-gene morphological genome inherited and mutated like the ecological one;
+a bounded deterministic developmental interpreter producing a derived, never-hashed
+`MorphologyStore`; a dedicated structural mutation class for the two integer loci; 27 bytes of
+developed body per organism on the render wire against a fixed quantization scale; procedural
+bodies at two LODs (proportioned particles for thousands, cached procedural textures for the
+budgeted detail layer); and a `?view=morphology` gallery built on the exact production
+develop → encode → paint path.
+
+**Important tests.** 27 morphology tests and 9 geometry tests. Gene-space: exact quantization
+round-trip over the whole Q range, structural bucket stability under a 1 % nudge, no gene named
+for an animal or a role. Development: purity, and every field inside its configured bounds over
+400 random genomes. Mutation: class-partition boundaries, ±1 structural steps reflecting at the
+bounds, determinism, 5 000-generation range safety, block isolation, and 60 000-generation
+reachability of both ends of the range and every appendage-pair count. Integration: founder
+identity, zero-mutation clone over 4 000 ticks, ordinary-mutation divergence over 6 000 ticks,
+hash membership, snapshot round-trip equality including the rebuilt derived cache, engine ↔
+protocol channel mirror, and projection purity. Geometry: determinism, closed outline, frame
+containment for every possible channel block, and `fitScale === 1` for every body the shipped
+config can grow.
+
+**Evolutionary observations.** Twelve-seed sweep of `DEFAULT_CONFIG` at 10 000 ticks on engine
+0.9.0: **12/12 survive**, median population 2 414 (0.8.0: 2 699), median peak 2 986, **0 seeds
+at the population cap**, **12/12 eating meat** (median ~1.7 M units), median per-gene trait sd
+0.0343 (0.8.0: 0.0347), kills 0. The regime is unchanged, which is the expected result —
+morphology has no physical consequence until M15, so what M14 changed ecologically is the
+random stream, not the rules.
+
+**Performance.** Per organism: 54 bytes of authoritative morphological genome, a derived cache
+of 30 arrays, and 27 bytes in each pooled render-snapshot buffer. Development is a fixed
+sequence of bounded mappings — no loop's trip count depends on the genome — so growing a body
+costs the same for every body. The detail-layer texture cache is a bounded LRU sized above the
+detail budget. The populated soak run went from 407 s to 557 s, entirely because the fixture
+world grew (below).
+
+**Defects found by this milestone's own gate, and fixed.**
+
+1. **The geometry could leave its sprite frame** (found by the frame-containment test). A body
+   is now shrunk uniformly to fit rather than clipped, because clipping silently amputates a
+   tail and reads as a short lineage. A second test pins the guard inert for every body the
+   shipped config can grow.
+2. **The populated soak fixture was a coin flip, not an instrument.** Its 96-cell world
+   oscillates between peaks near 2 400 and troughs near 50, so surviving 100 000 ticks depended
+   on the stream; 0.9.0's lost the toss and the world went extinct at ~tick 70 000. Diagnosed
+   rather than assumed: the same fixture survives on other seeds (troughs 64 and 44), and the
+   twelve-seed sweep above shows the shipped ecology unchanged. The fixture map is now 144
+   cells with 96 founders, measured to survive on the fixture seed and three alternates. No
+   `DEFAULT_CONFIG` value changed and no assertion was weakened.
+3. **`scripts/regenerateSoakHashes.ts` restated the soak config instead of importing it**, so
+   it regenerated a hash for a world nobody runs — it reproduced the old 96-cell number even
+   after the fixture grew. It now imports `SOAK_CONFIG`.
+4. **MVP release gate 6 was a lottery ticket** (ADR 0028 §6). `ecologicalSpeciation.test.ts`
+   failed: no split by tick 60 000, and none by 88 000 on a probe. The cause is in the config,
+   not the trace — the temperature cline is symmetric about the equator, so once the channel
+   isolated the two demes they sat in mirror-image environments and only **drift** separated
+   their centroids. Drift crossed the threshold at ~45 000 on 0.8.0's stream and not at all on
+   0.9.0's. ADR 0027 §3b forbids exactly this shape of test. The scenario is now
+   selection-driven: ordinary `PaintTemperature` commands put the hemispheres 24 °C apart the
+   moment the channel opens, so `Gene.ThermalOptimum` is pushed in opposite directions by
+   realized survival. Measured: split by tick 73 000 with the population healthy throughout
+   (300 – 2 300). Horizon 60 000 → 90 000. A 64 °C differential was measured and rejected — it
+   splits at 78 000 but collapses the population to tens first, trading one lottery for
+   another.
+5. **The persistence layer never learned about the new gene block.** `snapshotShape.ts` drives
+   the binary codec from a field descriptor, and `organisms.morphGenes` was missing from it, so
+   a save would have silently dropped every body. Caught by the shape and round-trip tests.
+
+**Deferred (P2).** One of the four measured seeds bottoms out at 6 live organisms on the
+enlarged soak map, so this is more headroom rather than proof against a future stream shift. If
+a later milestone's stream kills it again, the fix is a larger map, not a weaker assertion.
+
+**Deferred (P2).** The speciation gate now costs over an hour of suite time (192² world, up to
+90 000 ticks). Every cheaper option measured tilts the experiment — a raised mutation rate, a
+lowered split threshold, or a smaller and noisier world — so the cost is accepted rather than
+optimised away. The split tick was measured on the fixture seed only; a multi-seed
+reachability sweep belongs in the final audit (F-02), not in the per-commit gate.
+
+---
+
+_Stages M15 through the final audit are appended below as they complete._

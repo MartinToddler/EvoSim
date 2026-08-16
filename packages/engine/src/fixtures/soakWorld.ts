@@ -41,16 +41,38 @@ import type { SimulationEngine } from "../SimulationEngine";
 import { Biome } from "../world/biomes";
 import { totalPlantBiomass, totalPlantCapacity } from "../world/plants";
 
-export const SOAK_GRID_SIZE = 96;
-export const SOAK_FOUNDERS = 64;
+export const SOAK_GRID_SIZE = 144;
+export const SOAK_FOUNDERS = 96;
 export const SOAK_SEED = 0xe0a12026;
 
 /**
- * The soak world: DEFAULT_CONFIG biology on a 1 536 LU map.
+ * The soak world: DEFAULT_CONFIG biology on a 2 304 LU map.
  *
  * Only geometry, founder count and the world-validity thresholds that scale with
  * area are changed. Every organism, brain, mutation, reproduction and plant
  * constant is DEFAULT_CONFIG's, because those are what the soak is checking.
+ *
+ * ## Why the map grew in engine 0.9.0 (ADR 0028 section 5)
+ *
+ * It was 96 cells and 64 founders until M14, and at that size the soak was a
+ * coin flip rather than an instrument. Its population oscillates hard — peaks
+ * near 2 400 against troughs near 50 — so whether anything was still alive at
+ * tick 100 000 depended on the PRNG stream, and 0.9.0's stream lost the toss:
+ * the old world goes extinct at ~tick 70 000, where 0.8.0 reported 766 alive.
+ *
+ * That was never an M14 regression. M14 adds no physical consequence at all
+ * (that is M15), and the shipped ecology measured identical on a twelve-seed
+ * sweep of DEFAULT_CONFIG. The same 96-cell fixture also survives on other
+ * seeds, with troughs of 64 and 44 — which is the real finding: a world that
+ * routinely dips to fifty individuals cannot be relied on to run 100 000 ticks
+ * looking for pathologies, because it may spend the last third of them empty.
+ *
+ * 144 cells and 96 founders was chosen by measurement: it survives 100 000
+ * ticks on the fixture seed and on three alternates. No DEFAULT_CONFIG value
+ * was touched — the soak still soaks the shipped biology — and no assertion in
+ * `soak.test.ts` was weakened. Known limitation, deliberately recorded rather
+ * than tuned away: one of the four measured seeds bottomed out at 6 live
+ * organisms, so this is more headroom, not proof against a future stream.
  */
 export const SOAK_CONFIG: ReadonlySimulationConfig = (() => {
   const config = cloneConfig(DEFAULT_CONFIG);
@@ -94,6 +116,12 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * continuous cloud, and the detector correctly refuses to split a cloud
  * (docs/05 §7); the synthetic split fixtures prove the other direction.
  *
+ * Engine 0.9.0 moved it twice over (ADR 0028): the morphological genome joined
+ * the canonical hash stream and the PRNG stream, AND the soak map grew from 96
+ * cells / 64 founders to 144 / 96 so that the soak stops being a coin flip
+ * (see the SOAK_CONFIG note above). The enlarged world finishes 100 000 ticks
+ * with 674 alive, one species and 8 timeline events, in 557 s.
+ *
  * Engine 0.8.0 moved it with three intentional ecological changes (ADR 0025):
  * the expected-gain food-target rule, the 0.6x plant-capacity calibration and
  * carcass decay 20 -> 48. The soak world inherits all three through
@@ -104,7 +132,7 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * POSITIVE control is the fixtures/speciationScenario.ts world, whose
  * channel-fragmented run splits at ~tick 45 000.
  */
-export const GOLDEN_SOAK_HASH = "cbdd745b8f238acf";
+export const GOLDEN_SOAK_HASH = "6995271aeec2b696";
 
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {

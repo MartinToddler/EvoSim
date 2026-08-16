@@ -1,5 +1,11 @@
 import type { DeepReadonly } from "@eon/shared";
 import { ANGLE_STEPS, POS_SCALE, Q, qmul } from "../math/fixed";
+import {
+  MAX_MORPH_APPENDAGE_PAIRS,
+  MAX_MORPH_PATTERN_FREQUENCY,
+  MAX_MORPH_SEGMENTS,
+} from "../morphology/morphGenes";
+import { MORPH_MAGNITUDE_SCALE } from "../render/renderSnapshot";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
 import { DEFAULT_CONFIG } from "./defaultConfig";
@@ -177,6 +183,7 @@ export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
   validatePlants(config);
   validateOrganism(config);
   validateGeneRanges(config);
+  validateMorphology(config);
   validateSenses(config);
   validateBrain(config);
   validateMutation(config);
@@ -806,7 +813,7 @@ function validateBrain(config: DeepReadonly<SimulationConfig>): void {
 }
 
 function validateMutation(config: DeepReadonly<SimulationConfig>): void {
-  const { ecological, brain } = config.mutation;
+  const { ecological, brain, morphology } = config.mutation;
 
   checkQFraction(
     ecological.perGeneMutationProbabilityQ,
@@ -866,6 +873,147 @@ function validateMutation(config: DeepReadonly<SimulationConfig>): void {
     `mutation.brain.weightLargeSigmaQ must not exceed the weight clamp span ${weightSpan}, ` +
       `got ${brain.weightLargeSigmaQ}`,
   );
+
+  // Morphology (M14). Same disjoint-interval structure as the ecological block,
+  // with one extra class. Continuous loci consume reset + large + perGene;
+  // structural loci consume reset + structural. BOTH partitions have to fit
+  // inside the one uniform draw, so both sums are checked.
+  checkQFraction(
+    morphology.perGeneMutationProbabilityQ,
+    "mutation.morphology.perGeneMutationProbabilityQ",
+  );
+  checkQFraction(
+    morphology.largeMutationProbabilityQ,
+    "mutation.morphology.largeMutationProbabilityQ",
+  );
+  checkQFraction(morphology.resetProbabilityQ, "mutation.morphology.resetProbabilityQ");
+  checkQFraction(morphology.structuralProbabilityQ, "mutation.morphology.structuralProbabilityQ");
+  check(
+    morphology.resetProbabilityQ +
+      morphology.largeMutationProbabilityQ +
+      morphology.perGeneMutationProbabilityQ <=
+      Q,
+    "mutation.morphology: reset + large + perGene probabilities must not exceed Q",
+  );
+  check(
+    morphology.resetProbabilityQ + morphology.structuralProbabilityQ <= Q,
+    "mutation.morphology: reset + structural probabilities must not exceed Q",
+  );
+  checkQFraction(morphology.smallSigmaQ, "mutation.morphology.smallSigmaQ");
+  checkQFraction(morphology.largeSigmaQ, "mutation.morphology.largeSigmaQ");
+  check(
+    morphology.largeSigmaQ >= morphology.smallSigmaQ,
+    "mutation.morphology: largeSigmaQ must not be smaller than smallSigmaQ",
+  );
+}
+
+/**
+ * Morphological development bounds (M14).
+ *
+ * Two things matter here and nothing else does. The structural ranges must be
+ * non-empty and small, because they size the renderer's per-body loops and a
+ * config with 400 segments would be a performance bug expressed as data. And
+ * every min/max pair must be ordered, because `lerpQ(min, max, t)` on a
+ * reversed pair silently produces a body that shrinks as its gene grows.
+ */
+function validateMorphology(config: DeepReadonly<SimulationConfig>): void {
+  const m = config.organism.morphology;
+
+  checkPositiveInt(m.minSegments, "organism.morphology.minSegments");
+  checkPositiveInt(m.maxSegments, "organism.morphology.maxSegments");
+  check(
+    m.minSegments <= m.maxSegments,
+    "organism.morphology: minSegments must not exceed maxSegments",
+  );
+  check(
+    m.maxSegments <= MAX_MORPH_SEGMENTS,
+    `organism.morphology.maxSegments must not exceed ${MAX_MORPH_SEGMENTS}; development and the ` +
+      "renderer both loop over segments once per body",
+  );
+  checkNonNegativeInt(m.minAppendagePairs, "organism.morphology.minAppendagePairs");
+  checkNonNegativeInt(m.maxAppendagePairs, "organism.morphology.maxAppendagePairs");
+  check(
+    m.minAppendagePairs <= m.maxAppendagePairs,
+    "organism.morphology: minAppendagePairs must not exceed maxAppendagePairs",
+  );
+  check(
+    m.maxAppendagePairs <= MAX_MORPH_APPENDAGE_PAIRS,
+    `organism.morphology.maxAppendagePairs must not exceed ${MAX_MORPH_APPENDAGE_PAIRS}`,
+  );
+
+  const ordered: readonly [number, number, string][] = [
+    [m.bodyLengthMinQ, m.bodyLengthMaxQ, "bodyLength"],
+    [m.bodyWidthMinQ, m.bodyWidthMaxQ, "bodyWidth"],
+    [m.segmentFalloffMinQ, m.segmentFalloffMaxQ, "segmentFalloff"],
+    [m.appendageLengthMinQ, m.appendageLengthMaxQ, "appendageLength"],
+    [m.appendageThicknessMinQ, m.appendageThicknessMaxQ, "appendageThickness"],
+    [m.appendageAngleMinSteps, m.appendageAngleMaxSteps, "appendageAngle"],
+    [m.headProportionMinQ, m.headProportionMaxQ, "headProportion"],
+    [m.mouthSizeMinQ, m.mouthSizeMaxQ, "mouthSize"],
+    [m.sensorSizeMinQ, m.sensorSizeMaxQ, "sensorSize"],
+    [m.tailLengthMinQ, m.tailLengthMaxQ, "tailLength"],
+    [m.tailWidthMinQ, m.tailWidthMaxQ, "tailWidth"],
+  ];
+  for (const [min, max, name] of ordered) {
+    checkNonNegativeInt(min, `organism.morphology.${name}MinQ`);
+    checkNonNegativeInt(max, `organism.morphology.${name}MaxQ`);
+    check(min <= max, `organism.morphology: ${name} minimum must not exceed its maximum`);
+  }
+
+  check(
+    m.bodyWidthMinQ > 0,
+    "organism.morphology.bodyWidthMinQ must be positive; a zero-width body has no silhouette",
+  );
+  check(
+    m.bodyLengthMinQ > 0,
+    "organism.morphology.bodyLengthMinQ must be positive; a zero-length body has no heading",
+  );
+  check(
+    m.appendageAngleMaxSteps < ANGLE_STEPS >> 2,
+    `organism.morphology.appendageAngleMaxSteps must stay under a quarter turn ` +
+      `(${ANGLE_STEPS >> 2}); beyond that an appendage points backwards through the body`,
+  );
+  checkHalfDegreeRange(
+    m.pigmentPrimaryShiftMaxDeg,
+    "organism.morphology.pigmentPrimaryShiftMaxDeg",
+  );
+  checkHalfDegreeRange(
+    m.pigmentSecondaryShiftMaxDeg,
+    "organism.morphology.pigmentSecondaryShiftMaxDeg",
+  );
+  checkNonNegativeInt(m.patternFrequencyMax, "organism.morphology.patternFrequencyMax");
+  check(
+    m.patternFrequencyMax <= MAX_MORPH_PATTERN_FREQUENCY,
+    `organism.morphology.patternFrequencyMax must not exceed ${MAX_MORPH_PATTERN_FREQUENCY}`,
+  );
+  checkPositiveInt(m.maxSilhouetteExtentQ, "organism.morphology.maxSilhouetteExtentQ");
+  check(
+    m.maxSilhouetteExtentQ <= 65535,
+    "organism.morphology.maxSilhouetteExtentQ must fit in the Uint16 it is stored in",
+  );
+  // The render snapshot quantizes extents against a FIXED wire scale, not
+  // against this ceiling, so a config allowed to exceed the wire scale would
+  // silently saturate every long body to the same byte.
+  check(
+    m.maxSilhouetteExtentQ <= MORPH_MAGNITUDE_SCALE * Q,
+    `organism.morphology.maxSilhouetteExtentQ must not exceed the render wire scale ` +
+      `${MORPH_MAGNITUDE_SCALE * Q} (${MORPH_MAGNITUDE_SCALE} radii)`,
+  );
+  const widestExtentQ =
+    m.bodyLengthMaxQ +
+    qmul(m.bodyLengthMaxQ, m.headProportionMaxQ) +
+    qmul(m.bodyLengthMaxQ, m.tailLengthMaxQ);
+  check(
+    widestExtentQ <= m.maxSilhouetteExtentQ,
+    `organism.morphology: the longest expressible body (${widestExtentQ}) exceeds ` +
+      `maxSilhouetteExtentQ ${m.maxSilhouetteExtentQ}, so silhouettes would clamp`,
+  );
+}
+
+/** Hue shifts are half-ranges, so a full half-circle is the widest meaningful one. */
+function checkHalfDegreeRange(value: number, name: string): void {
+  checkNonNegativeInt(value, name);
+  check(value <= 180, `${name} must not exceed 180 degrees; it is a half-range`);
 }
 
 function validateCombat(config: DeepReadonly<SimulationConfig>): void {

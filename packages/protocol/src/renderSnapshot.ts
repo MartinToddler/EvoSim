@@ -32,6 +32,8 @@
  * therefore can never write back, an authoritative coordinate.
  */
 
+import { MORPH_CHANNEL_COUNT } from "./morphChannels";
+
 /** `"EONR"` — guards against a recycled buffer of the wrong kind being adopted. */
 export const RENDER_SNAPSHOT_MAGIC = 0x454f4e52;
 
@@ -42,7 +44,7 @@ export const RENDER_SNAPSHOT_MAGIC = 0x454f4e52;
  * message, and a mismatch is detectable inside a buffer that has already been
  * transferred, where the envelope's version is no longer at hand.
  */
-export const RENDER_SNAPSHOT_LAYOUT_VERSION = 1;
+export const RENDER_SNAPSHOT_LAYOUT_VERSION = 2;
 
 /** Header slot indices (see {@link RenderSnapshotView.header}). */
 export const RenderHeader = {
@@ -97,6 +99,7 @@ interface SectionOffsets {
   readonly organismEnergy: number;
   readonly organismDiet: number;
   readonly organismSpeed: number;
+  readonly organismMorph: number;
   readonly carcassId: number;
   readonly carcassX: number;
   readonly carcassY: number;
@@ -144,6 +147,8 @@ export function computeRenderSnapshotLayout(
   const organismEnergy = take(organismCapacity * U8, U8);
   const organismDiet = take(organismCapacity * U8, U8);
   const organismSpeed = take(organismCapacity * U8, U8);
+  // M14: MORPH_CHANNEL_COUNT bytes per organism, the developed body.
+  const organismMorph = take(organismCapacity * MORPH_CHANNEL_COUNT * U8, U8);
 
   const carcassId = take(carcassCapacity * U32, U32);
   const carcassX = take(carcassCapacity * F32, F32);
@@ -164,6 +169,7 @@ export function computeRenderSnapshotLayout(
     organismEnergy,
     organismDiet,
     organismSpeed,
+    organismMorph,
     carcassId,
     carcassX,
     carcassY,
@@ -195,6 +201,11 @@ export interface RenderSnapshotView {
   readonly organismEnergy: Uint8Array;
   readonly organismDiet: Int8Array;
   readonly organismSpeed: Uint8Array;
+  /**
+   * `MORPH_CHANNEL_COUNT` bytes per organism at `index * MORPH_CHANNEL_COUNT`
+   * (M14): the developed body the engine grew, never its genome.
+   */
+  readonly organismMorph: Uint8Array;
 
   readonly carcassId: Uint32Array;
   readonly carcassX: Float32Array;
@@ -286,6 +297,11 @@ export function viewRenderSnapshot(buffer: ArrayBuffer): RenderSnapshotView {
     organismEnergy: new Uint8Array(buffer, layout.organismEnergy, organismCapacity),
     organismDiet: new Int8Array(buffer, layout.organismDiet, organismCapacity),
     organismSpeed: new Uint8Array(buffer, layout.organismSpeed, organismCapacity),
+    organismMorph: new Uint8Array(
+      buffer,
+      layout.organismMorph,
+      organismCapacity * MORPH_CHANNEL_COUNT,
+    ),
     carcassId: new Uint32Array(buffer, layout.carcassId, carcassCapacity),
     carcassX: new Float32Array(buffer, layout.carcassX, carcassCapacity),
     carcassY: new Float32Array(buffer, layout.carcassY, carcassCapacity),

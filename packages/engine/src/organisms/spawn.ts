@@ -3,6 +3,8 @@ import type { EngineContext } from "../EngineContext";
 import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { createFounderGenes } from "../genetics/founderGenome";
+import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
+import { deriveMorphology } from "../morphology/morphDevelopment";
 import type { FounderRegion } from "../world/validateWorld";
 import {
   currentRadiusPos,
@@ -53,6 +55,7 @@ export interface SpawnRequest {
   yPos: number;
   angle: number;
   genes: ArrayLike<number>;
+  morphGenes: ArrayLike<number>;
   brainWeights: ArrayLike<number>;
   generation: number;
   parentEntityId: number;
@@ -70,7 +73,7 @@ export interface SpawnRequest {
  * (docs/04 §4).
  */
 export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number {
-  const { organisms, genomes, phenotypes, scratch, config } = ctx;
+  const { organisms, genomes, phenotypes, morphology, scratch, config } = ctx;
 
   const slot = organisms.allocateSlot();
   if (slot < 0) {
@@ -97,8 +100,11 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   scratch.accelFractionQ[slot] = 0;
   scratch.inWater[slot] = 0;
 
-  genomes.writeGenome(slot, request.genes, request.brainWeights);
+  genomes.writeGenome(slot, request.genes, request.morphGenes, request.brainWeights);
   derivePhenotype(phenotypes, genomes, slot, config);
+  // The body is developed from the genome it was just given, and from the hue
+  // the ecological phenotype just derived, so the two can never disagree.
+  deriveMorphology(morphology, genomes, slot, phenotypes.hueDegrees[slot] as number, config);
 
   const maxPos = config.world.sizeLU * POS_SCALE - 1;
   organisms.x[slot] = clamp(Math.trunc(request.xPos), 0, maxPos);
@@ -164,6 +170,7 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
 export function spawnFounderPopulation(ctx: EngineContext, region: FounderRegion): number {
   const { environment, config, rng } = ctx;
   const genes = createFounderGenes();
+  const morphGenes = createFounderMorphGenes(config.organism.morphology);
   const brainWeights = createFounderBrainWeights(
     config.brain.weightScale,
     config.brain.weightMin,
@@ -202,6 +209,7 @@ export function spawnFounderPopulation(ctx: EngineContext, region: FounderRegion
       yPos,
       angle: rng.nextInt(ANGLE_STEPS),
       genes,
+      morphGenes,
       brainWeights,
       generation: 0,
       parentEntityId: 0,

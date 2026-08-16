@@ -127,6 +127,47 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
   },
 
   organism: {
+    // M14 (docs/11 §M14). Every length is a Q multiple of the adult radius,
+    // so these are proportions and `adultRadius*` above is the only scale.
+    // The ranges are wide enough that two lineages can look genuinely
+    // unrelated and narrow enough that no point in the space draws as
+    // something that is not an animal.
+    morphology: {
+      minSegments: 1,
+      maxSegments: 5,
+      minAppendagePairs: 0,
+      maxAppendagePairs: 4,
+      bodyLengthMinQ: 2867, // 0.70 × radius
+      bodyLengthMaxQ: 9830, // 2.40 × radius
+      bodyWidthMinQ: 1638, // 0.40 × radius
+      bodyWidthMaxQ: 6963, // 1.70 × radius
+      segmentFalloffMinQ: 2253, // 0.55
+      segmentFalloffMaxQ: 4096, // 1.00 — equal segments
+      appendageLengthMinQ: 0,
+      appendageLengthMaxQ: 5734, // 1.40 × half-width
+      appendageThicknessMinQ: 492, // 0.12 of its length
+      appendageThicknessMaxQ: 2253, // 0.55 of its length
+      appendageAngleMinSteps: 0, // straight out sideways
+      appendageAngleMaxSteps: 768, // 67.5° swept off lateral
+      headProportionMinQ: 410, // 0.10 of the body length
+      headProportionMaxQ: 1843, // 0.45 of the body length
+      mouthSizeMinQ: 205, // 0.05
+      mouthSizeMaxQ: 2867, // 0.70
+      sensorSizeMinQ: 123, // 0.03
+      sensorSizeMaxQ: 1638, // 0.40
+      tailLengthMinQ: 0,
+      tailLengthMaxQ: 4506, // 1.10 × body length
+      tailWidthMinQ: 205, // 0.05 of the body width
+      tailWidthMaxQ: 2458, // 0.60 of the body width
+      pigmentPrimaryShiftMaxDeg: 40,
+      pigmentSecondaryShiftMaxDeg: 180,
+      patternFrequencyMax: 6,
+      // 10 × radius: the widest body (2.40) plus the longest head (0.45 of it)
+      // plus the longest tail (1.10 of it) reaches 6.1, so the frame has room
+      // for a later widening without artwork leaving it.
+      maxSilhouetteExtentQ: 40960,
+    },
+
     // docs/08 §7 in engine units. Conversions: LU → sub-units ×256,
     // LU/tick → velocity units ×65536, degrees → steps ×4096/360.
     geneRanges: {
@@ -281,6 +322,27 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       // ~0.36 weight units against founder skip weights of 0.10 … 1.80 —
       // disruptive but not destructive (ADR 0006 §3).
       weightLargeSigmaQ: 1476, // 0.36 weight units
+    },
+    // M14. Per-locus probabilities match the ecological block: a body has more
+    // loci than the ecological genome, so matching the rate makes a birth
+    // change slightly more about the body than about the ecology, which is
+    // what makes morphological drift visible within a few hundred generations
+    // without destabilizing anything the ecological genome decides.
+    //
+    // The large sigma is smaller than the ecological one (0.12 against 0.15):
+    // a large ecological jump changes one number, a large morphological jump
+    // changes a silhouette, and the same normalized step reads as a much
+    // bigger event.
+    morphology: {
+      perGeneMutationProbabilityQ: 328, // 0.08
+      smallSigmaQ: 102, // 0.025
+      largeMutationProbabilityQ: 20, // ~0.0049
+      largeSigmaQ: 492, // 0.12
+      resetProbabilityQ: 1, // ~0.00024
+      // Per structural locus, so ~1 birth in 100 changes a segment or an
+      // appendage pair by exactly one. Rare enough that a body plan is a
+      // lineage property, common enough to be reachable.
+      structuralProbabilityQ: 41, // 0.01
     },
   },
 

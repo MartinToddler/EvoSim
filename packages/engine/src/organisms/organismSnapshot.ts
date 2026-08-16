@@ -2,6 +2,8 @@ import type { DeepReadonly } from "@eon/shared";
 import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { GENE_COUNT } from "../genetics/genes";
+import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
+import { type MorphologyStore, deriveMorphology } from "../morphology/morphDevelopment";
 import { DEATH_CAUSE_COUNT } from "./death";
 import type { GenomeStore } from "./GenomeStore";
 import type { OrganismStore } from "./OrganismStore";
@@ -56,6 +58,7 @@ export interface OrganismSnapshot {
   kills: Uint16Array;
 
   genes: Uint16Array;
+  morphGenes: Uint16Array;
   brainWeights: Int16Array;
 }
 
@@ -105,6 +108,7 @@ export function captureOrganisms(organisms: OrganismStore, genomes: GenomeStore)
     kills: new Uint16Array(organisms.kills.subarray(0, used)),
 
     genes: new Uint16Array(genomes.genes.subarray(0, used * GENE_COUNT)),
+    morphGenes: new Uint16Array(genomes.morphGenes.subarray(0, used * MORPH_GENE_COUNT)),
     brainWeights: new Int16Array(genomes.brainWeights.subarray(0, used * BRAIN_WEIGHT_COUNT)),
   };
 }
@@ -126,6 +130,7 @@ export function restoreOrganisms(
   organisms: OrganismStore,
   genomes: GenomeStore,
   phenotypes: PhenotypeStore,
+  morphology: MorphologyStore,
   config: DeepReadonly<SimulationConfig>,
 ): void {
   if (snapshot.capacity !== organisms.capacity) {
@@ -139,6 +144,7 @@ export function restoreOrganisms(
   }
   checkLength(snapshot.deathsByCause.length, DEATH_CAUSE_COUNT, "deathsByCause");
   checkLength(snapshot.genes.length, used * GENE_COUNT, "genes");
+  checkLength(snapshot.morphGenes.length, used * MORPH_GENE_COUNT, "morphGenes");
   checkLength(snapshot.brainWeights.length, used * BRAIN_WEIGHT_COUNT, "brainWeights");
 
   organisms.reset();
@@ -174,6 +180,7 @@ export function restoreOrganisms(
   }
 
   genomes.genes.set(snapshot.genes);
+  genomes.morphGenes.set(snapshot.morphGenes);
   genomes.brainWeights.set(snapshot.brainWeights);
   organisms.deathsByCause.set(snapshot.deathsByCause);
   organisms.totalBirths = snapshot.totalBirths;
@@ -191,6 +198,7 @@ export function restoreOrganisms(
   for (let slot = 0; slot < used; slot += 1) {
     if (organisms.alive[slot] === 1) {
       derivePhenotype(phenotypes, genomes, slot, config);
+      deriveMorphology(morphology, genomes, slot, phenotypes.hueDegrees[slot] as number, config);
     }
   }
 }

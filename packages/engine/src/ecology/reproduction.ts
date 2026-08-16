@@ -5,6 +5,8 @@ import { mutateBrainWeights, mutateEcologicalGenes } from "../genetics/mutation"
 import { ANGLE_STEPS, POS_SCALE, TRIG_SCALE, qmul } from "../math/fixed";
 import { cosLut, sinLut } from "../math/trigLut";
 import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
+import { mutateMorphologyGenes } from "../morphology/morphMutation";
 import { spawnOrganism } from "../organisms/spawn";
 
 /**
@@ -209,7 +211,14 @@ export function resolveReproduction(ctx: EngineContext): void {
     scratch.childBrainWeights.set(
       genomes.brainWeights.subarray(weightBase, weightBase + BRAIN_WEIGHT_COUNT),
     );
+    const morphBase = genomes.morphOffset(parentSlot);
+    scratch.childMorphGenes.set(
+      genomes.morphGenes.subarray(morphBase, morphBase + MORPH_GENE_COUNT),
+    );
+    // Ecology, then body, then brain. The order fixes the PRNG stream and is
+    // part of ENGINE_VERSION (M14 inserted the middle block).
     mutateEcologicalGenes(scratch.childGenes, 0, rng, config);
+    mutateMorphologyGenes(scratch.childMorphGenes, 0, rng, config);
     mutateBrainWeights(scratch.childBrainWeights, 0, rng, config);
 
     const childSlot = spawnOrganism(ctx, {
@@ -217,6 +226,7 @@ export function resolveReproduction(ctx: EngineContext): void {
       yPos: placement.yPos,
       angle: placement.angle,
       genes: scratch.childGenes,
+      morphGenes: scratch.childMorphGenes,
       brainWeights: scratch.childBrainWeights,
       generation: (organisms.generation[parentSlot] as number) + 1,
       parentEntityId: organisms.entityId[parentSlot] as number,

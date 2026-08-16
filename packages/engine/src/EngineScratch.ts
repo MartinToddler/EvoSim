@@ -6,6 +6,7 @@ import {
 } from "./brain/BrainLayout";
 import { TRAIT_DIMENSIONS } from "./evolution/traitVector";
 import { GENE_COUNT } from "./genetics/genes";
+import { MORPH_GENE_COUNT } from "./morphology/morphGenes";
 
 /**
  * Reusable per-tick working memory (docs/10 §4).
@@ -135,6 +136,8 @@ export class EngineScratch {
   readonly reproducers: Int32Array;
   /** One child's genome, mutated here before it is handed to the spawner. */
   readonly childGenes: Uint16Array;
+  /** One child's morphological genome, mutated before the spawn (M14). */
+  readonly childMorphGenes: Uint16Array;
   readonly childBrainWeights: Int16Array;
 
   // --- Species analysis (docs/05 §7, phase 16) --------------------------------
@@ -214,6 +217,7 @@ export class EngineScratch {
 
     this.reproducers = new Int32Array(capacity);
     this.childGenes = new Uint16Array(GENE_COUNT);
+    this.childMorphGenes = new Uint16Array(MORPH_GENE_COUNT);
     this.childBrainWeights = new Int16Array(BRAIN_WEIGHT_COUNT);
 
     this.speciesMemberSlots = new Int32Array(capacity);

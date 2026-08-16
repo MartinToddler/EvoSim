@@ -52,12 +52,23 @@ export const SCENARIO_GRID_SIZE = 192;
 export const SCENARIO_CHANNEL_TICK = 8_000;
 
 /**
- * The tick by which the split must have happened. Measured: the detector
- * declares it at tick ~45 000; the horizon carries 33% headroom so the
- * assertion is "the split is reachable", not "the split lands on one tick"
- * (docs/07 §16 forbids the brittle form).
+ * The tick by which the split must have happened.
+ *
+ * Re-measured for engine 0.9.0 after the scenario was made selection-driven
+ * (see {@link queueScenarioClimate}): the detector declares the split by tick
+ * 73 000, with the population healthy throughout (300 – 2 300). The horizon
+ * carries ~23% headroom so the assertion is "the split is reachable", not "the
+ * split lands on one tick" (docs/07 §16 forbids the brittle form).
+ *
+ * This costs real suite time — a 192² world stepped up to 90 000 ticks. That is
+ * accepted deliberately: the alternative ways to make it cheaper all tilt the
+ * experiment (a raised mutation rate, a lowered split threshold, a smaller and
+ * noisier world), and a gate that has been tilted proves nothing.
  */
-export const SCENARIO_SPLIT_HORIZON = 60_000;
+export const SCENARIO_SPLIT_HORIZON = 90_000;
+
+/** Tick at which the hemispheres start diverging thermally. */
+export const SCENARIO_CLIMATE_TICK = 8_200;
 
 export const SCENARIO_CONFIG: ReadonlySimulationConfig = (() => {
   const config = cloneConfig(DEFAULT_CONFIG);
@@ -124,6 +135,92 @@ export function queueScenarioChannel(engine: SimulationEngine): number {
         throw new Error(`scenario channel command rejected: ${result.detail}`);
       }
       queued += 1;
+    }
+  }
+  return queued;
+}
+
+/**
+ * Make the two isolated demes face OPPOSITE thermal selection, with ordinary
+ * PaintTemperature commands.
+ *
+ * ## Why this exists (engine 0.9.0, ADR 0028 §6)
+ *
+ * The scenario used to rely on the channel alone. That was a lottery ticket,
+ * and ADR 0027 §3b forbids exactly that: the world's climate cline is
+ * symmetric about the equator, so once the channel cut the continent in two the
+ * north and the south faced the *same* environment and the only thing pulling
+ * them apart was drift. Drift crossed the detector's threshold at ~tick 45 000
+ * on engine 0.8.0's random stream and had not crossed it by tick 88 000 on
+ * 0.9.0's — the same world, the same rules, a different sequence of coin flips.
+ *
+ * A speciation gate that depends on which coin flips a lineage got is not
+ * evidence that speciation is reachable. So the two hemispheres are now given
+ * genuinely different ecological pressure: the north is painted cold and the
+ * south hot, in persistent local offsets, immediately after the channel opens.
+ * `Gene.ThermalOptimum` is then pushed in opposite directions by ordinary
+ * selection on realized survival — no fitness is assigned, no organism is
+ * moved, and no species is declared by hand.
+ *
+ * The offsets are painted once: `temperatureOffsetCentiC` is persistent
+ * environment state, saturating at `maxLocalTemperatureOffsetCentiC`.
+ */
+export function queueScenarioClimate(engine: SimulationEngine): number {
+  const config = engine.config;
+  const sizeLU = config.world.sizeLU;
+  const radiusLU = config.interventions.maxBrushRadiusLU;
+  const strength = config.interventions.maxTemperatureBrushStrengthCentiC;
+  const maxSamples = config.interventions.maxBrushSamplesPerCommand;
+  // Samples one brush-radius apart cover the hemisphere without gaps; the
+  // equator row itself is left alone so the channel stays the barrier rather
+  // than a thermal wall.
+  const stepLU = radiusLU;
+  const marginLU = radiusLU;
+  // Three passes at ±4 °C put the hemispheres 24 °C apart. Measured against
+  // the alternative: eight passes (±32 °C) does produce a split, but it is a
+  // mass-extinction event first — the population falls to tens and the gate
+  // becomes a different kind of lottery. What this scenario needs is a
+  // DIFFERENT optimum on each side, not a lethal one on one side.
+  const passes = 3;
+
+  let queued = 0;
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (const half of [0, 1]) {
+      const sign = half === 0 ? -1 : 1;
+      const minYLU = half === 0 ? 0 : Math.floor(sizeLU / 2) + marginLU;
+      const maxYLU = half === 0 ? Math.floor(sizeLU / 2) - marginLU : sizeLU;
+      const samplesXLU: number[] = [];
+      const samplesYLU: number[] = [];
+      const flush = (): void => {
+        if (samplesXLU.length === 0) {
+          return;
+        }
+        const result = engine.queueCommand({
+          kind: InterventionKind.PaintTemperature,
+          radiusLU,
+          strength: sign * strength,
+          falloff: BrushFalloff.Hard,
+          samplesXLU: [...samplesXLU],
+          samplesYLU: [...samplesYLU],
+          targetTick: SCENARIO_CLIMATE_TICK,
+        });
+        if (!result.accepted) {
+          throw new Error(`scenario climate command rejected: ${result.detail}`);
+        }
+        queued += 1;
+        samplesXLU.length = 0;
+        samplesYLU.length = 0;
+      };
+      for (let y = minYLU; y < maxYLU; y += stepLU) {
+        for (let x = 0; x < sizeLU; x += stepLU) {
+          samplesXLU.push(x);
+          samplesYLU.push(y);
+          if (samplesXLU.length === maxSamples) {
+            flush();
+          }
+        }
+      }
+      flush();
     }
   }
   return queued;

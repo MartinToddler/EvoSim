@@ -85,3 +85,22 @@ export {
   type EnvironmentDebugSummary,
   summarizeEnvironmentFields,
 } from "./debug/environmentDebugSummary";
+
+// M14 procedural morphology (docs/11 §M14). `paintMorphology` is the one
+// painter: the detail layer and the morphology gallery both go through it, so
+// the gallery cannot show a body the app would draw differently.
+export {
+  paintMorphology,
+  MorphologyTextureCache,
+  MORPH_SPRITE_FRAME,
+  MORPH_TEXTURE_CACHE_LIMIT,
+  morphSpriteScale,
+} from "./morphology/drawMorphology";
+export { MorphologyGallery, type MorphologyGalleryOptions } from "./morphology/MorphologyGallery";
+export {
+  buildMorphologyGeometry,
+  GEOMETRY_UNIT,
+  GEOMETRY_FRAME_HALF,
+  type MorphologyGeometry,
+  type Point,
+} from "./morphology/morphologyGeometry";

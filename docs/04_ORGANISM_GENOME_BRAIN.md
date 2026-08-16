@@ -1,5 +1,15 @@
 # 04 — Organisms, Genome, Physiology and Neural Brain
 
+> **Extended by M14 (engine 0.9.0).** Organisms carry a SECOND inherited gene block: a 27-gene
+> morphological genome that decides body shape, structure counts, plating and pigment, developed
+> by a deterministic bounded interpreter and drawn procedurally. It is inherited, mutated and
+> hashed exactly like the 16 ecological genes described below, and it has no physical
+> consequence yet — M15 is where the body becomes physics. Specification in
+> `docs/11_EVOSIM_2_0.md` §M14; decisions, trade-offs and evidence in ADR 0028.
+>
+> Scale stays here: `Gene.AdultSize` decides how big an organism is, and every morphological
+> length is a fraction of that. The two genomes never re-decide each other's quantities.
+
 ## 1. Organism philosophy
 
 An organism has no hard-coded role such as “wolf” or “rabbit”. It receives:

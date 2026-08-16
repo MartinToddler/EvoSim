@@ -186,6 +186,20 @@ export function organismTint(hueDegrees: number, health255: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+/**
+ * Neutral shade tint for a sprite whose colours are already baked in (M14).
+ *
+ * A procedurally generated body carries two pigments and a pattern between
+ * them, so it cannot be tinted by hue without losing the pattern. This returns
+ * a grey that multiplies both pigments down together as health falls, using
+ * exactly the floor {@link organismTint} uses, so a wounded animal darkens the
+ * same amount whichever layer is drawing it.
+ */
+export function healthShade(health255: number): number {
+  const shade = clampByte((0.45 + 0.55 * (health255 / 255)) * 255);
+  return (shade << 16) | (shade << 8) | shade;
+}
+
 /** Carcasses are drawn as desaturated meat, distinct from any living hue. */
 export const CARCASS_TINT = 0x8a5a4a;
 

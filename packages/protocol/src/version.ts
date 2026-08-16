@@ -58,9 +58,17 @@
  * accepted is byte-for-byte the map the authoritative world runs — an identity
  * check, not a behaviour. No message type changed shape otherwise.
  *
+ * Protocol 10 (M14, docs/11 §M14) adds the morphology section to the render
+ * snapshot: `MORPH_CHANNEL_COUNT` bytes per organism describing the DEVELOPED
+ * body — proportions, structure counts, plating and pigment. The renderer
+ * never re-runs development, so what crosses the wire is the interpreter's
+ * output rather than the morphological genome. This is a binary layout change,
+ * so `RENDER_SNAPSHOT_LAYOUT_VERSION` moves to 2 as well; no message type
+ * changed shape.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;

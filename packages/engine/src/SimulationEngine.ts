@@ -35,6 +35,7 @@ import { finalizeDeaths } from "./organisms/death";
 import { applyMetabolismGrowthThermalAging } from "./organisms/metabolism";
 import { integrateMovement, resolveTerrainAndSoftCollisions } from "./organisms/movement";
 import { captureOrganisms, restoreOrganisms } from "./organisms/organismSnapshot";
+import { MorphologyStore } from "./morphology/morphDevelopment";
 import { PhenotypeStore } from "./organisms/phenotype";
 import { spawnFounderPopulation } from "./organisms/spawn";
 import { TickPhase, type TickProfiler } from "./profiling/TickProfiler";
@@ -216,6 +217,7 @@ export class SimulationEngine {
       organisms: this.organisms,
       genomes: this.genomes,
       phenotypes: new PhenotypeStore(capacity),
+      morphology: new MorphologyStore(capacity),
       carcasses: this.carcasses,
       species: this.species,
       events: this.events,
@@ -360,6 +362,7 @@ export class SimulationEngine {
       engine.organisms,
       engine.genomes,
       engine.#context.phenotypes,
+      engine.#context.morphology,
       engine.config,
     );
     restoreCarcasses(snapshot.carcasses, engine.carcasses);

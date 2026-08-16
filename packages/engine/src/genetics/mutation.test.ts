@@ -9,6 +9,7 @@ import { GenomeStore } from "../organisms/GenomeStore";
 import { Xoshiro128 } from "../random/Xoshiro128";
 import goldenMutation from "../fixtures/mutationGolden.json";
 import { CONFIG_SCHEMA_VERSION, ENGINE_VERSION } from "../version";
+import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
 import { createFounderGenes } from "./founderGenome";
 import { GENE_COUNT, GENE_RAW_MAX } from "./genes";
 import {
@@ -165,8 +166,9 @@ describe("mutateEcologicalGenes", () => {
   it("only touches the gene block it was given", () => {
     const genomes = new GenomeStore(4);
     const genes = createFounderGenes();
-    genomes.writeGenome(1, genes, createFounderBrainWeights(4096, -8192, 8192));
-    genomes.writeGenome(2, genes, createFounderBrainWeights(4096, -8192, 8192));
+    const morphGenes = createFounderMorphGenes(DEFAULT_CONFIG.organism.morphology);
+    genomes.writeGenome(1, genes, morphGenes, createFounderBrainWeights(4096, -8192, 8192));
+    genomes.writeGenome(2, genes, morphGenes, createFounderBrainWeights(4096, -8192, 8192));
     const neighbourBefore = Uint16Array.from(
       genomes.genes.subarray(genomes.geneOffset(2), genomes.geneOffset(2) + GENE_COUNT),
     );
@@ -270,6 +272,7 @@ describe("mutation golden fixture", () => {
     genomes.writeGenome(
       0,
       createFounderGenes(),
+      createFounderMorphGenes(DEFAULT_CONFIG.organism.morphology),
       createFounderBrainWeights(
         DEFAULT_CONFIG.brain.weightScale,
         DEFAULT_CONFIG.brain.weightMin,
@@ -284,6 +287,7 @@ describe("mutation golden fixture", () => {
     }
 
     expect([...genomes.genes]).toEqual(goldenMutation.genes);
+    expect([...genomes.morphGenes]).toEqual(goldenMutation.morphGenes);
     expect(weightDigest(genomes.brainWeights)).toBe(goldenMutation.brainWeightDigest);
     expect(rng.serializeState()).toEqual(goldenMutation.rngStateAfter);
   });
@@ -299,6 +303,7 @@ describe("mutation golden fixture", () => {
     genomes.writeGenome(
       0,
       createFounderGenes(),
+      createFounderMorphGenes(DEFAULT_CONFIG.organism.morphology),
       createFounderBrainWeights(
         DEFAULT_CONFIG.brain.weightScale,
         DEFAULT_CONFIG.brain.weightMin,

@@ -4,14 +4,15 @@ import type { SimulationConfig } from "../config/SimulationConfig";
 import { Q, clamp, qmul } from "../math/fixed";
 import type { GenomeStore } from "../organisms/GenomeStore";
 import type { Xoshiro128 } from "../random/Xoshiro128";
+import { mutateMorphologyGenes } from "../morphology/morphMutation";
 import { GENE_COUNT, GENE_RAW_MAX } from "./genes";
 
 /**
  * Asexual mutation (docs/04 §18, docs/08 §17, tasks E03/E04).
  *
- * A child is an exact copy of its parent's 16 genes and 400 weights, then
- * perturbed. There is no crossover and no second parent — reproduction is
- * asexual for the whole MVP.
+ * A child is an exact copy of its parent's 16 ecological genes, 27
+ * morphological genes (M14) and 400 weights, then perturbed. There is no
+ * crossover and no second parent; recombination arrives with M19.
  *
  * ## One roll per locus, three mutually exclusive outcomes
  *
@@ -34,11 +35,12 @@ import { GENE_COUNT, GENE_RAW_MAX } from "./genes";
  *
  * ## Draw accounting
  *
- * Exactly `GENE_COUNT + BRAIN_WEIGHT_COUNT` = 416 classification draws per
- * birth, plus one {@link Xoshiro128.approxNormalQ} (12 draws) per mutated locus
- * and one uniform draw per reset gene. Genes are always mutated before weights.
- * Both counts and the order are part of the PRNG stream and cannot change
- * without an ENGINE_VERSION bump.
+ * Exactly `GENE_COUNT + MORPH_GENE_COUNT + BRAIN_WEIGHT_COUNT` = 443
+ * classification draws per birth, plus one {@link Xoshiro128.approxNormalQ}
+ * (12 draws) per continuously mutated locus, one uniform draw per reset locus
+ * and one uniform draw per structural step. The block order is ecological
+ * genes, then morphology, then weights. Both counts and the order are part of
+ * the PRNG stream and cannot change without an ENGINE_VERSION bump.
  *
  * ## Sigma units differ between the two blocks, and that is deliberate
  *
@@ -186,10 +188,14 @@ export function mutateBrainWeights(
 }
 
 /**
- * Mutate one slot's inherited state: ecological genes first, then brain weights.
+ * Mutate one slot's inherited state: ecological genes, then the morphological
+ * genome (M14), then brain weights.
  *
  * The caller has already copied the parent's genome onto this slot. The order of
- * the two blocks fixes the PRNG stream and is part of the engine version.
+ * the three blocks fixes the PRNG stream and is part of the engine version, and
+ * it is the same order `resolveReproduction` applies to its scratch buffers —
+ * the two must not drift, or a lineage grown through this helper would diverge
+ * from one grown by the engine.
  */
 export function mutateGenome(
   genomes: GenomeStore,
@@ -198,5 +204,6 @@ export function mutateGenome(
   config: DeepReadonly<SimulationConfig>,
 ): void {
   mutateEcologicalGenes(genomes.genes, genomes.geneOffset(slot), rng, config);
+  mutateMorphologyGenes(genomes.morphGenes, genomes.morphOffset(slot), rng, config);
   mutateBrainWeights(genomes.brainWeights, genomes.weightOffset(slot), rng, config);
 }

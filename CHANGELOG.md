@@ -6,6 +6,84 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-16 — M14: the morphological genome
+
+Versions: `ENGINE_VERSION` **0.8.0 → 0.9.0**, `PROTOCOL_VERSION` **9 → 10**,
+`SNAPSHOT_SCHEMA_VERSION` **8 → 9**, `CONFIG_SCHEMA_VERSION` **7 → 8**,
+`RENDER_SNAPSHOT_LAYOUT_VERSION` **1 → 2**. **Every golden hash moved**, deliberately —
+see "Why the hashes moved" below. Decisions and evidence in ADR 0028.
+
+The first EvoSim 2.0 milestone. Organisms now carry a body that is inherited, evolvable,
+continuously variable and drawn from the genome rather than chosen from a set of pictures.
+
+### Added
+
+- **A 27-gene morphological genome**, stored and mutated exactly like the 16 ecological
+  genes: body length, width, front and rear taper, segment count and proportion; appendage
+  pair count, placement, length, thickness, angle and front/rear specialization; head
+  proportion, mouth and sensory size and placement; tail length, width and taper; armor
+  coverage, plate expression and distribution; primary and secondary pigment shift, contrast,
+  pattern frequency and orientation. No gene is named for an animal or an ecological role, and
+  there is no template table: every body is one point in a continuous 27-dimensional space. A
+  test asserts the naming rule.
+- **A deterministic developmental interpreter.** `deriveMorphology` reads the genome and the
+  config and nothing else — no position, no tick, no PRNG — so the developed phenotype is a
+  derived cache like `PhenotypeStore`: never hashed, never serialized, recomputed for every
+  live slot on restore. Development is a fixed sequence of bounded mappings with no loop whose
+  trip count depends on the genome, so growing a body costs the same for every body.
+- **A structural mutation class.** Segment count and appendage-pair count are read as small
+  integers; a continuous nudge on them would do nothing most of the time and flip the count at
+  a bucket edge. The structural class instead moves the derived count by exactly ±1 and
+  rewrites the gene to the centre of the destination bucket, reflecting inward at the ends of
+  the range rather than clamping in place.
+- **27 morphology bytes per organism in the render snapshot**, carrying the DEVELOPED body
+  rather than the genome — the renderer never re-runs development, so it cannot drift from the
+  simulation. Magnitude channels quantize against a fixed wire scale, not the config's
+  ceiling, so two builds cannot read the same bytes differently.
+- **Procedural bodies in the renderer, at two levels of detail.** The particle layer stretches
+  the shared sprite to the developed proportions and paints it with the primary pigment, in
+  one draw call for thousands of organisms. The budgeted detail layer draws the full
+  procedural body — segments, appendages, head, tail, plating and pattern — from a texture
+  generated on first sight and held in a bounded LRU sized above the detail budget, so
+  relatives share a texture and thrashing is impossible rather than merely unlikely.
+- **A morphology gallery at `?view=morphology`**: independent lineages, one lineage over time,
+  and a single-gene sweep. It develops, encodes and paints through the exact production
+  functions, so it cannot show a body the app would draw differently.
+
+### Changed
+
+- `GenomeStore` carries a third inherited block; `writeGenome` and the organism snapshot take
+  and restore it; `mutateGenome` mutates ecology, then morphology, then the brain.
+- **Why the hashes moved.** The morphological genome is inherited state, so it joined the
+  canonical hash stream, and mutation gained 27 classification draws per birth. Morphology has
+  no physical consequence yet — that is M15 — so what changed ecologically is the random
+  stream, not the rules. Regenerated: the six fixture checkpoints, the mutation golden (a
+  single birth now draws 599 PRNG words, was 572), and both soak hashes.
+
+### Fixed
+
+- **The populated soak fixture was a coin flip, not an instrument** (ADR 0028 §5). Its world
+  oscillates between peaks of ~2 400 and troughs of ~50, so reaching 100 000 ticks depended on
+  the stream: under 0.9.0's it goes extinct at ~tick 70 000, where 0.8.0 reported 766 alive.
+  Not an M14 regression — the same fixture survives on other seeds (troughs of 64 and 44), and
+  a twelve-seed sweep of `DEFAULT_CONFIG` shows the shipped ecology unchanged (populations
+  1 793 – 5 740, millions of meat units, no cap refusals). The fixture world is test
+  scaffolding rather than shipped biology, so it is enlarged until its troughs are not
+  near-extinction. No `DEFAULT_CONFIG` value changed and no assertion was weakened.
+- **MVP release gate 6 was a lottery ticket** (ADR 0028 §6). The ecological speciation scenario
+  relied on a flooded channel alone — but the temperature cline is symmetric about the equator,
+  so the two isolated demes sat in mirror-image environments and only **drift** pulled their
+  trait centroids apart. Drift crossed the detector's threshold at ~tick 45 000 on engine
+  0.8.0's random stream and had not crossed it by tick 88 000 on 0.9.0's: same world, same
+  rules, different coin flips. ADR 0027 §3b forbids that shape of test. The scenario is now
+  selection-driven — ordinary `PaintTemperature` commands put the hemispheres 24 °C apart the
+  moment the channel opens, so `Gene.ThermalOptimum` is pushed in opposite directions by
+  realized survival, with no fitness assigned and no species declared by hand. Split measured
+  by tick 73 000 with the population healthy throughout; the horizon moves 60 000 → 90 000.
+- **A save would have silently dropped every organism's body.** The persistence binary codec is
+  driven by the field descriptor in `snapshotShape.ts`, and `organisms.morphGenes` was missing
+  from it. Caught by the shape inventory and round-trip tests before it could reach a save.
+
 ## [Unreleased] — 2026-08-16 — EvoSim 2.0 architecture and implementation contract
 
 Versions: **all four unchanged** (`ENGINE_VERSION` 0.8.0, `PROTOCOL_VERSION` 9,

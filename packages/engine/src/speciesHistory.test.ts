@@ -4,6 +4,7 @@ import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import { SpeciesEndReason } from "./evolution/SpeciesStore";
 import { GENE_COUNT, Gene, geneFromQ } from "./genetics/genes";
+import { createFounderMorphGenes } from "./morphology/founderMorphGenome";
 import { createFounderGenes } from "./genetics/founderGenome";
 import { WorldEventType } from "./history/EventStore";
 import { engineInternals } from "./internal";
@@ -112,6 +113,7 @@ function plantCloud(
       yPos: gridY * cellSizePos + (cellSizePos >> 1),
       angle: 0,
       genes,
+      morphGenes: createFounderMorphGenes(config.organism.morphology),
       brainWeights: silentBrain,
       generation: 0,
       parentEntityId: 0,
