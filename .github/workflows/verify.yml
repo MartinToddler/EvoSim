@@ -38,7 +38,12 @@ jobs:
     # The right long-term lever is scheduling the soaks separately rather than
     # shortening them (ADR 0006 §9, docs/07 §6 wants 100 000 ticks routinely);
     # until then the budget has to clear the real cost with headroom.
-    timeout-minutes: 60
+    #
+    # Raised 60 -> 150 with ADR 0025: the suite gained the ecological
+    # speciation release-gate run (~40 minutes standalone) beside the
+    # 100 000-tick soak, and the full verify measures ~100 minutes wall on a
+    # 4-vCPU container. Same class of change as the 20 -> 60 raise above.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,7 +142,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Same reasoning as the verify job above, and the same arithmetic: this job
     # runs the engine suite, which is where nearly all of that time goes.
-    timeout-minutes: 60
+    # Raised 60 -> 150 with ADR 0025, with the verify job.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
