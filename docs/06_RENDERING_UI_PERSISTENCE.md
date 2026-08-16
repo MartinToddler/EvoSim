@@ -425,6 +425,18 @@ To reconstruct tick T:
 5. stop at exact T;
 6. optional verify known hash.
 
+> **Amended by ADR 0026 §2 (post-A25 audit).** Step 3 is the whole point and was
+> missing: a save embeds the command log *as it stood when it was taken*, so replaying
+> from S alone omits every command accepted after S — including ones targeting ticks
+> inside `[S, T)`. Until history is chunked to storage (see §22's note on
+> `commandChunks`), the world line's full log is the LIVE engine's log: append-only, and
+> therefore a superset of the prefix every save carries. `Reconstruction` takes it as
+> `authoritativeLog` and re-cursors it to the restored tick — commands targeting earlier
+> ticks are applied history, the rest stay pending — and refuses a log that does not
+> contain the save's own commands, which would mean it belongs to another world line.
+> This matters most for branching: a branch origin is a reconstruction, so an incomplete
+> replay persists a history that never happened.
+
 ## 25. Save round-trip invariant
 
 Must pass:

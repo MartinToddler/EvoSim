@@ -165,7 +165,21 @@ function worldFixture(): WorldSummaryDto {
 }
 
 function telemetryFixture(tick: number): TelemetryDto {
-  return { tick, population: 3, speed: "x1", phaseMillis: [] } as unknown as TelemetryDto;
+  return {
+    tick,
+    population: 3,
+    speed: "x1",
+    phaseMillis: [],
+    traitMeans: {},
+    deathsByCause: [],
+    memory: {
+      engineTotalBytes: 0,
+      engineBytesByCategory: [],
+      renderPoolBytes: 0,
+      organismCapacity: 0,
+      bytesPerOrganismSlot: 0,
+    },
+  } as unknown as TelemetryDto;
 }
 
 let indexedDb: IDBFactory;
@@ -508,8 +522,10 @@ describe("branching from the session", () => {
     const branching = harness.session.branchHere("What if");
     await harness.flush();
     await harness.answerBranch(200);
-    const branchId = await branching;
+    const branched = await branching;
+    const branchId = branched.worldId;
 
+    expect(branched.opened).toBe(true);
     expect(branchId).not.toBeNull();
     expect(branchId).not.toBe(parentId);
 
@@ -528,7 +544,7 @@ describe("branching from the session", () => {
     await harness.ready();
     await saveAt(harness, 400);
 
-    expect(await harness.session.branchHere("nope")).toBeNull();
+    expect(await harness.session.branchHere("nope")).toEqual({ worldId: null, opened: false });
     expect(harness.worker.last("CREATE_BRANCH")).toBeUndefined();
   });
 
@@ -547,9 +563,11 @@ describe("branching from the session", () => {
     const branching = harness.session.branchHere("Alternative");
     await harness.flush();
     await harness.answerBranch(200);
-    const branchId = await branching;
+    const branched = await branching;
+    const branchId = branched.worldId;
     await harness.flush();
 
+    expect(branched.opened).toBe(true);
     expect(branchId).not.toBeNull();
     // The preview was left…
     expect(harness.worker.last("RETURN_TO_PRESENT")).toBeDefined();
@@ -580,8 +598,13 @@ describe("branching from the session", () => {
     const branching = harness.session.branchHere("Fork");
     await harness.flush();
     await harness.answerBranch(100);
-    const branchId = await branching;
+    const branchId = (await branching).worldId;
     await harness.flush();
+    // The Worker adopts the branch and answers with WORLD_READY, which is what
+    // confirms the session is bound to the world actually running. Saving is
+    // suspended until it arrives (a load the Worker refuses must never take
+    // the binding with it), so the flow has to include it.
+    await harness.ready();
 
     // A save issued after the switch belongs to the branch's manifest.
     harness.session.saveWorld();
@@ -593,5 +616,115 @@ describe("branching from the session", () => {
     expect(parent?.manifest.latestTick).toBe(100);
     expect(branch?.manifest.latestTick).toBe(150);
     expect(branch?.manifest.parentWorldId).toBe(parentId);
+  });
+});
+
+describe("a preview is read-only, and a load leaves it (ADR 0025, corrected)", () => {
+  it("fires no autosave on historical telemetry", async () => {
+    // While a preview is open the Worker's telemetry describes the HISTORICAL
+    // engine, so its tick is a past one. Autosaving on it asks the Worker to
+    // save while previewing — which it refuses — and reports a failure the
+    // user did not cause, on a live world that is paused and unchanged.
+    const harness = createHarness();
+    await harness.ready();
+    await saveAt(harness, 100);
+
+    const pending = harness.session.rewindTo(100);
+    await harness.flush();
+    await harness.answerRewind({ tick: 100, presentTick: 100 });
+    await pending;
+
+    const savesBefore = harness.worker.all("REQUEST_SAVE").length;
+    // A telemetry frame far past the autosave interval, carrying the
+    // historical engine's tick.
+    harness.worker.emit({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "TELEMETRY",
+      payload: telemetryFixture(100 + DEFAULT_HOST_RUNTIME_CONFIG.autosaveCheckInterval * 3),
+    });
+    await harness.flush();
+
+    expect(harness.worker.all("REQUEST_SAVE").length).toBe(savesBefore);
+    expect(harness.session.persistenceStatus.failed).toBe(false);
+    harness.session.destroy();
+  });
+
+  it("saves nothing on pagehide while previewing", async () => {
+    const harness = createHarness();
+    await harness.ready();
+    await saveAt(harness, 100);
+
+    const pending = harness.session.rewindTo(100);
+    await harness.flush();
+    await harness.answerRewind({ tick: 100, presentTick: 100 });
+    await pending;
+
+    const savesBefore = harness.worker.all("REQUEST_SAVE").length;
+    harness.session.saveOnHide();
+    await harness.flush();
+
+    expect(harness.worker.all("REQUEST_SAVE").length).toBe(savesBefore);
+    expect(harness.session.persistenceStatus.failed).toBe(false);
+    harness.session.destroy();
+  });
+
+  it("returns the history status to live when a load replaces the world", async () => {
+    // The past on screen belonged to the world being replaced. Without this the
+    // panel kept reporting the OLD world's preview over the newly loaded one.
+    const harness = createHarness();
+    await harness.ready();
+    await saveAt(harness, 100);
+    const worldId = harness.session.persistenceStatus.worldId as string;
+
+    const pending = harness.session.rewindTo(100);
+    await harness.flush();
+    await harness.answerRewind({ tick: 100, presentTick: 100 });
+    await pending;
+    expect(harness.session.historical.mode).toBe("historical");
+
+    harness.session.loadWorld(worldId);
+    await harness.flush();
+
+    expect(harness.session.historical.mode).toBe("live");
+    expect(harness.session.historical.tick).toBeNull();
+    harness.session.destroy();
+  });
+
+  it("keeps the previous binding when the Worker refuses a load", async () => {
+    // The Worker validates harder than the store: it restores the snapshot and
+    // re-checks its hash, and on refusal it keeps the PREVIOUS world running.
+    // A session that stayed bound to the refused world would file the running
+    // world's next autosave under the refused world's manifest.
+    const harness = createHarness();
+    await harness.ready();
+    await saveAt(harness, 100);
+    const openWorldId = harness.session.persistenceStatus.worldId as string;
+
+    harness.session.loadWorld(openWorldId);
+    await harness.flush();
+    // No WORLD_READY: the Worker rejects the bytes instead.
+    harness.worker.emit({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "ERROR",
+      payload: {
+        message: "restored state hash does not match the save",
+        fatal: false,
+        tick: null,
+        seed: 7,
+        engineVersion: "test",
+        whileHandling: "LOAD_WORLD",
+      },
+    });
+    await harness.flush();
+
+    const status = harness.session.persistenceStatus;
+    expect(status.worldId).toBe(openWorldId);
+    expect(status.failed).toBe(true);
+    expect(status.message).toMatch(/still open/);
+    // And saving works again, against the world that is actually running.
+    harness.session.saveWorld();
+    await harness.flush();
+    expect(harness.worker.last("REQUEST_SAVE")).toBeDefined();
+    harness.session.destroy();
   });
 });

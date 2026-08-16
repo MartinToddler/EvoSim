@@ -6,6 +6,69 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-16 — Independent adversarial audit of the post-A25 product
+
+Versions: **all four unchanged** (`ENGINE_VERSION` 0.8.0, `PROTOCOL_VERSION` 9,
+`SNAPSHOT_SCHEMA_VERSION` 8, `CONFIG_SCHEMA_VERSION` 7). **Every golden hash is
+unchanged**, deliberately: for a given seed, config and command stream the engine
+produces exactly what it produced before. Findings, measurements and the two accepted
+non-fixes in ADR 0026.
+
+ADR 0025's ecological work was re-measured from the outside and reproduced exactly —
+the twelve-seed calibration table is byte-identical on an independent run, so the
+carrying-capacity and scavenging conclusions stand as published. The history and
+branching work shipped with one real defect, in the one place the gate suite could not
+see.
+
+### Fixed
+
+- **A rewind replayed a history that never happened** (docs/06 §24 step 3 was not
+  implemented). A save embeds the command log as it stood when it was taken, and the
+  replay ran on that log alone — so any intervention accepted after the base save but
+  targeting a tick inside the replay window was silently omitted. The preview claimed a
+  tick it was not showing, and **Branch From Here persisted that reconstruction as a new
+  world** whose manifest named the parent and the divergence tick, storing a fiction as
+  the parent's past. With autosave at 2 000 ticks and 5 retained autosaves, every target
+  between a command and the next save hit it. `Reconstruction` now accepts the world
+  line's full command log and re-cursors it to the restored tick; the host passes the
+  live engine's own log, and an adoption from a different world line is refused rather
+  than replayed. Not an authoritative behaviour change — the engine's rules are
+  untouched; what changed is which command stream a rewind replays.
+- **A refused load could destroy an unrelated world.** The Worker validates a snapshot
+  harder than the store does and keeps the previous world running when it refuses one,
+  but the session had already bound itself to the target — so the next autosave
+  serialized the still-running world and filed it under the refused world's manifest.
+  Loads now bind provisionally: saving is suspended until the WORLD_READY that confirms
+  the Worker adopted the bytes, and a refusal restores the previous binding.
+- **A false fatal "world identity mismatch" banner on any in-session load or branch.**
+  The accepted preview's tick-0 digest was compared against every later WORLD_READY, and
+  a loaded world legitimately hashes differently (its plants have grown; another world is
+  another map). The invariant is now checked once, against the world Create World built,
+  and a genuine mismatch pauses the world and persists nothing instead of reporting a
+  stopped simulation that keeps running.
+- **A load during an open preview** left the history panel describing the replaced
+  world's past; it now retires the rewind and returns to live.
+- **Autosave fired on historical telemetry**, producing a "Save failed" the user did not
+  cause and winding the autosave clock back to a past tick; `saveOnHide` during a preview
+  was guaranteed to fail. Both are gated on live mode — the live world is paused and
+  unchanged while a preview is open.
+- **The history scrubber could offer an unreachable tick** after a world switch, because
+  the panel kept its local selection across the change of floor and present. The
+  selection is clamped to the reconstructable range (`viewTargetFor`).
+- **`QUERY_STATE_HASH` with a target tick stepped the PREVIEW engine** — the one mutating
+  message with no historical guard — moving the previewed tick out from under the app and
+  breaking a branch's exact-tick match. Refused while previewing when it would advance;
+  hashing the tick already on screen still answers.
+- **A branch that was written but could not be opened said nothing**, inviting the user
+  to create a duplicate. `branchHere` reports `{worldId, opened}` and the UI says the
+  branch exists and where to find it.
+
+### Changed
+
+- ADR 0025 §5's "no cap-order filtering remains" corrected: the slot-order cap refusal
+  still exists in `reproduction.ts`; the 0.6× calibration is what keeps the measured
+  seeds away from it.
+
 ## [0.8.0] — 2026-08-15 — Post-A25 integrity pass: the corrective release
 
 Versions: `ENGINE_VERSION` 0.7.0 → **0.8.0**, `PROTOCOL_VERSION` 8 → **9**,

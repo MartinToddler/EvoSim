@@ -66,6 +66,20 @@ import {
 
 export type FollowEndReason = "died" | "user" | "selection" | "cleared";
 
+/**
+ * What became of a Branch From Here.
+ *
+ * `worldId` non-null with `opened` false is the honest middle case: the branch
+ * was persisted but the app could not switch into it (a save still settling, a
+ * failed read). The branch is real and listed; only the auto-open did not
+ * happen, and the user must be told that rather than left to create a second
+ * copy of a branch that already exists.
+ */
+export interface BranchResult {
+  worldId: string | null;
+  opened: boolean;
+}
+
 export interface WorldSessionCallbacks {
   onWorldReady: (world: WorldSummaryDto, hostRuntime: HostRuntimeConfig) => void;
   onTelemetry: (telemetry: TelemetryDto) => void;
@@ -176,8 +190,15 @@ export interface WorldSessionOptions {
    * ready (the Create World startup path, ADR 0025). Creating a world is an
    * explicit persistence intent: the baseline binds the manifest, guarantees
    * rewind-to-origin, and arms autosave. Never applied to loaded worlds.
+   *
+   * `expectedEnvironmentHash` is the digest of the map the user accepted on
+   * the New World screen. It is checked against the CREATED world's hash —
+   * once, on the WORLD_READY that answers Create World, never against later
+   * loads or branches, whose environments legitimately differ. On a mismatch
+   * the session reports a fatal error and persists nothing: a world that is
+   * not the one the user accepted must not become their saved baseline.
    */
-  persistBaseline?: { name: string };
+  persistBaseline?: { name: string; expectedEnvironmentHash: string };
   callbacks: WorldSessionCallbacks;
   /** Test seam: supply a fake Worker. Defaults to the real simulation Worker. */
   createWorker?: () => SessionWorker;
@@ -310,10 +331,11 @@ export class WorldSession {
   #lastLiveTick = 0;
 
   /**
-   * World name for the tick-0 baseline save the Create World flow requested;
-   * consumed by the first WORLD_READY of a brand-new world (ADR 0025).
+   * The tick-0 baseline the Create World flow requested (name + the accepted
+   * preview's environment hash); consumed by the first WORLD_READY of a
+   * brand-new world (ADR 0025), and only by it.
    */
-  #pendingBaselineName: string | null = null;
+  #pendingBaseline: { name: string; expectedEnvironmentHash: string } | null = null;
 
   // --- Species and history (Milestone 8) --------------------------------------
   #selectedSpeciesId: number | null = null;
@@ -405,6 +427,14 @@ export class WorldSession {
         this.#refreshHistory(telemetry.latestEventId);
       },
       onError: (error) => {
+        // A refused LOAD_WORLD leaves the PREVIOUS world running, so the
+        // session must stop pretending it is bound to the world it tried to
+        // open — otherwise the next autosave files the running world's state
+        // under the refused world's manifest.
+        if (error.whileHandling === "LOAD_WORLD") {
+          this.#loadingStoredWorld = false;
+          this.#persistence.onLoadRejected(error.message);
+        }
         options.callbacks.onError(error);
       },
       onProtocolViolation: (reason) => {
@@ -450,7 +480,7 @@ export class WorldSession {
         });
       return session;
     }
-    session.#pendingBaselineName = options.persistBaseline?.name ?? null;
+    session.#pendingBaseline = options.persistBaseline ?? null;
     session.#client.initNewWorld({ seed: options.seed, speed: options.initialSpeed });
     return session;
   }
@@ -503,10 +533,13 @@ export class WorldSession {
    * refuses a branch origin over an existing world), and pressing Play is what
    * starts the alternative history.
    */
-  async branchHere(name: string): Promise<string | null> {
+  async branchHere(name: string): Promise<BranchResult> {
     const branchWorldId = await this.#persistence.createBranch(name);
-    if (branchWorldId === null || this.#destroyed) {
-      return branchWorldId;
+    if (branchWorldId === null) {
+      return { worldId: null, opened: false };
+    }
+    if (this.#destroyed) {
+      return { worldId: branchWorldId, opened: false };
     }
     // Leave the parent's preview BEFORE adopting the branch, so the host frees
     // its view engine and the historical status returns to live.
@@ -517,9 +550,12 @@ export class WorldSession {
     const loaded = await this.#persistence.load(branchWorldId, "paused");
     if (!loaded) {
       this.#loadingStoredWorld = false;
-      return null;
+      // The branch EXISTS — it was written before this. Saying "nothing
+      // happened" would send the user back to make a second one; the caller is
+      // told the world is there and only the switch did not happen.
+      return { worldId: branchWorldId, opened: false };
     }
-    return branchWorldId;
+    return { worldId: branchWorldId, opened: true };
   }
 
   setSpeed(speed: SimulationSpeed): void {
@@ -826,7 +862,14 @@ export class WorldSession {
    * not something a web page can do.
    */
   saveOnHide(): void {
-    if (this.#persistence.status.worldId === null) {
+    if (
+      this.#persistence.status.worldId === null ||
+      // A preview is read-only, and the Worker refuses a save while one is
+      // open. Hiding the tab mid-preview must not produce a failed save: the
+      // live world is paused and unchanged since the preview began, so the
+      // last autosave still describes it.
+      this.#persistence.historical.mode !== "live"
+    ) {
       return;
     }
     void this.#persistence.save({ kind: "autosave" });
@@ -971,10 +1014,33 @@ export class WorldSession {
     // world gets its exact tick-0 baseline written immediately, which binds the
     // manifest and arms autosave. Discarded previews were never here at all,
     // and a loaded world already has its own history.
-    if (!wasLoad && this.#pendingBaselineName !== null) {
-      const baselineName = this.#pendingBaselineName;
-      this.#pendingBaselineName = null;
-      void this.#persistence.save({ kind: "manual", name: baselineName });
+    if (!wasLoad && this.#pendingBaseline !== null) {
+      const baseline = this.#pendingBaseline;
+      this.#pendingBaseline = null;
+      // The preview-identity invariant (ADR 0025): the world the user accepted
+      // on the New World screen and the world the Worker built must be the
+      // same map. Checked HERE, against the created world only — a later load
+      // or branch legitimately hashes differently and must never trip it. If
+      // this ever fires, determinism itself is broken; the world stays paused
+      // and nothing is persisted under the accepted name.
+      if (frozenWorld.environmentHash !== baseline.expectedEnvironmentHash) {
+        // The banner says the simulation stopped, so stop it rather than
+        // leaving a world nobody accepted running behind the warning.
+        this.setSpeed("paused");
+        this.#options.callbacks.onError({
+          message:
+            `world identity mismatch: the previewed map hashed ` +
+            `${baseline.expectedEnvironmentHash} but the authoritative world generated ` +
+            `${frozenWorld.environmentHash}`,
+          fatal: true,
+          tick: 0,
+          seed: frozenWorld.seed,
+          engineVersion: frozenWorld.engineVersion,
+          whileHandling: "WORLD_READY",
+        });
+        return;
+      }
+      void this.#persistence.save({ kind: "manual", name: baseline.name });
     }
   }
 

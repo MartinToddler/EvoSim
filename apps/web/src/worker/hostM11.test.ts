@@ -1,4 +1,4 @@
-import { SimulationEngine } from "@eon/engine";
+import { InterventionKind, SimulationEngine } from "@eon/engine";
 import { decodeDurableSnapshot } from "@eon/persistence/codec";
 import type {
   HistoricalModeReadyPayload,
@@ -166,6 +166,80 @@ describe("REQUEST_REWIND", () => {
   });
 });
 
+describe("a rewind replays the history the world actually had", () => {
+  /**
+   * The defect this pins (docs/06 §24 step 3): a save at tick S carries only
+   * the commands accepted by S. An intervention fired AFTER the last save but
+   * targeting a tick inside the replay window used to be omitted from the
+   * reconstruction, so the "preview" showed a past that never happened — and
+   * a branch taken from it persisted that fiction as the parent's history.
+   * The host now hands the live world's own command log to the replay.
+   */
+  function worldWithLateCommand(): {
+    runtime: TestRuntime;
+    host: SimulationHost;
+    save: SnapshotDataPayload;
+    presentTick: number;
+  } {
+    const { runtime, host } = createHost();
+    runTo(host, 40);
+    // The only save is at tick 40 — BEFORE the command exists.
+    const early = save(host, runtime);
+    host.handleMessage(
+      message("QUEUE_COMMAND", { command: { kind: "setGlobalTemperature", offsetCentiC: 900 } }, 3),
+    );
+    runTo(host, 120);
+    runtime.clearPosted();
+    return { runtime, host, save: early, presentTick: 120 };
+  }
+
+  it("applies a command issued after the save it replays from", () => {
+    const { runtime, host, save: early } = worldWithLateCommand();
+
+    // The reference: the same save, replayed with the same command applied at
+    // the same tick, built independently of the host.
+    const reference = SimulationEngine.fromSnapshot(
+      decodeDurableSnapshot(new Uint8Array(early.buffer.slice(0))).snapshot,
+    );
+    expect(
+      reference.queueCommand({ kind: InterventionKind.SetGlobalTemperature, offsetCentiC: 900 })
+        .accepted,
+    ).toBe(true);
+    reference.stepMany(60);
+
+    const { ready } = rewind(host, runtime, early.buffer, 100);
+    expect(ready?.tick).toBe(100);
+    expect(ready?.stateHash).toBe(reference.computeStateHash());
+
+    // And the counterfeit it used to produce — the same replay with no command
+    // — is a genuinely different world, so this is not a vacuous assertion.
+    const withoutCommand = SimulationEngine.fromSnapshot(
+      decodeDurableSnapshot(new Uint8Array(early.buffer.slice(0))).snapshot,
+    );
+    withoutCommand.stepMany(60);
+    expect(ready?.stateHash).not.toBe(withoutCommand.computeStateHash());
+  });
+
+  it("branches a history that includes the late command", () => {
+    const { runtime, host, save: early } = worldWithLateCommand();
+    rewind(host, runtime, early.buffer, 100);
+    const previewHash = runtime.last("HISTORICAL_MODE_READY")?.payload.stateHash;
+    runtime.clearPosted();
+
+    host.handleMessage(message("CREATE_BRANCH", { branchTick: 100 }, 11));
+    const origin = runtime.last("SNAPSHOT_DATA")?.payload;
+    expect(origin?.tick).toBe(100);
+    expect(origin?.stateHash).toBe(previewHash);
+    // The branch inherits the command as applied history, not as a pending one
+    // it would re-run.
+    const restored = SimulationEngine.fromSnapshot(
+      decodeDurableSnapshot(new Uint8Array((origin as SnapshotDataPayload).buffer)).snapshot,
+    );
+    expect(restored.commands.length).toBe(1);
+    expect(restored.commands.pendingCount).toBe(0);
+  });
+});
+
 describe("a preview is read-only", () => {
   function previewing(): { runtime: TestRuntime; host: SimulationHost; presentHash: string } {
     const { runtime, host } = createHost();
@@ -195,6 +269,23 @@ describe("a preview is read-only", () => {
 
     expect(runtime.last("ERROR")?.payload.message).toMatch(/cannot save while previewing/);
     expect(runtime.last("SNAPSHOT_DATA")).toBeUndefined();
+  });
+
+  it("refuses to step the preview forward through a state-hash query", () => {
+    // The one mutating message that used to have no preview guard: with a
+    // target tick it stepped the VIEW engine, silently moving the previewed
+    // tick and making a branch from that preview fail its exact-tick match.
+    const { runtime, host, presentHash } = previewing();
+    const before = runtime.last("HISTORICAL_MODE_READY")?.payload;
+
+    host.handleMessage(message("QUERY_STATE_HASH", { targetTick: 90 }, 12));
+
+    expect(runtime.last("ERROR")?.payload.message).toMatch(/history is read-only/);
+    // Neither engine moved: a branch at the previewed tick still succeeds.
+    expect(host.stateHash()).toBe(presentHash);
+    runtime.clearPosted();
+    host.handleMessage(message("CREATE_BRANCH", { branchTick: before?.tick ?? -1 }, 13));
+    expect(runtime.last("SNAPSHOT_DATA")?.payload.tick).toBe(before?.tick);
   });
 
   it("ignores time controls, so the present cannot start running underneath it", () => {

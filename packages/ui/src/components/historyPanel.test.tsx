@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { HistoryPanel, type HistoryPanelProps } from "./HistoryPanel";
+import { HistoryPanel, viewTargetFor, type HistoryPanelProps } from "./HistoryPanel";
 
 /**
  * The history panel rendered as static markup, like the other panel tests: the
@@ -133,5 +133,36 @@ describe("HistoryPanel", () => {
     );
     expect(html).toContain("history-panel__message--failed");
     expect(html).toContain("no save at or before tick 100");
+  });
+});
+
+describe("viewTargetFor", () => {
+  const bounds = { minTick: 2_000, maxTick: 12_500, shownTick: 12_500 };
+
+  it("offers nothing until a time is selected", () => {
+    expect(viewTargetFor({ ...bounds, selected: null })).toBeNull();
+  });
+
+  it("offers a selected tick inside the reconstructable range", () => {
+    expect(viewTargetFor({ ...bounds, selected: 5_000 })).toBe(5_000);
+  });
+
+  it("offers nothing when the selection is already the tick on screen", () => {
+    expect(viewTargetFor({ ...bounds, selected: 12_500 })).toBeNull();
+    expect(viewTargetFor({ ...bounds, shownTick: 5_000, selected: 5_000 })).toBeNull();
+  });
+
+  it("never offers a tick below the floor, however the selection got there", () => {
+    // A selection made in the previous world survives a switch to a branch or
+    // a loaded world with a later floor. Offering it would produce a rewind the
+    // new world cannot serve — an error where the control should simply never
+    // have pointed there.
+    expect(viewTargetFor({ ...bounds, selected: 0 })).toBe(2_000);
+    expect(viewTargetFor({ ...bounds, minTick: 8_000, selected: 3_000 })).toBe(8_000);
+  });
+
+  it("never offers a tick after the present", () => {
+    expect(viewTargetFor({ ...bounds, selected: 99_000 })).toBeNull();
+    expect(viewTargetFor({ ...bounds, maxTick: 4_000, selected: 99_000 })).toBe(4_000);
   });
 });

@@ -23,6 +23,9 @@ import { WorldSession, type SessionRenderer, type SessionWorker } from "./WorldS
  * world's identity, and a load keeps it.
  */
 
+/** The environment digest the fixture world reports on WORLD_READY. */
+const FIXTURE_ENVIRONMENT_HASH = "feedfacefeedface";
+
 interface PostedMessage {
   type: string;
   payload: Record<string, unknown>;
@@ -141,7 +144,7 @@ function worldFixture(): WorldSummaryDto {
     configSchemaVersion: 1,
     snapshotSchemaVersion: 1,
     configHash: "0123456789abcdef",
-    environmentHash: "feedfacefeedface",
+    environmentHash: FIXTURE_ENVIRONMENT_HASH,
     worldSizeLU: 256,
     gridSize: 8,
     cellSizeLU: 32,
@@ -230,6 +233,8 @@ interface Harness {
   latestWorlds: () => readonly StoredWorld[];
   status: () => PersistenceStatus;
   ready: (options?: { telemetryTick?: number }) => Promise<void>;
+  /** WORLD_READY for a world whose summary differs from the fixture's. */
+  readyWith: (overrides: Partial<WorldSummaryDto>) => Promise<void>;
   /** Answer the newest REQUEST_SAVE with a genuine durable container. */
   answerSave: (tick: number) => Promise<void>;
   telemetry: (tick: number) => void;
@@ -239,7 +244,9 @@ interface Harness {
 let indexedDb: IDBFactory;
 let idCounter = 0;
 
-function createHarness(extra: { persistBaseline?: { name: string } } = {}): Harness {
+function createHarness(
+  extra: { persistBaseline?: { name: string; expectedEnvironmentHash: string } } = {},
+): Harness {
   const worker = new FakeWorker();
   const statuses: PersistenceStatus[] = [];
   const errors: string[] = [];
@@ -315,6 +322,19 @@ function createHarness(extra: { persistBaseline?: { name: string } } = {}): Harn
       });
       await flush();
     },
+    readyWith: async (overrides): Promise<void> => {
+      worker.emit({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "WORLD_READY",
+        payload: {
+          world: { ...worldFixture(), ...overrides },
+          hostRuntime: { ...DEFAULT_HOST_RUNTIME_CONFIG },
+          terrain: createTerrainBuffer(8),
+          telemetry: telemetryFixture(0),
+        },
+      });
+      await flush();
+    },
     answerSave: async (tick): Promise<void> => {
       const request = worker.last("REQUEST_SAVE");
       if (request?.requestId === undefined) {
@@ -332,7 +352,7 @@ function createHarness(extra: { persistBaseline?: { name: string } } = {}): Harn
           engineVersion: "test",
           snapshotSchemaVersion: 1,
           configHash: "0123456789abcdef",
-          environmentHash: "feedfacefeedface",
+          environmentHash: FIXTURE_ENVIRONMENT_HASH,
           seed: 7,
           reason: request.payload["reason"],
         },
@@ -613,7 +633,9 @@ describe("loading from the app shell", () => {
 
 describe("the tick-0 baseline of a created world (ADR 0025)", () => {
   it("persists a tick-0 baseline, binds the manifest and arms autosave without user action", async () => {
-    const harness = createHarness({ persistBaseline: { name: "Genesis" } });
+    const harness = createHarness({
+      persistBaseline: { name: "Genesis", expectedEnvironmentHash: FIXTURE_ENVIRONMENT_HASH },
+    });
     await harness.ready();
 
     // Create World is an explicit persistence intent: the session itself must
@@ -630,6 +652,45 @@ describe("the tick-0 baseline of a created world (ADR 0025)", () => {
     const stored = harness.latestWorlds();
     expect(stored).toHaveLength(1);
     expect(stored[0]?.saves.some((save) => save.tick === 0)).toBe(true);
+    harness.session.destroy();
+  });
+
+  it("refuses to persist — or run — a world that is not the map the user accepted", async () => {
+    // The preview-identity invariant (ADR 0025). If the world the Worker built
+    // ever disagrees with the previewed map, determinism itself is broken: the
+    // session must say so and must NOT store that world under the accepted
+    // name.
+    const harness = createHarness({
+      persistBaseline: { name: "Genesis", expectedEnvironmentHash: "0000000000000000" },
+    });
+    await harness.ready();
+
+    expect(harness.worker.last("REQUEST_SAVE")).toBeUndefined();
+    expect(harness.status().worldId).toBeNull();
+    expect(harness.errors.some((message) => /world identity mismatch/.test(message))).toBe(true);
+    // The banner claims the simulation stopped, so it is stopped.
+    expect(harness.worker.last("SET_RUN_STATE")?.payload["speed"]).toBe("paused");
+    harness.session.destroy();
+  });
+
+  it("checks the accepted map against the created world only, never a later load", async () => {
+    // Regression: the check used to run on EVERY WORLD_READY, comparing a
+    // tick-0 preview digest against worlds that legitimately differ — a loaded
+    // world has grown plants, and another world is another map — so a healthy
+    // in-session load raised a fatal "world identity mismatch" banner.
+    const harness = createHarness({
+      persistBaseline: { name: "Genesis", expectedEnvironmentHash: FIXTURE_ENVIRONMENT_HASH },
+    });
+    await harness.ready();
+    await harness.answerSave(0);
+    const worldId = harness.status().worldId as string;
+
+    harness.session.loadWorld(worldId);
+    await harness.flush();
+    // The world that comes back reports a different map digest: plants grew.
+    await harness.readyWith({ environmentHash: "0f0f0f0f0f0f0f0f" });
+
+    expect(harness.errors.filter((message) => /world identity mismatch/.test(message))).toEqual([]);
     harness.session.destroy();
   });
 

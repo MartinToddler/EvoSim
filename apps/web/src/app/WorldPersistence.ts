@@ -142,6 +142,24 @@ export class WorldPersistence {
   /** The save or load currently running, so a manual save can wait for it. */
   #current: Promise<unknown> = Promise.resolve();
   #disposed = false;
+  /**
+   * Whether the world this session is BOUND to is the world the Worker is
+   * actually running.
+   *
+   * LOAD_WORLD is fire-and-forget, and the Worker validates harder than the
+   * store does — it restores the snapshot and re-checks its state hash, and on
+   * failure it refuses the bytes and keeps the PREVIOUS world running
+   * (`SimulationHost.#loadWorld`). Binding the session to the target before
+   * that verdict arrives is what let an autosave write the still-running old
+   * world's state into the refused world's manifest, destroying it by
+   * contamination. So a load binds *provisionally*: saving is suspended until
+   * the WORLD_READY that confirms the Worker took the bytes, and a refusal
+   * restores the previous binding instead of keeping the wrong one.
+   */
+  #binding: { confirmed: boolean; previous: PersistenceStatus | null } = {
+    confirmed: true,
+    previous: null,
+  };
 
   constructor(options: WorldPersistenceOptions) {
     this.#options = options;
@@ -160,6 +178,9 @@ export class WorldPersistence {
   onWorldReady(autosaveCheckInterval: number, options: { keepBinding: boolean }): void {
     this.#autosaveInterval = autosaveCheckInterval;
     this.#lastAutosaveTick = 0;
+    // The Worker accepted a world: whatever binding is in force now describes
+    // the world actually running, so saving is safe again.
+    this.#binding = { confirmed: true, previous: null };
     if (!options.keepBinding) {
       this.#update({ ...IDLE_STATUS });
     } else if (this.#status.worldId !== null) {
@@ -195,6 +216,13 @@ export class WorldPersistence {
       this.#inFlight ||
       this.#autosaveInterval <= 0 ||
       this.#status.worldId === null ||
+      // While a preview is open the telemetry describes the HISTORICAL engine,
+      // so this tick is a past one. Autosaving on it would be refused by the
+      // Worker (a save whose contents and label disagree), report a failure the
+      // user did not cause, and reset the cadence clock to a historical tick.
+      // The live world is paused during a preview, so nothing is at risk.
+      this.#historical.mode !== "live" ||
+      !this.#binding.confirmed ||
       tick - this.#lastAutosaveTick < this.#autosaveInterval
     ) {
       return;
@@ -223,6 +251,19 @@ export class WorldPersistence {
    */
   async save(options: { kind: "manual" | "autosave"; name?: string }): Promise<boolean> {
     if (this.#disposed) {
+      return false;
+    }
+    if (!this.#binding.confirmed) {
+      // A load is in flight and the Worker has not said whether it took the
+      // bytes. Saving now would serialize whichever world it is still running
+      // and file it under whichever world this session is provisionally bound
+      // to — the two are not necessarily the same one (see #binding).
+      this.#update({
+        ...this.#status,
+        busy: false,
+        message: "Waiting for the world being loaded before saving",
+        failed: false,
+      });
       return false;
     }
     if (this.#inFlight && options.kind === "autosave") {
@@ -319,6 +360,7 @@ export class WorldPersistence {
   }
 
   async #loadNow(worldId: string, speed: SimulationSpeed, snapshotId?: string): Promise<boolean> {
+    const previousBinding = this.#status;
     this.#update({ ...this.#status, busy: true, message: "Loading…", failed: false });
     try {
       // The store validates as it reads, so a damaged newest save is detected
@@ -328,6 +370,16 @@ export class WorldPersistence {
       // run the world is the build that checks it.
       const result = await this.#store.load(worldId, snapshotId);
       this.#options.client.loadWorld({ snapshot: result.bytes, speed });
+      // Provisional until WORLD_READY: see #binding. A load also ends any
+      // historical preview — the past on screen belonged to the world being
+      // replaced — so the rewind token is retired and the status returns to
+      // live rather than describing the old world's past over the new one.
+      this.#binding = { confirmed: false, previous: previousBinding };
+      this.#rewindToken += 1;
+      this.#activeRewindRequestId = -1;
+      if (this.#historical.mode !== "live") {
+        this.#updateHistorical(LIVE_HISTORICAL_STATUS);
+      }
       await this.#store.touch(worldId);
 
       const fallback =
@@ -366,6 +418,28 @@ export class WorldPersistence {
     } finally {
       this.#inFlight = false;
     }
+  }
+
+  /**
+   * The Worker refused the bytes of a load: it is still running the previous
+   * world, so the session goes back to describing that world.
+   *
+   * Without this the session would stay bound to a world the Worker never
+   * adopted, and the next autosave would write the old world's state into the
+   * refused world's manifest.
+   */
+  onLoadRejected(detail: string): void {
+    if (this.#disposed || this.#binding.confirmed) {
+      return;
+    }
+    const previous = this.#binding.previous ?? IDLE_STATUS;
+    this.#binding = { confirmed: true, previous: null };
+    this.#update({
+      ...previous,
+      busy: false,
+      message: `Load failed: ${detail}. The world you were running is still open.`,
+      failed: true,
+    });
   }
 
   // --- Historical mode (Milestone 11, tasks K07-K10) --------------------------

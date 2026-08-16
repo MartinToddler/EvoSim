@@ -1,4 +1,5 @@
 import { SimulationEngine } from "../SimulationEngine";
+import type { CommandLogSnapshot } from "../commands/CommandLog";
 import type { EngineCoreSnapshot } from "../snapshot/EngineSnapshot";
 
 /**
@@ -60,6 +61,60 @@ export interface ReconstructionOptions {
   /** The save payload to restore. */
   snapshot: EngineCoreSnapshot;
   targetTick: number;
+  /**
+   * The world line's FULL command log — normally the live engine's — so the
+   * replay applies every command the real history applied, not just the ones
+   * the base save happened to know about (docs/06 §24 step 3).
+   *
+   * A save taken at tick S carries only the commands accepted by then. A
+   * command accepted later but targeting a tick inside the replay window would
+   * otherwise be silently omitted, and the reconstruction would show a past
+   * that never happened — a meteor dropped since the last autosave would be
+   * missing from the very preview meant to revisit it. The log is append-only
+   * and every save embeds its prefix, so the live log is authoritative for
+   * every save of the same world line; the adoption validates that containment
+   * rather than assuming it.
+   *
+   * Omitted, the replay runs on the save's own log alone — correct only when
+   * no command was accepted after the save, which is what the engine-only
+   * tests use.
+   */
+  authoritativeLog?: CommandLogSnapshot;
+}
+
+/**
+ * Replace `engine`'s restored command log with the world line's full log,
+ * re-cursored to the engine's tick.
+ *
+ * The invariant this preserves is the tick convention above: commands
+ * targeting ticks before the engine's current tick form the applied prefix,
+ * everything else is pending. The engine's own log MUST be contained in the
+ * adopted one — same id, tick and sequence for every command — or the adopted
+ * log belongs to a different world line and replaying it would fabricate
+ * history rather than reproduce it.
+ */
+function adoptAuthoritativeLog(engine: SimulationEngine, log: CommandLogSnapshot): void {
+  const byId = new Map(log.commands.map((command) => [command.id, command]));
+  for (const own of engine.commands.list()) {
+    const adopted = byId.get(own.id);
+    if (adopted === undefined || adopted.tick !== own.tick || adopted.sequence !== own.sequence) {
+      throw new ReconstructionError(
+        `the supplied command log does not contain command ${own.id} (tick ${own.tick}, ` +
+          `sequence ${own.sequence}) from the save's own log; it belongs to a different world line`,
+      );
+    }
+  }
+
+  let cursor = 0;
+  while (cursor < log.commands.length && (log.commands[cursor]?.tick ?? Infinity) < engine.tick) {
+    cursor += 1;
+  }
+  engine.commands.restore({
+    nextCommandId: log.nextCommandId,
+    nextSequence: log.nextSequence,
+    cursor,
+    commands: log.commands,
+  });
 }
 
 /**
@@ -100,6 +155,9 @@ export class Reconstruction {
     }
 
     this.engine = SimulationEngine.fromSnapshot(snapshot);
+    if (options.authoritativeLog !== undefined) {
+      adoptAuthoritativeLog(this.engine, options.authoritativeLog);
+    }
     this.fromTick = this.engine.tick;
     this.targetTick = targetTick;
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "../SimulationEngine";
 import { InterventionKind } from "../commands/SimulationCommand";
+import { cloneConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import type { EngineCoreSnapshot } from "../snapshot/EngineSnapshot";
 import {
@@ -249,5 +250,129 @@ describe("branch origin snapshots", () => {
     expect(SimulationEngine.fromSnapshot(branch).computeStateHash()).toBe(
       SimulationEngine.fromSnapshot(snapshot).computeStateHash(),
     );
+  });
+});
+
+describe("replay applies the commands the history actually applied (docs/06 §24 step 3)", () => {
+  /**
+   * The defect this pins: a save taken at tick S carries only the commands
+   * accepted by S. A command accepted AFTER S but targeting a tick inside the
+   * replay window is not in that save, and replaying from the save alone
+   * silently omits it — the "preview" then shows a past that never happened,
+   * and branching from it persists that fiction as the parent's history.
+   *
+   * The live command log is the world line's full record, so the host hands it
+   * to the reconstruction. These run on the small world: what is under test is
+   * the command plumbing, not the reference world's biology.
+   */
+  const SMALL_GRID = 96;
+  const SMALL_CONFIG = (() => {
+    const config = cloneConfig(DEFAULT_CONFIG);
+    config.world.envGridSize = SMALL_GRID;
+    config.world.sizeLU = SMALL_GRID * config.world.envCellSizeLU;
+    config.world.generation.edgeFalloffCells = Math.max(1, Math.floor(SMALL_GRID / 8));
+    config.world.initialOrganisms = 64;
+    config.world.founderSpawnRadiusLU = Math.min(
+      config.world.founderSpawnRadiusLU,
+      config.world.sizeLU / 4,
+    );
+    config.world.validity.minFounderRegionCells = Math.floor((SMALL_GRID * SMALL_GRID) / 8);
+    config.world.validity.minTotalPlantCapacity = Math.floor(
+      config.world.validity.minTotalPlantCapacity / 16,
+    );
+    return config;
+  })();
+
+  const BASE_SAVE_TICK = 50;
+  const COMMAND_TICK = 120;
+  const TARGET_TICK = 200;
+
+  /**
+   * One live run: save at 50 (BEFORE any command exists), then queue a
+   * temperature command at 120 and carry on to 200. The command is in the live
+   * log and in no save at or before the target.
+   */
+  function liveRun(): { base: EngineCoreSnapshot; live: SimulationEngine; hash: string } {
+    const engine = new SimulationEngine({ seed: SEED, config: SMALL_CONFIG });
+    engine.stepMany(BASE_SAVE_TICK);
+    const base = engine.serialize();
+    engine.stepMany(COMMAND_TICK - BASE_SAVE_TICK);
+    expect(
+      engine.queueCommand({ kind: InterventionKind.SetGlobalTemperature, offsetCentiC: 900 })
+        .accepted,
+    ).toBe(true);
+    engine.stepMany(TARGET_TICK - COMMAND_TICK);
+    return { base, live: engine, hash: engine.computeStateHash() };
+  }
+
+  it("reproduces the live state exactly when handed the live command log", () => {
+    const { base, live, hash } = liveRun();
+    const replayed = reconstructAt({
+      snapshot: base,
+      targetTick: TARGET_TICK,
+      authoritativeLog: live.commands.capture(),
+    });
+    expect(replayed.tick).toBe(TARGET_TICK);
+    expect(replayed.computeStateHash()).toBe(hash);
+    // The command is applied history in the reconstruction, not still pending.
+    expect(replayed.commands.length).toBe(1);
+    expect(replayed.commands.pendingCount).toBe(0);
+  });
+
+  it("diverges from the live state when the later command is omitted", () => {
+    const { base, hash } = liveRun();
+    const withoutLog = reconstructAt({ snapshot: base, targetTick: TARGET_TICK });
+    expect(withoutLog.commands.length).toBe(0);
+    // Demonstrates that the command genuinely changes the world, so the test
+    // above is proving the graft rather than passing on an inert command.
+    expect(withoutLog.computeStateHash()).not.toBe(hash);
+  });
+
+  it("keeps a command targeting a tick after the target pending, not applied", () => {
+    const engine = new SimulationEngine({ seed: SEED, config: SMALL_CONFIG });
+    engine.stepMany(BASE_SAVE_TICK);
+    const base = engine.serialize();
+    expect(
+      engine.queueCommand({
+        kind: InterventionKind.SetGlobalTemperature,
+        offsetCentiC: 900,
+        targetTick: TARGET_TICK + 100,
+      }).accepted,
+    ).toBe(true);
+
+    const replayed = reconstructAt({
+      snapshot: base,
+      targetTick: TARGET_TICK,
+      authoritativeLog: engine.commands.capture(),
+    });
+    expect(replayed.tick).toBe(TARGET_TICK);
+    expect(replayed.commands.length).toBe(1);
+    expect(replayed.commands.pendingCount).toBe(1);
+  });
+
+  it("refuses a command log that is not this world line's", () => {
+    const engine = new SimulationEngine({ seed: SEED, config: SMALL_CONFIG });
+    expect(
+      engine.queueCommand({ kind: InterventionKind.SetGlobalTemperature, offsetCentiC: 250 })
+        .accepted,
+    ).toBe(true);
+    engine.stepMany(BASE_SAVE_TICK);
+    const base = engine.serialize();
+
+    // Another world line: same shape of log, different command identities.
+    const other = new SimulationEngine({ seed: SEED, config: SMALL_CONFIG });
+    expect(
+      engine.queueCommand({ kind: InterventionKind.SetGlobalTemperature, offsetCentiC: 250 })
+        .accepted,
+    ).toBe(true);
+    other.stepMany(BASE_SAVE_TICK);
+
+    expect(() =>
+      reconstructAt({
+        snapshot: base,
+        targetTick: TARGET_TICK,
+        authoritativeLog: other.commands.capture(),
+      }),
+    ).toThrowError(/different world line/);
   });
 });

@@ -615,3 +615,53 @@ instead of permanent (7/12 under the cap at tick 10 000, median skips 3 082 agai
 12/12 saturated), and the docs/01 §12 speciation gate covered by a deterministic test.
 Costs stated in ADR 0025 §6: the suite gains the ~40-minute speciation run; the golden
 fixture suite runs 2.6× faster on the leaner world.
+
+## Post-A25 independent adversarial audit (ADR 0026)
+
+An outside re-audit of the ADR 0025 claims: nothing was taken on the word of an ADR,
+a checkbox, a test name or a comment. Every claim was traced in code or reproduced by
+running it.
+
+- [x] O01 calibration reproduced independently — `pnpm sweep` over the documented seed
+      family (`FIXTURE_SEED + i × 7919`, i = 0…11) at 10 000 ticks on plain
+      `DEFAULT_CONFIG` reproduces ADR 0025 §2d **exactly**: 12/12 survive, 0/12 refuse
+      births (max peak 6 677), 12/12 scavenge (median 1 580 620 units), 7/12 under the
+      carcass cap with median 3 082 skips, median population 2 699, median trait sd
+      0.0347, kills 0. The ecological half of ADR 0025 stands as published.
+- [x] O02 **rewind replayed a history that never happened** (P0) — docs/06 §24 step 3
+      was not implemented: the replay ran on the base save's embedded command log, so
+      any intervention accepted after that save was omitted, and Branch From Here
+      persisted the resulting fiction as the parent's past. `Reconstruction` now takes
+      the world line's full log (`authoritativeLog`) and re-cursors it; the host passes
+      the live engine's own. Four engine and two host regression tests; every golden
+      hash unchanged (the engine's rules did not move — only which command stream a
+      rewind replays).
+- [x] O03 **a refused load could destroy an unrelated world** (P1) — the session bound
+      to the load target before the Worker accepted the bytes, so an autosave after a
+      refusal wrote the still-running world's state into the refused world's manifest.
+      Loads bind provisionally now; saving waits for the confirming WORLD_READY and a
+      refusal restores the previous binding.
+- [x] O04 **false fatal "world identity mismatch"** (P1) — the accepted preview's tick-0
+      digest was compared against every later WORLD_READY, so a healthy in-session load
+      or branch raised a fatal banner over a working world. Checked once now, against
+      the created world only; a genuine mismatch pauses the world and persists nothing.
+- [x] O05 preview integrity (P2/P3) — a load during a preview returns the history status
+      to live; autosave and `saveOnHide` are gated on live mode (they were firing on
+      historical ticks and reporting failures the user did not cause); the scrubber
+      clamps a selection carried across a world switch so it can never offer a tick the
+      new world cannot reach; `QUERY_STATE_HASH` can no longer step the preview engine.
+- [x] O06 branch honesty (P3) — a branch that is written but cannot be opened now says
+      so and names where to find it, instead of looking like nothing happened.
+
+Two findings recorded and deliberately not changed (ADR 0026 §3): `earliestTick` in
+HISTORICAL_MODE_READY is hardcoded to 0 and wrong for branch worlds, but no code reads
+it; and `?view=generator` remains a developer view that builds an unpersisted
+main-thread world outside the acceptance flow.
+
+One pre-existing E2E failure is stated rather than retuned (ADR 0026 §4): `world.spec.ts`
+scenario 4 sweeps a click grid for an organism, and the deliberate 0.8.0 leaner world
+(median population 2 699 against 5 156) makes that sweep miss. Selection itself works and
+is covered by other scenarios.
+
+Post-A25 independent audit gate: **PASS** (engine 0.8.0 unchanged, protocol 9 unchanged,
+all six golden hashes unchanged, ADR 0026).

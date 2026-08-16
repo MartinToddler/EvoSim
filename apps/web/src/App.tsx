@@ -286,25 +286,25 @@ export function App(): React.JSX.Element {
       // reopens paused at its restored tick. Play is the user's act (ADR 0025).
       initialSpeed: "paused",
       ...(start.kind === "load" ? { startFrom: { worldId: start.worldId } } : {}),
-      ...(start.kind === "new" ? { persistBaseline: { name: start.name } } : {}),
+      ...(start.kind === "new"
+        ? {
+            persistBaseline: {
+              name: start.name,
+              // The preview-identity invariant (ADR 0025) is checked by the
+              // session, against the CREATED world only. Checking it here
+              // against every WORLD_READY was wrong: a later load or branch
+              // replaces the world with a different map (and a world that has
+              // run carries grown plants), so the digest legitimately differs
+              // and the check fired on healthy worlds.
+              expectedEnvironmentHash: start.environmentHash,
+            },
+          }
+        : {}),
       callbacks: {
         onWorldReady: (readyWorld, runtime) => {
-          // The preview-identity invariant (ADR 0025): the world the user
-          // accepted on the New World screen and the world the Worker built
-          // must be the same map. Same seed + same config is guaranteed to
-          // produce it; if this ever fires, determinism itself is broken.
-          if (start.kind === "new" && readyWorld.environmentHash !== start.environmentHash) {
-            setError({
-              message:
-                `world identity mismatch: the previewed map hashed ${start.environmentHash} ` +
-                `but the authoritative world generated ${readyWorld.environmentHash}`,
-              fatal: true,
-              tick: 0,
-              seed: readyWorld.seed,
-              engineVersion: readyWorld.engineVersion,
-              whileHandling: "WORLD_READY",
-            });
-          }
+          // A world arrived, so whatever the previous one failed with no longer
+          // describes what is on screen.
+          setError(null);
           // A fresh world's charts must not continue a previous world's lines.
           history.clear();
           setWorld(readyWorld);
@@ -635,8 +635,19 @@ export function App(): React.JSX.Element {
       const parentName = persistence?.worldName ?? "the original world";
       const branchTick = historical?.tick ?? 0;
       void (async () => {
-        const branchWorldId = await sessionRef.current?.branchHere(name);
-        if (branchWorldId == null) {
+        const result = await sessionRef.current?.branchHere(name);
+        if (result == null || result.worldId === null) {
+          // The branch was never written; the persistence status says why.
+          return;
+        }
+        if (!result.opened) {
+          // Written but not switched into. Saying nothing would send the user
+          // back to create a second copy of a branch that already exists.
+          setBranchNotice(
+            `Branch “${name}” was created from “${parentName}” at tick ` +
+              `${branchTick.toLocaleString()}, but could not be opened just now. ` +
+              `It is in the Worlds list — open it from there.`,
+          );
           return;
         }
         // The branch is now the open world, paused at the branch tick

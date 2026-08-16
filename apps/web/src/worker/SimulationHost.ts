@@ -1097,6 +1097,17 @@ export class SimulationHost {
       throw new Error("cannot hash state before a world is initialized");
     }
     if (targetTick !== null) {
+      if (this.previewing && targetTick > engine.tick) {
+        // Stepping to a LATER target here would step the historical view
+        // engine, moving the previewed tick out from under the app and
+        // breaking the exact-tick match a branch from this preview needs.
+        // Asking for the tick already on screen still answers: that reads the
+        // preview, it does not advance it.
+        throw new Error(
+          `cannot step the preview to tick ${targetTick}: history is read-only, so time only ` +
+            "moves in the present. Return to the present first.",
+        );
+      }
       if (targetTick < engine.tick) {
         throw new Error(
           `cannot hash tick ${targetTick}: the world is already at ${engine.tick} and the engine ` +
@@ -1211,7 +1222,16 @@ export class SimulationHost {
       );
     }
 
-    const reconstruction = new Reconstruction({ snapshot: state, targetTick });
+    // The save's embedded log knows only the commands accepted by the time the
+    // save was taken. The live engine's log is the world line's full history —
+    // append-only, so a strict superset — and replaying without it would omit
+    // any intervention accepted since that save (docs/06 §24 step 3): the
+    // preview would show a past that never happened.
+    const reconstruction = new Reconstruction({
+      snapshot: state,
+      targetTick,
+      authoritativeLog: live.commands.capture(),
+    });
     this.#replay = { reconstruction, requestId, handle: null };
     this.#postRewindProgress(reconstruction.progress, requestId);
     this.#scheduleReplaySlice();

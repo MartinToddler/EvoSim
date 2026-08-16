@@ -65,6 +65,34 @@ function progressPercent(replayed: number, total: number): number {
 /** How many save chips are shown before the rest collapse into a count. */
 const MAX_SAVE_CHIPS = 10;
 
+/**
+ * The tick "View this time" would reconstruct, or null when there is nothing
+ * to do.
+ *
+ * A selection is only ever offered inside the reconstructable range, and the
+ * clamp is what makes that true across a WORLD SWITCH: the panel keeps its
+ * local selection while it stays mounted, and a branch or a loaded world can
+ * have a different floor and a different present. Unclamped, a selection made
+ * in the previous world could offer a tick the new one cannot reach, and the
+ * commit would fail with an error rather than never being offered.
+ *
+ * Exported because it is the panel's one piece of real logic; the component
+ * itself is markup, and the static-markup tests cannot drive a slider.
+ */
+export function viewTargetFor(bounds: {
+  selected: number | null;
+  minTick: number;
+  maxTick: number;
+  /** The tick already on screen: the previewed one, or the present. */
+  shownTick: number;
+}): number | null {
+  if (bounds.selected === null) {
+    return null;
+  }
+  const clamped = Math.min(bounds.maxTick, Math.max(bounds.minTick, bounds.selected));
+  return clamped === bounds.shownTick ? null : clamped;
+}
+
 export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
   const { mode, presentTick, originTick, historicalTick, progress, saveTicks } = props;
   const busy = mode === "reconstructing";
@@ -88,7 +116,7 @@ export function HistoryPanel(props: HistoryPanelProps): React.JSX.Element {
   // The tick "View this time" would reconstruct. Nothing to do when it already
   // is the tick on screen (the previewed tick, or the present in live mode).
   const shownTick = historicalTick ?? presentTick;
-  const viewTarget = selected !== null && selected !== shownTick ? selected : null;
+  const viewTarget = viewTargetFor({ selected, minTick, maxTick, shownTick });
 
   const viewSelected = useCallback(() => {
     if (viewTarget === null) {
