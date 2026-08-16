@@ -49,11 +49,11 @@ describe("100k tick environment soak", () => {
   // interventions section. The world itself is untouched — no command ever
   // runs here.
   //
-  // Engine 0.8.0 moved it through the plant-capacity calibration alone
-  // (ADR 0025 §2b): a lifeless world has no feeder for the expected-gain rule
-  // to steer, but every cell's capacity — and the config digest in the hash
-  // stream — is 0.6x what it was.
-  const GOLDEN_SOAK_HASH = "51944dee665b9afa";
+  // Engine 0.8.0 moved it through the config calibration alone (ADR 0025):
+  // a lifeless world has no feeder for the expected-gain rule to steer and no
+  // carcasses to rot, but every cell's capacity is 0.6x what it was and the
+  // config digest in the hash stream carries the new decay value.
+  const GOLDEN_SOAK_HASH = "18f5968046d8c668";
 
   const LIFELESS_CONFIG = (() => {
     const config = cloneConfig(DEFAULT_CONFIG);

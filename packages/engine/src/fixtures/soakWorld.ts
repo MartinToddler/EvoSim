@@ -94,17 +94,17 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * continuous cloud, and the detector correctly refuses to split a cloud
  * (docs/05 §7); the synthetic split fixtures prove the other direction.
  *
- * Engine 0.8.0 moved it with two intentional ecological changes (ADR 0025):
- * the expected-gain food-target rule and the 0.6x plant-capacity calibration.
- * The soak world inherits both through DEFAULT_CONFIG, deliberately — it
- * exists to soak the shipped biology, and the leaner, scavenging trajectory
- * (population 1 069 at tick 100 000, still one species) is the shipped
- * biology now. The undivided world continuing to refuse a split remains the
- * detector's negative control; the ecological POSITIVE control is the
- * fixtures/speciationScenario.ts world, whose channel-fragmented run splits
- * at ~tick 45 000.
+ * Engine 0.8.0 moved it with three intentional ecological changes (ADR 0025):
+ * the expected-gain food-target rule, the 0.6x plant-capacity calibration and
+ * carcass decay 20 -> 48. The soak world inherits all three through
+ * DEFAULT_CONFIG, deliberately — it exists to soak the shipped biology, and
+ * the leaner, scavenging trajectory (population 766 at tick 100 000, still
+ * one species) is the shipped biology now. The undivided world continuing to
+ * refuse a split remains the detector's negative control; the ecological
+ * POSITIVE control is the fixtures/speciationScenario.ts world, whose
+ * channel-fragmented run splits at ~tick 45 000.
  */
-export const GOLDEN_SOAK_HASH = "f425b972ad853c4e";
+export const GOLDEN_SOAK_HASH = "cbdd745b8f238acf";
 
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {
