@@ -6,6 +6,40 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-16 — Offline world creation, and a browser suite that could never run
+
+Versions: **all four unchanged**. No engine, protocol or golden hash is touched — the
+simulation is not involved in any of this.
+
+Three defects, found by chasing why the `verify` workflow was red. Two were in CI itself and
+predate EvoSim 2.0; the third is a real hole in the offline product that the CI fixes finally
+exposed.
+
+### Fixed
+
+- **An installed EON could not create its first world offline.** `public/sw.js` precaches the
+  shell only, by design — "everything else is content-hashed and picked up on first use". That
+  is sound for the render and UI chunks, which the first page load fetches anyway. It is not
+  sound for one asset: `simulation.worker-*.js` is referenced from nowhere in `index.html`,
+  because Vite emits it as a separate chunk fetched the first time `new Worker(new URL(...))`
+  runs — which happens when a world is created, not when the app loads. So an app that had
+  never created a world had no copy of the simulation, and creating one with the network off
+  hung on "Creating world…" forever: the Worker fetch failed, no `WORLD_READY` ever arrived,
+  and the top bar sat at tick 0 with an empty world. docs/07 Milestone 13 promises the
+  opposite. The app now pulls that chunk into the cache at startup, in production, by
+  constructing and immediately terminating a Worker — the only way to name exactly the
+  content-hashed chunk the real session will ask for is to ask for it the same way.
+- **The browser end-to-end job never built the app** (CI). `playwright.config.ts` serves
+  `apps/web/dist` via `vite preview`; the job went straight from `playwright install` to
+  `pnpm e2e` and died in under a second with `The directory "dist" does not exist`. Jobs run on
+  separate runners, so `needs: verify` having built it is no help. This had been red on every
+  branch, including the pre-EvoSim-2.0 baseline.
+- **The preview server bound to a different address than the suite polled** (CI). `baseURL`
+  names `127.0.0.1`; `vite preview` without an explicit host binds to whatever `localhost`
+  resolves to, which is a different question. The job timed out after 120 s with no error from
+  the server at all. Both ends now name the same string, and the server's stdout is piped so a
+  future failure can say where it went instead of costing an hour of CI per guess.
+
 ## [Unreleased] — 2026-08-16 — M14: the morphological genome
 
 Versions: `ENGINE_VERSION` **0.8.0 → 0.9.0**, `PROTOCOL_VERSION` **9 → 10**,
