@@ -664,5 +664,16 @@ making its click sweep miss. It was CPU contention — the run shared four cores
 twelve-seed sweep and the full Vitest suite. Re-run on a quiet machine it passes in 168 s
 and the whole Chromium project is 20/20. No test was retuned to get there.
 
+- [x] O07 gate 6 confirmed by execution — `pnpm test` runs 1 313 tests across 106 files
+      green in 72 minutes, including the 100 000-tick soak and
+      `ecologicalSpeciation.test.ts`. The speciation gate passes because the test was
+      run, not because an ADR says so.
+- [x] O08 the scavenging magnitude stated (ADR 0026 §1a) — "12/12 seeds scavenge,
+      median 1.58M units" is an absolute count; measured as a share of what the living
+      population ingested it is **0.15–1.84 %**. The fitness valley is genuinely closed,
+      and these worlds still eat 98 %+ plants: no lineage approaches the 60 % meat
+      fraction `CarnivoreLineageDetected` requires. Reachability is demonstrated; a
+      carnivorous world is not. `scripts/dietShareProbe.ts` measures it.
+
 Post-A25 independent audit gate: **PASS** (engine 0.8.0 unchanged, protocol 9 unchanged,
 all six golden hashes unchanged, ADR 0026).

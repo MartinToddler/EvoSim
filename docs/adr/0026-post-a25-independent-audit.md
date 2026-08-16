@@ -37,6 +37,25 @@ distribution — not a summary — is what the table reports. There is no cherry
 here. `kills = 0` is reproduced too, and remains an honestly stated limitation: what
 ADR 0025 demonstrates is scavenging reachability, not active predation.
 
+**One magnitude ADR 0025 does not state, measured here** (`scripts/dietShareProbe.ts`).
+"12/12 seeds scavenge, median 1 580 620 meat units" is an absolute count, and absolute
+counts flatter. As a share of what the living population actually ingested at tick
+10 000:
+
+| Seed         | Plant intake | Meat intake | Meat share |
+| ------------ | ------------ | ----------- | ---------- |
+| `0xE0A12026` | 83 906 480   | 312 432     | **0.37 %** |
+| `0xE0A13F15` | 159 239 062  | 2 989 692   | **1.84 %** |
+| `0xE0A2368D` | 12 612 339   | 18 936      | **0.15 %** |
+
+So the fitness valley is genuinely closed — meat is now on the menu everywhere, where
+before it was eaten on 2 seeds in trace amounts — but the diet these worlds actually eat
+is still 98 %+ plants. The engine's own `CarnivoreLineageDetected` event needs a
+sustained 60 % meat fraction (`history.carnivoreObservedMeatFractionQ`), so no lineage is
+anywhere near being called carnivorous at these horizons, and the diet-gene means stay
+herbivore-leaning (−0.57 … −0.65 against a founder −0.60). Reachability is demonstrated;
+a carnivorous world is not. That distinction belongs in the record next to the units.
+
 ### 1b. The engine changes A22–A25 made were diagnostic-only
 
 `git diff 427b12a..474d926 -- packages/engine/src` touches only `memoryReport`,
@@ -141,6 +160,11 @@ evidence of an ecological or product regression. No test was retuned to make thi
 ## 5. Verification
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm build` — green.
+- `pnpm test` — **1 313 tests across 106 files green** in 72 minutes, including the
+  100 000-tick soak and `ecologicalSpeciation.test.ts`, so **docs/01 §12 release gate 6
+  is confirmed by execution**, not by its ADR. That run was started before this pass's
+  edits landed; everything the edits touched was re-run against the final tree
+  separately (below), and the two long engine tests do not import the changed module.
 - Golden fixture: all six canonical hashes unchanged (the fix adds an optional parameter
   and no default path uses it), together with the branch-equivalence acceptance test and
   the four new command-graft regression tests — 29 tests green.
