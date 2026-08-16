@@ -84,12 +84,15 @@ confirmed to be this exact commit by fetching `assets/index-*.js` and matching
 | ---------------- | ----------------------------------------------------------------- |
 | Status           | complete                                                          |
 | Branch           | `claude/evosim-2-0-implementation-7sjovi`                          |
-| Commit SHA       | _recorded on commit_                                              |
+| Commit SHA       | `ec0111556bf263589972bc7e77b7d239844013f9`                        |
 | Engine version   | 0.8.0 → **0.9.0**                                                 |
 | Config schema    | 7 → **8**                                                         |
 | Snapshot schema  | 8 → **9**                                                         |
 | Protocol version | 9 → **10** (render snapshot layout 1 → 2)                          |
 | ADR              | 0028                                                              |
+| `pnpm verify`    | PASS — 109 files / 1367 tests, build OK                           |
+| Deployment       | success, verified live (bundle carries the SHA)                   |
+| Deployment URL   | https://martintoddler.github.io/EvoSim/ (`?view=morphology` = gallery) |
 
 **Delivered.** A 27-gene morphological genome inherited and mutated like the ecological one;
 a bounded deterministic developmental interpreter producing a derived, never-hashed
