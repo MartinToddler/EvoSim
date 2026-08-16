@@ -658,10 +658,11 @@ HISTORICAL_MODE_READY is hardcoded to 0 and wrong for branch worlds, but no code
 it; and `?view=generator` remains a developer view that builds an unpersisted
 main-thread world outside the acceptance flow.
 
-One pre-existing E2E failure is stated rather than retuned (ADR 0026 §4): `world.spec.ts`
-scenario 4 sweeps a click grid for an organism, and the deliberate 0.8.0 leaner world
-(median population 2 699 against 5 156) makes that sweep miss. Selection itself works and
-is covered by other scenarios.
+One E2E scenario needed a second look rather than a story (ADR 0026 §4): `world.spec.ts`
+scenario 4 timed out on the first browser run, which looked like the leaner 0.8.0 world
+making its click sweep miss. It was CPU contention — the run shared four cores with a
+twelve-seed sweep and the full Vitest suite. Re-run on a quiet machine it passes in 168 s
+and the whole Chromium project is 20/20. No test was retuned to get there.
 
 Post-A25 independent audit gate: **PASS** (engine 0.8.0 unchanged, protocol 9 unchanged,
 all six golden hashes unchanged, ADR 0026).

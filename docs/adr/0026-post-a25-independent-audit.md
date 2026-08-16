@@ -122,27 +122,36 @@ One documentation claim was corrected rather than coded around: ADR 0025 §5's r
 refusal still exists in `reproduction.ts`; the 0.6× calibration is what keeps the twelve
 measured seeds away from it. The row now says that.
 
-## 4. The pre-existing E2E failure
+## 4. One E2E scenario is contention-sensitive, and the first diagnosis of it was wrong
 
-`world.spec.ts` scenario 4 ("selects an organism and shows its inspector detail") times
-out at 300 s. It sweeps a 31×31 grid of canvas clicks looking for an organism to select.
-The 0.8.0 calibration deliberately made worlds leaner — median population 2 699 against
-5 156 — so the same sweep now finds a hit far less often on the same viewport. This is a
-test-fidelity problem created by a _correct_ ecological change, not a product defect:
-selection itself works (scenarios 7 and 10 select and inspect through other paths, and
-the same click path passes on the mobile project). Left failing and stated rather than
-quietly retuned, because the honest fix is to seed the sweep from a known organism
-position and that is a test change this audit did not want to make under its own
-deadline.
+`world.spec.ts` scenario 4 ("selects an organism and shows its inspector detail") timed
+out at its 300 s budget on the audit's first browser run. The tempting explanation — and
+the one this ADR carried in draft — was that the 0.8.0 calibration made worlds leaner
+(median population 2 699 against 5 156), so the scenario's 31×31 sweep of canvas clicks
+now misses more often.
+
+That explanation was wrong, and the correction is worth recording because it is the kind
+of plausible story an audit is supposed to resist. The first run shared four cores with a
+twelve-seed calibration sweep and the full Vitest suite. Re-run on a quiet machine
+against the same production bundle, the scenario **passes in 168 s** — and the whole
+Chromium project passes 20/20. The scenario is expensive (every click costs a hit test
+and a React render) and its budget has little headroom under CPU contention; it is not
+evidence of an ecological or product regression. No test was retuned to make this true.
 
 ## 5. Verification
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm build` — green.
 - Golden fixture: all six canonical hashes unchanged (the fix adds an optional parameter
-  and no default path uses it).
-- `packages/engine/src/replay` — reconstruction, branch equivalence and the four new
-  command-graft regression tests green.
+  and no default path uses it), together with the branch-equivalence acceptance test and
+  the four new command-graft regression tests — 29 tests green.
 - `apps/web` + `packages/ui` — 145 tests green, including nine new regression tests for
-  findings 1–8.
-- Playwright on the production bundle — 21/22 (see §4).
+  findings 1–8; the Worker host suite — 107 tests green, including the two new
+  rewind-with-late-command tests and the preview state-hash guard.
+- Playwright on the production bundle, real IndexedDB — **20/20 Chromium** after the
+  fixes (§4), covering New World → Create → tick 0 paused → Play, save → reload → load,
+  drag-selects → View this time → return to present, and branch → auto-open → parent
+  untouched.
 - Twelve-seed calibration sweep — reproduced exactly (§1a).
+- Engine purity re-checked by inspection: no `Math.random`, wall-clock, DOM or storage
+  API anywhere in `packages/engine`, and the only `Math.sqrt` uses are in a fixture's
+  diagnostic metric and the render projection — never in authoritative state.

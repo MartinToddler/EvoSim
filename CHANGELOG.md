@@ -68,6 +68,8 @@ see.
 - ADR 0025 §5's "no cap-order filtering remains" corrected: the slot-order cap refusal
   still exists in `reproduction.ts`; the 0.6× calibration is what keeps the measured
   seeds away from it.
+- docs/06 §24 amended to say how step 3 is satisfied — the live engine's append-only log
+  is the world line's full command history until history is chunked to storage.
 
 ## [0.8.0] — 2026-08-15 — Post-A25 integrity pass: the corrective release
 
