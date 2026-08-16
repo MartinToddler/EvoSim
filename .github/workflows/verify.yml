@@ -107,6 +107,14 @@ jobs:
       # pre-release run.
       - run: pnpm exec playwright install --with-deps chromium
 
+      # The e2e suite drives the PRODUCTION bundle: `playwright.config.ts` starts
+      # `vite preview`, which serves `apps/web/dist` and refuses to start if it
+      # is missing. Jobs do not share a filesystem, so the `verify` job having
+      # built the app is no help here — without this step every run of this job
+      # died in under a second with `The directory "dist" does not exist`, and
+      # the suite had been red on every branch since it was added.
+      - run: pnpm build
+
       # A suite nobody runs rots, and this one earned its keep on its first
       # run by finding a panel that rendered under the top bar.
       - run: pnpm e2e --project=chromium --project=mobile-chromium
