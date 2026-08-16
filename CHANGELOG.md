@@ -6,6 +6,50 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## [Unreleased] — 2026-08-16 — EvoSim 2.0 architecture and implementation contract
+
+Versions: **all four unchanged** (`ENGINE_VERSION` 0.8.0, `PROTOCOL_VERSION` 9,
+`SNAPSHOT_SCHEMA_VERSION` 8, `CONFIG_SCHEMA_VERSION` 7). **Every golden hash is unchanged**,
+by construction: this change touches documentation only — no engine, protocol, renderer,
+persistence or UI code.
+
+Phase 0 of the EvoSim 2.0 roadmap. Twelve systems the MVP explicitly forbade are now
+approved, on a schedule, under one architectural rule stated precisely enough to be
+enforceable.
+
+### Added
+
+- **`docs/11_EVOSIM_2_0.md`** — the complete M14–M25 roadmap. Per milestone: objective,
+  genome/system content, explicit trade-offs and acceptance criteria; plus the four contracts
+  every milestone inherits (determinism; authoritative state that is snapshot-, rewind- and
+  branch-safe; engine purity; every benefit costed).
+- **ADR 0027 — Emergence first.** The governing decision, in four operational parts: no
+  authoritative behavior classes, no scripted behavior functions, derived observational labels
+  allowed and encouraged, every evolvable benefit costed. Records the consequences that make
+  the rule expensive — reachability tests replace "it works in a fixture", staging is
+  architectural rather than procedural, boundedness is a hard requirement — and the
+  alternatives that were rejected.
+- **`docs/EVOSIM_2_PROGRESS.md`** — the per-stage evidence record: commit, versions, verify
+  result, tests, performance and evolutionary observations, deployment URL and deferred
+  issues. Opens with the baseline verification and the branch-reconciliation findings.
+- **`TASKS.md`** — the EvoSim 2.0 checklist, Phase 0 through the final adversarial audit.
+
+### Changed
+
+- **`CLAUDE.md` is now a staged contract rather than an MVP one.** The flat "scope exclusions
+  until explicitly approved" list — which forbade sexual reproduction, pathogens,
+  construction, communication and evolving topology outright — is replaced by an
+  approved-systems table that assigns each system to the milestone that may implement it, and
+  a staged development rule that forbids implementing any of them early. Added as hard rules:
+  the emergence-first rule with its forbidden identifier shapes and its authoritative-role vs
+  derived-label test; the trade-off rule; the evolutionary accessibility rule; the EvoSim 2.0
+  boundedness/performance rule; and a documentation-source-of-truth clause requiring the
+  architecture record to be updated before code when a prompt and the repository disagree.
+  Every MVP hard rule is preserved unchanged, and the determinism section gained the explicit
+  list of forbidden authoritative inputs plus an authoritative-state subsection. Multiplayer,
+  accounts, cloud saves, server-side worlds, 3D, direct organism control and unbounded NEAT
+  remain permanently excluded.
+
 ## [Unreleased] — 2026-08-16 — Independent adversarial audit of the post-A25 product
 
 Versions: **all four unchanged** (`ENGINE_VERSION` 0.8.0, `PROTOCOL_VERSION` 9,

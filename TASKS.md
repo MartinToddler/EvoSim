@@ -677,3 +677,118 @@ and the whole Chromium project is 20/20. No test was retuned to get there.
 
 Post-A25 independent audit gate: **PASS** (engine 0.8.0 unchanged, protocol 9 unchanged,
 all six golden hashes unchanged, ADR 0026).
+
+## EvoSim 2.0 (docs/11_EVOSIM_2_0.md, ADR 0027)
+
+Twelve approved milestones, strictly sequential. Governing rule: **emergence first** — the
+engine provides mechanisms, costs and information, never roles, strategies or categories.
+
+### Phase 0 Architecture and contract
+- [x] P0-01 `docs/11_EVOSIM_2_0.md` — full M14-M25 roadmap with per-milestone objective,
+      content, trade-offs and acceptance criteria.
+- [x] P0-02 ADR 0027 — emergence first: no authoritative behavior classes, no scripted
+      behavior functions, derived labels allowed, every benefit costed.
+- [x] P0-03 `CLAUDE.md` rewritten as a staged contract: approved-systems table with milestone
+      assignments, staged development rule, emergence-first rule, trade-off rule, evolutionary
+      accessibility rule, boundedness rule, documentation-source-of-truth clause. All MVP hard
+      rules preserved.
+- [x] P0-04 `docs/EVOSIM_2_PROGRESS.md` — per-stage evidence record opened with the baseline
+      and branch-reconciliation findings.
+
+### M14 Morphological genome
+- [ ] M14-01 bounded morphology genotype (body, appendages, anterior, posterior, defensive
+      appearance, pigment).
+- [ ] M14-02 deterministic developmental interpreter -> MorphologyPhenotype.
+- [ ] M14-03 procedural geometry parameters derived from the phenotype.
+- [ ] M14-04 inheritance + bounded continuous/structural mutation.
+- [ ] M14-05 snapshot/persistence/rewind/branch coverage.
+- [ ] M14-06 renderer draws the production morphology path; morphology gallery debug view.
+- [ ] M14-07 determinism, bounds, mutation, inheritance and performance tests.
+
+### M15 Functional morphology
+- [ ] M15-01 centralized MorphologyPhenotype -> PhysicalPhenotype derivation.
+- [ ] M15-02 mass, collision, storage, metabolism, force, speed, agility, terrain, armor,
+      attack, sensing, thermal and offspring-cost effects.
+- [ ] M15-03 trade-off audit: no globally dominant morphology.
+- [ ] M15-04 two opposing controlled selection environments using realized fitness only.
+- [ ] M15-05 inspector exposes the physical phenotype.
+
+### M16 Evolvable brain and memory
+- [ ] M16-01 bounded neural genotype: input/hidden/connection/recurrent masks.
+- [ ] M16-02 generic recurrent state and memory registers (no semantic names).
+- [ ] M16-03 complexity cost from active neurons, connections, memory and sensors.
+- [ ] M16-04 bounded deterministic mutation operators.
+- [ ] M16-05 capability fixtures (approach, avoid, state-dependent, alternation, persistent
+      strategy) - representable, not installed.
+- [ ] M16-06 brain-phase benchmark before/after.
+
+### M17 Rich ecology and niches
+- [ ] M17-01 distinct resource systems with continuous genetic processing efficiencies.
+- [ ] M17-02 spatial ecology driven by temperature/moisture/fertility/biome/terrain.
+- [ ] M17-03 generic resource sensors, no best-food-for-me input.
+- [ ] M17-04 multi-seed controlled niche environments.
+
+### M18 Climate and natural events
+- [ ] M18-01 deterministic seasons, regional variation, longer drift cycles.
+- [ ] M18-02 drought, wet period, heat wave, cold snap, wildfire, rare major event.
+- [ ] M18-03 events act through the environment, never by direct killing.
+- [ ] M18-04 active events snapshot/rewind/branch safe.
+
+### M19 Sexual reproduction and recombination
+- [ ] M19-01 deterministic recombination across ecological, morphological and neural genomes.
+- [ ] M19-02 evolvable compatibility (never species identity).
+- [ ] M19-03 behavioural mate choice through ordinary sensors and outputs.
+- [ ] M19-04 sexual selection: inherited display traits and inherited preferences.
+- [ ] M19-05 search/energy/investment costs; two-parent genealogy.
+
+### M20 Evolving plants and coevolution
+- [ ] M20-01 bounded evolving plant populations with trait sets.
+- [ ] M20-02 defense/growth trade-offs.
+- [ ] M20-03 reciprocal producer/consumer trait change measured in controlled scenarios.
+
+### M21 Pathogens and immune evolution
+- [ ] M21-01 bounded strain table with evolvable traits.
+- [ ] M21-02 costed host recognition/resistance/tolerance/investment.
+- [ ] M21-03 density- and proximity-driven transmission.
+- [ ] M21-04 antigenic escape; no named-disease permanent immunity.
+
+### M22 Emergent communication
+- [ ] M22-01 bounded numbered signal channels, emit and sense.
+- [ ] M22-02 emission and reception costs.
+- [ ] M22-03 brain-controlled signalling; no semantics in code.
+- [ ] M22-04 analytics-only correlation detection.
+
+### M23 Emergent sociality and niche construction
+- [ ] M23-01 generic identity cues and similarity sensing.
+- [ ] M23-02 voluntary bounded transfer with a cost.
+- [ ] M23-03 generic pick up / carry / drop.
+- [ ] M23-04 stigmergic traces that decay and diffuse.
+- [ ] M23-05 material collect/deposit/remove with generic physical effects only.
+- [ ] M23-06 controlled reachability for kin-biased transfer, caching, stigmergic coordination
+      and persistent local use.
+
+### M24 Geographic isolation and macroevolution
+- [ ] M24-01 bounded deterministic sea level, islands, land bridges, corridors, barriers.
+- [ ] M24-02 gene flow through ordinary encounters only.
+- [ ] M24-03 secondary contact resolved by evolved traits.
+- [ ] M24-04 derived macro-event labels.
+- [ ] M24-05 geographic speciation scenario on the ordinary engine.
+
+### M25 Life Laboratory
+- [ ] M25-01 genome inspector (ecological, morphological, neural, genealogy, species).
+- [ ] M25-02 clone as an explicit recorded intervention.
+- [ ] M25-03 gene edit showing trait, old value and new value.
+- [ ] M25-04 deterministic experimental mutagenesis.
+- [ ] M25-05 founder/translocation and explicit bottleneck.
+- [ ] M25-06 branch-first destructive experiments.
+- [ ] M25-07 branch comparison without a hidden universal fitness score.
+
+### Final EvoSim 2.0 adversarial audit
+- [ ] F-01 search production authoritative code for scripted biology; classify every hit.
+- [ ] F-02 multi-seed evolutionary reachability across every evolvable system.
+- [ ] F-03 trade-off audit for traits converging to always-maximum or always-minimum.
+- [ ] F-04 determinism across repeat runs, save/load, rewind, branch, Worker/headless.
+- [ ] F-05 performance comparison baseline -> M14 -> M16 -> M20 -> M23 -> final.
+- [ ] F-06 long multi-seed soak for numeric, ID, resource and growth pathologies.
+- [ ] F-07 product E2E through the full flow including the laboratory.
+- [ ] F-08 documentation completeness.

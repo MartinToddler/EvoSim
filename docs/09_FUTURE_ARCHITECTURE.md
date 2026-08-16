@@ -2,6 +2,15 @@
 
 This document prevents early architecture from blocking likely extensions.
 
+> **Superseded in part, 2026-08-16.** Most of what follows is now approved as **EvoSim 2.0**
+> and scheduled in `docs/11_EVOSIM_2_0.md`: sexual reproduction (M19), evolving brain topology
+> (M16), pathogens/parasites (M21), construction and niche construction (M23), communication
+> (M22), evolving plants (M20), climate and events (M18), morphology (M14/M15) and
+> macroevolution (M24). Read this file for the "do not paint yourself into a corner" guidance
+> it still gives; read `docs/11_EVOSIM_2_0.md` and ADR 0027 for what may actually be built and
+> when. Aquatic organisms as a separate locomotion mode, multiplayer, backend simulation and 3D
+> remain out of scope.
+
 ## 1. Sexual reproduction
 
 Later additions can include:

@@ -19,7 +19,7 @@ EON is a deterministic, top-down 2D artificial-life sandbox in which autonomous 
 6. **Deterministic engine.** Same engine version + seed + config + command stream must reproduce the same authoritative state.
 7. **Engine/render separation.** The simulation core must run headlessly without React, PixiJS, DOM or browser APIs.
 8. **Web-first, mobile-capable.** Architecture must allow later Capacitor packaging without rewriting the simulation.
-9. **MVP discipline.** No sexual reproduction, diseases, parasites, aquatic life, construction, evolving NN topology, multiplayer or backend simulation before MVP acceptance.
+9. **Staged discipline.** The MVP shipped without sexual reproduction, disease, construction, communication or evolving NN topology. Those systems are now approved for **EvoSim 2.0** (`docs/11_EVOSIM_2_0.md`), each assigned to one milestone and forbidden before it. Multiplayer, accounts, cloud saves, backend simulation and 3D remain permanently out of scope.
 10. **Tuning is data.** Biological/ecological constants live in versioned configuration, never unexplained magic numbers in hot loops.
 
 ## Documentation order
@@ -37,8 +37,10 @@ Claude Code should read:
 9. `docs/08_DEFAULT_CONFIG_AND_FOUNDER.md`
 10. `docs/09_FUTURE_ARCHITECTURE.md`
 11. `docs/10_CODEBASE_BLUEPRINT.md`
-12. `TASKS.md`
-13. `BOOTSTRAP_PROMPT.md`
+12. `docs/11_EVOSIM_2_0.md` — the approved EvoSim 2.0 roadmap (M14–M25)
+13. `docs/adr/0027-evosim-2-0-emergence-first.md` — the architecture that governs it
+14. `TASKS.md`
+15. `BOOTSTRAP_PROMPT.md`
 
 A concatenated version is also provided as `EON_FULL_IMPLEMENTATION_SPEC.md`.
 
