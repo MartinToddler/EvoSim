@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { NEURAL_WEIGHT_COUNT as BRAIN_WEIGHT_COUNT } from "../brain/NeuralTopology";
+import {
+  NEURAL_WEIGHT_COUNT,
+  NEURAL_WEIGHT_COUNT as BRAIN_WEIGHT_COUNT,
+} from "../brain/NeuralTopology";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
@@ -149,11 +152,16 @@ describe("mutation statistics on a deterministic large sample", () => {
     expect(sample.weightsChangedPerBirth).toBeLessThan(expectedWeights * 1.03);
     expect(sample.weightsChangedPerBirth).toBeGreaterThan(expectedWeights * 0.97);
 
-    // docs/04 §18 says "At 400 weights, 2% ≈ 8 changed weights/birth". M16
-    // widened the block to 576 for the recurrent and memory weights, so the
-    // same rate is ~11.5 — the rate did not change, the network did.
-    expect(sample.weightsChangedPerBirth).toBeGreaterThan(10.5);
-    expect(sample.weightsChangedPerBirth).toBeLessThan(12.5);
+    // docs/04 §18 says "At 400 weights, 2% ≈ 8 changed weights/birth". The rate
+    // has never changed; the network keeps getting wider — M16 added the
+    // recurrent and memory blocks, M17 widened the input layer 20 → 32. So the
+    // absolute count is DERIVED from the block width rather than restated, and
+    // the next milestone that grows the brain moves it automatically instead of
+    // failing a test that was only ever describing arithmetic.
+    const nominal =
+      (NEURAL_WEIGHT_COUNT * DEFAULT_CONFIG.mutation.brain.perWeightMutationProbabilityQ) / Q;
+    expect(sample.weightsChangedPerBirth).toBeGreaterThan(nominal * 0.85);
+    expect(sample.weightsChangedPerBirth).toBeLessThan(nominal * 1.15);
   });
 
   it("draws symmetric weight deltas at the configured mixture sigma", () => {
@@ -320,12 +328,25 @@ describe("forced-mutation config fixture", () => {
     mutateEcologicalGenes(genes, 0, rng, ALL_SMALL);
     mutateBrainWeights(weights, 0, rng, ALL_SMALL);
 
+    // A locus sitting ON a clamp boundary can be mutated and land where it
+    // started, because half the deltas are pushed back by the clamp. The
+    // founder's toxin resistance is exactly 0 (M17: resistance is something a
+    // lineage buys, not something it starts with), so it is the one gene that
+    // can legitimately read unchanged after a forced mutation. Counting it as a
+    // failure would be asserting that a bounded value must leave its bound.
     let unchangedGenes = 0;
+    const atBoundary = new Set<number>();
     for (let i = 0; i < GENE_COUNT; i += 1) {
-      if (genes[i] === originalGenes[i]) {
+      if (originalGenes[i] === 0 || originalGenes[i] === GENE_RAW_MAX) {
+        atBoundary.add(i);
+      }
+    }
+    for (let i = 0; i < GENE_COUNT; i += 1) {
+      if (genes[i] === originalGenes[i] && !atBoundary.has(i)) {
         unchangedGenes += 1;
       }
     }
+    expect(atBoundary.size).toBeGreaterThan(0);
     let unchangedWeights = 0;
     for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
       if (weights[i] === originalWeights[i]) {

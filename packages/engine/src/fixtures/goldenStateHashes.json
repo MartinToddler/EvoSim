@@ -3,7 +3,7 @@
   "engineVersion": "0.11.0",
   "configSchemaVersion": 10,
   "seedHex": "0xE0A12026",
-  "configHash": "d36b93e88179cec4",
+  "configHash": "a20e6e55abbaf5cd",
   "commands": [
     {
       "kind": 0,

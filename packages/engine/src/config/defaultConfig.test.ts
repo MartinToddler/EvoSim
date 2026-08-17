@@ -34,7 +34,7 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.time.speciesAnalysisInterval).toBe(400);
     expect(DEFAULT_CONFIG.limits.maxOrganisms).toBe(8192);
     expect(DEFAULT_CONFIG.limits.maxCarcasses).toBe(4096);
-    expect(DEFAULT_CONFIG.brain.weightCount).toBe(400);
+    expect(DEFAULT_CONFIG.brain.weightCount).toBe(604);
   });
 
   it("contains no wall-clock or presentation values", () => {
@@ -55,7 +55,7 @@ describe("DEFAULT_CONFIG", () => {
   });
 
   it("matches the golden config hash (config drift is a versioned decision)", () => {
-    expect(hashConfig(DEFAULT_CONFIG)).toBe("d36b93e88179cec4");
+    expect(hashConfig(DEFAULT_CONFIG)).toBe("a20e6e55abbaf5cd");
   });
 });
 
