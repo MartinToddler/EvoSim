@@ -239,6 +239,30 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element {
             </dl>
           </details>
 
+          <details className="section">
+            <summary className="section-title">Brain (evolved shape)</summary>
+            <dl>
+              <dt>Senses</dt>
+              <dd>{formatInt(details.brain.activeInputs)} active</dd>
+              <dt>Hidden units</dt>
+              <dd>{formatInt(details.brain.activeHidden)}</dd>
+              <dt>Recurrent links</dt>
+              <dd>{formatInt(details.brain.recurrentLinks)}</dd>
+              <dt>Memory registers</dt>
+              <dd>{formatInt(details.brain.activeMemory)}</dd>
+              <dt>Connections</dt>
+              <dd>{formatInt(details.brain.activeConnections)}</dd>
+              <dt>Upkeep</dt>
+              <dd>{formatFixed(details.brain.upkeepPerTick, 1)} energy/tick</dd>
+              {/* Unlabelled on purpose: the engine does not know what this
+                  lineage keeps in each register, so neither does this panel. */}
+              <dt>Registers</dt>
+              <dd>
+                {details.brain.memory.map((value) => formatFixed(value, 2)).join("  ") || "none"}
+              </dd>
+            </dl>
+          </details>
+
           <div className="section">
             <div className="section-title">Running costs (energy/tick)</div>
             <dl>

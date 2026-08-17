@@ -1,11 +1,11 @@
 # ADR 0030 — M16: evolvable brain topology and generic memory
 
 Status: accepted · Date: 2026-08-17 · Engine 0.10.0 → **0.11.0** ·
-Snapshot schema 10 → **11** · Config schema 9 → **10** · Protocol **11** (unchanged)
+Snapshot schema 10 → **11** · Config schema 9 → **10** · Protocol 11 → **12**
 
 M14 made the body inherited. M15 made it physical. The controller was still a fixed
 20 → 12 → 5 network in which only the strength of each wire evolved, and it had no way to
-remember anything: every tick began from the same blank state. M16 makes the network's *shape*
+remember anything: every tick began from the same blank state. M16 makes the network's _shape_
 inherited and gives it somewhere to keep a thought.
 
 ## 1. The topology genome
@@ -149,8 +149,8 @@ forty ticks after its cue disappears.
 
 None of them is installed into any organism. They are not founder brains, not templates, not a
 library the engine draws on, and nothing outside the test file constructs them. That distinction
-is the entire exercise: a behaviour the engine *provides* is a scripted role, while a behaviour
-the engine can merely *express* is a place evolution is allowed to go, and M16's job is to widen
+is the entire exercise: a behaviour the engine _provides_ is a scripted role, while a behaviour
+the engine can merely _express_ is a place evolution is allowed to go, and M16's job is to widen
 the second set without adding anything to the first.
 
 The persistent-bearing fixture is the one to read twice. It is built from `memory0` and an
@@ -173,7 +173,18 @@ trajectory diverges from the first birth.
 
 Regenerated: the six golden fixture checkpoints and both 100 000-tick soak hashes.
 
-## 7. Cost
+## 7. What the inspector shows
+
+`EntityDetailsDto.brain` carries five counts, the upkeep they cost, and the current register
+contents. The founder reads 20/0/0/0/100 at zero upkeep, so any organism whose numbers differ has
+an evolutionary history worth looking at — which is the cheapest possible answer to "has anything
+actually happened to the brains in this world".
+
+The registers are shown **unlabelled**, as four numbers. The engine does not know what a lineage
+keeps in `memory2` and the panel must not pretend otherwise; a column headed "home X" would be
+ADR 0027's forbidden direction of causation arriving through the UI instead of the engine.
+
+## 8. Cost
 
 Per organism: 82 bytes of topology genome, 352 bytes of weights (was 800 for 400 weights — now
 1152 for 576), and 32 bytes of authoritative neural state. Inference gained five mask tests per

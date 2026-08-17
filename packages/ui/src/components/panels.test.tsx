@@ -223,6 +223,15 @@ function detailsFixture(): EntityDetailsDto {
       contactExtent: 1.11,
       offspringCost: 1.29,
     },
+    brain: {
+      activeInputs: 20,
+      activeHidden: 0,
+      recurrentLinks: 0,
+      activeMemory: 0,
+      activeConnections: 100,
+      upkeepPerTick: 0,
+      memory: [0, 0, 0, 0],
+    },
   };
 }
 

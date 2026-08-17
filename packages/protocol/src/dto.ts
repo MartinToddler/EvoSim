@@ -362,6 +362,29 @@ export interface EntityDetailsDto {
 
   /** What this organism's body does to it (M15). */
   physical: PhysicalPhenotypeDto;
+
+  /** The network it runs and what that costs (M16). */
+  brain: BrainDto;
+}
+
+/**
+ * One organism's evolved controller (M16, docs/11 §M16).
+ *
+ * Counts, not a diagram. The founder reads 20/0/0/0/100 at zero upkeep, so any
+ * organism whose numbers differ has grown something. The memory registers are
+ * shown unlabelled on purpose: the engine does not know what a lineage keeps in
+ * them and neither does the panel (ADR 0027).
+ */
+export interface BrainDto {
+  activeInputs: number;
+  activeHidden: number;
+  recurrentLinks: number;
+  activeMemory: number;
+  activeConnections: number;
+  /** Energy per tick beyond the founder's brain. */
+  upkeepPerTick: number;
+  /** Register contents, in [-1, 1]. */
+  memory: readonly number[];
 }
 
 /**

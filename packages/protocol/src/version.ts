@@ -76,9 +76,16 @@
  * unchanged, so `RENDER_SNAPSHOT_LAYOUT_VERSION` stays at 2, and no message
  * type changed shape.
  *
+ * Protocol 12 (M16, docs/11 §M16) adds `EntityDetailsDto.brain`: how many
+ * sensory channels, hidden units, recurrent links, memory registers and
+ * connections this organism's evolved network actually uses, what that costs it
+ * per tick, and the current register contents. The registers are unlabelled
+ * because the engine does not know what a lineage keeps in them. No message
+ * type changed shape and the render snapshot is untouched.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;

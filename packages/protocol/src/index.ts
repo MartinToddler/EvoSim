@@ -27,6 +27,7 @@ export {
   targetTicksPerSecond,
   type EntityDetailsDto,
   type PhysicalPhenotypeDto,
+  type BrainDto,
   type HistorySliceDto,
   type SimulationSpeed,
   type SpeciesDetailsDto,

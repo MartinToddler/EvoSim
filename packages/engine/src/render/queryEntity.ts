@@ -1,4 +1,10 @@
 import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
+import { BRAIN_MEMORY_COUNT } from "../brain/NeuralTopology";
+import {
+  countNeuralComplexity,
+  createNeuralComplexity,
+  neuralUpkeep,
+} from "../brain/neuralComplexity";
 import { engineInternals } from "../internal";
 import { ANGLE_STEPS, POS_SCALE, Q, qmul } from "../math/fixed";
 import { basalCost, thermalBasalMultiplierQ } from "../organisms/metabolism";
@@ -85,6 +91,33 @@ export interface EntityDetails {
 
   /** Functional morphology (M15): what this body does to this organism. */
   physical: PhysicalPhenotypeDetails;
+
+  /** The network this organism actually runs, and what it costs (M16). */
+  brain: BrainDetails;
+}
+
+/**
+ * The evolved shape of one organism's controller (M16, docs/11 §M16).
+ *
+ * Counts rather than a diagram: what a reader needs from the inspector is
+ * whether this lineage has grown a brain at all, and what it is paying for it.
+ * The founder reads 20/0/0/0/100 at zero upkeep, so any organism whose numbers
+ * differ has an evolutionary history worth looking at.
+ *
+ * `memory` is the register CONTENTS, and they are deliberately unlabelled — the
+ * engine does not know what a lineage keeps in them (ADR 0027), so neither does
+ * the panel. It shows four numbers and calls them what they are.
+ */
+export interface BrainDetails {
+  activeInputs: number;
+  activeHidden: number;
+  recurrentLinks: number;
+  activeMemory: number;
+  activeConnections: number;
+  /** Energy per tick this network costs beyond the founder's. */
+  upkeepPerTick: number;
+  /** Current register contents, in [-1, 1]. */
+  memory: readonly number[];
 }
 
 /**
@@ -128,7 +161,8 @@ const VELOCITY_UNITS_PER_LU = VELOCITY_SCALE * POS_SCALE;
  */
 export function queryEntity(engine: SimulationEngine, entityId: number): EntityDetails | null {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, physical, environment, scratch, config } = context;
+  const { organisms, genomes, phenotypes, physical, neural, environment, scratch, config } =
+    context;
 
   const slot = organisms.findSlotByEntityId(entityId);
   if (slot < 0 || organisms.alive[slot] !== 1) {
@@ -184,6 +218,9 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
   // tick completes, so this is a read of what actually happened — nothing is
   // re-inferred, no PRNG is touched, and before the first tick it is honestly
   // all zeroes.
+  const complexity = createNeuralComplexity();
+  countNeuralComplexity(genomes.topology, genomes.topologyOffset(slot), complexity);
+
   const brainInputs: number[] = new Array<number>(BRAIN_INPUT_COUNT);
   const sensorBase = slot * BRAIN_INPUT_COUNT;
   for (let i = 0; i < BRAIN_INPUT_COUNT; i += 1) {
@@ -265,6 +302,22 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
       thermalTolerance: (physical.thermalToleranceFactorQ[slot] as number) / Q,
       contactExtent: (physical.collisionFactorQ[slot] as number) / Q,
       offspringCost: (physical.offspringCostFactorQ[slot] as number) / Q,
+    },
+
+    brain: {
+      activeInputs: complexity.inputs,
+      activeHidden: complexity.hidden,
+      recurrentLinks: complexity.recurrent,
+      activeMemory: complexity.memory,
+      activeConnections: complexity.connections,
+      upkeepPerTick: neuralUpkeep(genomes, slot, config),
+      memory: Array.from(
+        neural.memoryQ.subarray(
+          neural.memoryOffset(slot),
+          neural.memoryOffset(slot) + BRAIN_MEMORY_COUNT,
+        ),
+        (value) => value / Q,
+      ),
     },
 
     biome: environment.biome[cell] as number,
