@@ -17,6 +17,24 @@ import { captureEnvironmentDebugFields } from "./captureEnvironmentDebugFields";
 import { FIXTURE_SEED } from "./presetSeeds";
 
 /**
+ * Sum a resource-major authoritative field down to one value per cell, the
+ * way the capture does. The reference world is 256x256, so the plane length
+ * is read from the array rather than assumed.
+ */
+function totalPerCell(field: Uint16Array, cellCount = 256 * 256): number[] {
+  const planes = field.length / cellCount;
+  const out: number[] = [];
+  for (let cell = 0; cell < cellCount; cell += 1) {
+    let total = 0;
+    for (let plane = 0; plane < planes; plane += 1) {
+      total += field[plane * cellCount + cell] as number;
+    }
+    out.push(Math.min(total, 65535));
+  }
+  return out;
+}
+
+/**
  * End-to-end check of the debug pipeline against a real generated world:
  * engine environment → debug fields → summary and pixels.
  *
@@ -46,8 +64,12 @@ describe("captureEnvironmentDebugFields", () => {
     expect(Array.from(fields.elevationQ)).toEqual(Array.from(environment.elevationQ));
     expect(Array.from(fields.fertilityQ)).toEqual(Array.from(environment.fertilityQ));
     expect(Array.from(fields.biome)).toEqual(Array.from(environment.biome));
-    expect(Array.from(fields.plantCapacity)).toEqual(Array.from(environment.resourceCapacity));
-    expect(Array.from(fields.plantBiomass)).toEqual(Array.from(environment.resourceBiomass));
+    // The two vegetation fields are NOT verbatim copies since M17: the
+    // authoritative arrays are five channel planes and a debug layer is one
+    // value per cell, so they are per-cell totals. This assertion compared them
+    // raw and had been failing since M17 shipped.
+    expect(Array.from(fields.plantCapacity)).toEqual(totalPerCell(environment.resourceCapacity));
+    expect(Array.from(fields.plantBiomass)).toEqual(totalPerCell(environment.resourceBiomass));
   });
 
   it("folds player offsets into effective moisture and temperature", () => {
@@ -88,12 +110,13 @@ describe("captureEnvironmentDebugFields", () => {
 
   it("uses the world's highest per-cell capacity as the shared vegetation reference", () => {
     const fields = captureEnvironmentDebugFields(engine);
-    let max = 0;
-    for (const capacity of engine.environment.resourceCapacity) {
-      if (capacity > max) {
-        max = capacity;
-      }
-    }
+    // The highest per-cell TOTAL, matching what the layers hold. Reading the
+    // raw array here would take the highest single-channel capacity and leave
+    // every richer cell saturated on the ramp.
+    const max = totalPerCell(engine.environment.resourceCapacity).reduce(
+      (best, value) => (value > best ? value : best),
+      0,
+    );
     expect(fields.biomassReference).toBe(Math.max(max, 1));
     expect(fields.biomassReference).toBeGreaterThan(1);
   });

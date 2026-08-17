@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { viewTerrainSnapshot, type EntityDetailsPayload, type TelemetryDto } from "@eon/protocol";
+// Tied to the constant rather than restated: M17 widened the input layer
+// 20 -> 32 for the five per-channel densities and gradient pairs, and these
+// two assertions were left behind at 20.
+import { BRAIN_INPUT_COUNT } from "@eon/engine";
 import { SimulationHost } from "./SimulationHost";
 import { TEST_SEED, TestRuntime, createTestConfig, message } from "./hostTestSupport";
 
@@ -37,7 +41,7 @@ describe("Milestone 7 host payloads", () => {
     }
 
     const display = ready.payload.world.display;
-    expect(display.brainInputLabels).toHaveLength(20);
+    expect(display.brainInputLabels).toHaveLength(BRAIN_INPUT_COUNT);
     expect(display.brainIntentLabels).toEqual(["throttle", "turn", "eat", "attack", "reproduce"]);
     expect(display.deathCauseLabels.length).toBeGreaterThanOrEqual(8);
     expect(display.temperatureDisplayMinC).toBeLessThan(display.temperatureDisplayMaxC);
@@ -85,7 +89,7 @@ describe("Milestone 7 host payloads", () => {
     if (payload.details === null) {
       return;
     }
-    expect(payload.details.brainInputs).toHaveLength(20);
+    expect(payload.details.brainInputs).toHaveLength(BRAIN_INPUT_COUNT);
     expect(payload.details.brainInputs[0]).toBe(1); // the constant bias input
     expect(payload.details.brainIntents).toHaveLength(5);
     expect(payload.details.costBasalPerTick).toBeGreaterThan(0);

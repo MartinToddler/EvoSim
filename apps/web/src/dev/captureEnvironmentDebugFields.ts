@@ -29,12 +29,20 @@ export function captureEnvironmentDebugFields(engine: SimulationEngine): Environ
 
   const moistureQ = new Uint16Array(cells);
   const temperatureCentiC = new Int16Array(cells);
-  let maxCapacity = 0;
 
   for (let i = 0; i < cells; i += 1) {
     moistureQ[i] = environment.getMoistureQ(i);
     temperatureCentiC[i] = clamp(environment.getTemperatureCentiC(i), INT16_MIN, INT16_MAX);
-    const capacity = environment.resourceCapacity[i] as number;
+  }
+
+  // Both vegetation layers are per-cell totals across the five channels, so the
+  // ramp they share has to be scaled by the highest per-cell TOTAL. It was the
+  // highest single-channel capacity — the loop above read `resourceCapacity[i]`
+  // for i < cellCount, which since M17 is the foliage plane and only that — so
+  // any cell whose channels summed past the best foliage cell saturated.
+  const capacityPerCell = totalPerCell(environment, environment.resourceCapacity);
+  let maxCapacity = 0;
+  for (const capacity of capacityPerCell) {
     if (capacity > maxCapacity) {
       maxCapacity = capacity;
     }
@@ -52,7 +60,7 @@ export function captureEnvironmentDebugFields(engine: SimulationEngine): Environ
     // are a per-cell map and the underlying arrays are now five planes long, so
     // copying them raw would draw the foliage plane over a fifth of the world
     // and index off the end for the rest.
-    plantCapacity: totalPerCell(environment, environment.resourceCapacity),
+    plantCapacity: capacityPerCell,
     plantBiomass: totalPerCell(environment, environment.resourceBiomass),
     seaLevelQ: config.world.seaLevelQ,
     mountainLevelQ: config.world.mountainLevelQ,

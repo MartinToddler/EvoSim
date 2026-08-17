@@ -3,8 +3,12 @@ import { PROTOCOL_VERSION } from "./version";
 import { decodeMainToWorkerMessage } from "./messages";
 
 describe("protocol version", () => {
-  it("is 12 for M16 (changing it is a deliberate wire-format decision)", () => {
-    expect(PROTOCOL_VERSION).toBe(12);
+  // 13 was M17's per-channel payloads and 14 the statistics panel that reads
+  // them. Both moved the constant and neither moved this test, so it sat red
+  // through two milestones — `pnpm verify` was already failing on it before
+  // the ADR 0031 §5e pass touched anything.
+  it("is 14 (changing it is a deliberate wire-format decision)", () => {
+    expect(PROTOCOL_VERSION).toBe(14);
   });
 
   it("refuses messages stamped with any other version", () => {

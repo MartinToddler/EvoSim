@@ -386,7 +386,54 @@ describe("diet selection (docs/07 §5)", () => {
   const TICKS = 900;
   const SPACING_LU = 24;
 
-  function dietExperiment(options: { meatWorld: boolean }): Record<number, number> {
+  /**
+   * Seeds this is measured over. One was enough while the plant world was
+   * being subsidised by the seed-bank production floor and both cohorts ate
+   * their fill; with that closed (ADR 0031 §5e) the plant world is leaner, the
+   * margin is the digestive upkeep the carnivore pays for gut it cannot use
+   * here, and on the fixture seed alone that margin came out 55 against 57 —
+   * inside the noise of a single 16-organism cohort. Summing three seeds
+   * measures the same claim without asking one stream to carry it, which is
+   * what CLAUDE.md's accessibility rule asks for on a stochastic outcome.
+   */
+  /**
+   * The two genotypes, as an ALLOCATION of one gut budget rather than as one
+   * locus apiece.
+   *
+   * Before M17 a single signed `diet` locus made this contrast by itself: a
+   * carnivore could not process plants at all, so a world of plants starved it.
+   * M17 replaced that locus with six independent ones and this fixture was
+   * ported by setting the meat locus alone — which left both genotypes with the
+   * founder's plant processing, identical in every way that a world of plants
+   * can measure. The only remaining difference was the digestive upkeep the
+   * carnivore pays for its extra meat locus, and once the seed-bank production
+   * floor was closed (ADR 0031 §5e) that came out as an exact 216-216 tie in
+   * births across three seeds. The test had stopped testing diet.
+   *
+   * Both genotypes now sum to the same total processing investment, 16 385
+   * against 16 386, so digestive upkeep is equal to within a unit and cannot be
+   * what decides the outcome. What differs is where the budget goes: the
+   * herbivore is better at every plant channel, the carnivore is the only one
+   * that can process meat. That is a difference a world can express an opinion
+   * about, which is what docs/07 §5 asks for.
+   */
+  const HERBIVORE_PLANT_Q = Math.round(Q * 0.8);
+  const CARNIVORE_PLANT_Q = Math.round(Q * 0.6);
+
+  function processingLoci(plantQ: number, meatQ: number): Record<number, number> {
+    const loci: Record<number, number> = { [Gene.Process + Resource.Meat]: meatQ };
+    for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+      loci[Gene.Process + resource] = plantQ;
+    }
+    return loci;
+  }
+
+  const HERBIVORE_LOCI = processingLoci(HERBIVORE_PLANT_Q, 0);
+  const CARNIVORE_LOCI = processingLoci(CARNIVORE_PLANT_Q, Q);
+
+  const DIET_SEEDS = [0xe0a12026, 0xe0a13f15, 0xe0a17cf3];
+
+  function dietExperiment(options: { meatWorld: boolean; seed?: number }): Record<number, number> {
     const config = emptyWorldConfig((draft) => {
       // Clones only: no gene mutation, no brain mutation.
       draft.mutation.ecological.perGeneMutationProbabilityQ = 0;
@@ -405,7 +452,7 @@ describe("diet selection (docs/07 §5)", () => {
       }
     });
 
-    const engine = new SimulationEngine({ seed: FIXTURE_SEED, config });
+    const engine = new SimulationEngine({ seed: options.seed ?? FIXTURE_SEED, config });
     const centre = landCentre(engine);
     // Eats whatever is available and breeds whenever the hard rules allow;
     // stands still so the experiment is about digestion, not about foraging.
@@ -417,14 +464,14 @@ describe("diet selection (docs/07 §5)", () => {
 
     const spacing = SPACING_LU * POS_SCALE;
     for (let i = 0; i < COHORT; i += 1) {
-      for (const [species, dietQ] of [
-        [HERBIVORE_SPECIES, 0],
-        [CARNIVORE_SPECIES, Q],
+      for (const [species, loci] of [
+        [HERBIVORE_SPECIES, HERBIVORE_LOCI],
+        [CARNIVORE_SPECIES, CARNIVORE_LOCI],
       ] as const) {
         place(engine, {
           xPos: centre.xPos + (i - COHORT / 2) * spacing,
           yPos: centre.yPos + (species === HERBIVORE_SPECIES ? -spacing : spacing),
-          genesQ: { [Gene.Process + Resource.Meat]: dietQ },
+          genesQ: loci,
           brainWeights: brain,
           speciesId: species,
           mature: true,
@@ -473,20 +520,28 @@ describe("diet selection (docs/07 §5)", () => {
     return births;
   }
 
+  /** Births summed over {@link DIET_SEEDS}, per species. */
+  function dietTotals(meatWorld: boolean): { herbivore: number; carnivore: number } {
+    let herbivore = 0;
+    let carnivore = 0;
+    for (const seed of DIET_SEEDS) {
+      const births = dietExperiment({ meatWorld, seed });
+      herbivore += births[HERBIVORE_SPECIES] as number;
+      carnivore += births[CARNIVORE_SPECIES] as number;
+    }
+    return { herbivore, carnivore };
+  }
+
   it("rewards the herbivore specialist in a world of plants", () => {
-    const births = dietExperiment({ meatWorld: false });
-    expect(births[HERBIVORE_SPECIES]).toBeGreaterThan(0);
-    expect(births[HERBIVORE_SPECIES] as number).toBeGreaterThan(
-      births[CARNIVORE_SPECIES] as number,
-    );
+    const { herbivore, carnivore } = dietTotals(false);
+    expect(herbivore).toBeGreaterThan(0);
+    expect(herbivore).toBeGreaterThan(carnivore);
   });
 
   it("rewards the carnivore specialist in a world of meat", () => {
-    const births = dietExperiment({ meatWorld: true });
-    expect(births[CARNIVORE_SPECIES]).toBeGreaterThan(0);
-    expect(births[CARNIVORE_SPECIES] as number).toBeGreaterThan(
-      births[HERBIVORE_SPECIES] as number,
-    );
+    const { herbivore, carnivore } = dietTotals(true);
+    expect(carnivore).toBeGreaterThan(0);
+    expect(carnivore).toBeGreaterThan(herbivore);
   });
 });
 

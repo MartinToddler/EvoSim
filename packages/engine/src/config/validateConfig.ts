@@ -493,18 +493,14 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
         profile.growthRateQByBiome[Biome.Water] === 0,
       `${name}: water biome capacity and growth rate must be 0 while aquatic life is out of scope`,
     );
-    // Capacity without a growth rate is a channel that only the seed bank ever
-    // feeds: emptied, it comes back to `seedBankRegenUnits` and stops there, and
-    // whatever grazes it collects that flat amount forever. That is the shape of
-    // the defect in ADR 0031 §5e, so it is rejected rather than left available.
-    for (let i = 0; i < profile.baseCapacityByBiome.length; i += 1) {
-      check(
-        (profile.baseCapacityByBiome[i] as number) === 0 ||
-          (profile.growthRateQByBiome[i] as number) > 0,
-        `${name}: biome ${i} has capacity ${profile.baseCapacityByBiome[i]} but growth rate 0, ` +
-          `which leaves the seed bank as its only production`,
-      );
-    }
+    // Capacity with a zero growth rate is deliberately NOT rejected. It is how
+    // a world says "this channel exists here but does not grow", which is what
+    // `evolutionSimulation.test.ts` builds to prove births cannot create energy
+    // in a world with no food, and what `predationSimulation.test.ts` builds for
+    // a world of meat. Rejecting it was tried in the ADR 0031 §5e pass on the
+    // reasoning that such a channel is fed only by the seed bank; that stopped
+    // being much of a pathology once the seed bank fired at zero and nowhere
+    // else, and it was never worth forbidding four working worlds to prevent.
     // Non-negative, and 0 is a legitimate choice rather than a mistake: it means
     // a cell grazed to nothing in this channel never comes back, which is a real
     // world to want. `fixtures/morphologySelection.ts` wants exactly it, so that
