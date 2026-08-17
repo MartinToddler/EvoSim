@@ -25,10 +25,21 @@ same budget as another's would be two names for one niche, so the four costs are
 places: mouth morphology (M15), movement, limb morphology (M15), and a metabolic gene. Being good
 at one does not come with being good at the next.
 
-Foliage is the Milestone 0–16 field, number for number — capacity table, growth rates, seed bank,
-energy per unit. That table was tuned through the named twelve-seed experiments in docs/08 §24,
-and copying it rather than reconsidering it is what lets the ecology those milestones calibrated
-survive the split intact. The other four are additions on top, not a redistribution of it.
+Foliage keeps the Milestone 0–16 field's _shape_ — growth rates, seed bank, energy per unit,
+climate curves — at a reduced scale. The five channels **partition** the world's productivity;
+they do not stack on it.
+
+That second sentence is a correction, and the original claim is worth stating so the error is
+legible. This ADR first said foliage was unchanged "number for number", reasoning that preserving
+it preserved the ecology docs/08 §24 calibrated, and that the other four channels were "additions
+on top". Measured over three seeds, total plant capacity came out **3.5–4.4× the old foliage-only
+figure**, foliage fell to 23–28% of the world it used to be all of, and the 100 000-tick soak
+finished pinned at 8192 organisms — exactly `limits.maxOrganisms`, against 572 for M16. docs/01
+§12 makes the cap setting carrying capacity a release-gate failure.
+
+"Unchanged" describes a number in isolation. An ecology is a sum, and preserving one term while
+adding four more multiplies it. §5e records what the recalibration cost and why the arithmetic
+was worse than a simple division.
 
 ### 1a. Where a channel grows is the whole mechanism
 
