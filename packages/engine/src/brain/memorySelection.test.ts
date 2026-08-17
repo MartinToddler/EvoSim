@@ -20,7 +20,7 @@ import { BRAIN_MEMORY_COUNT, NEURAL_WEIGHT_COUNT } from "./NeuralTopology";
 
 /**
  * M16 evolutionary reachability (CLAUDE.md "Evolutionary accessibility rule",
- * docs/11 §M16, ADR 0030 §10).
+ * docs/11 §M16, ADR 0030 §9).
  *
  * The capability fixtures in `neuralCapability.test.ts` prove the architecture
  * can *represent* memory use. That is not the same claim as memory use being
@@ -46,7 +46,7 @@ import { BRAIN_MEMORY_COUNT, NEURAL_WEIGHT_COUNT } from "./NeuralTopology";
 
 const EXPLORATION_TICKS = 10_000;
 
-describe("structural mutation explores the topology space", () => {
+describe("structural mutation explores the topology space", { timeout: 1_800_000 }, () => {
   // One ordinary world, no seeding, no intervention: the founders all carry the
   // founder topology and everything below is what ordinary births produced.
   const engine = new SimulationEngine({
@@ -87,6 +87,25 @@ describe("structural mutation explores the topology space", () => {
   });
 });
 
+/**
+ * Measured margins, with headroom. The table is in ADR 0030 §9d:
+ *
+ * ```text
+ *   seed          turf    patchwork
+ *   0xE0A12026    0.133      0.387
+ *   0xE0A13F15    0.297      0.995
+ *   0xE0A17CF3    0.266      0.940
+ *   mean          0.232      0.774
+ * ```
+ *
+ * The thresholds sit outside every measured value rather than at the mean, so
+ * this reports a mechanism that stopped working rather than an ordinary shift
+ * in how strongly it works.
+ */
+const TURF_CEILING_Q = Math.round(Q * 0.4);
+const PATCHWORK_FLOOR_Q = Math.round(Q * 0.33);
+const SEPARATION_FLOOR_Q = Math.round(Q * 0.2);
+
 interface RunResult {
   seed: number;
   startQ: number;
@@ -110,7 +129,7 @@ function runScenario(config: typeof TURF_CONFIG, seed: number): RunResult {
 const mean = (runs: RunResult[]): number =>
   runs.reduce((total, run) => total + run.shareQ, 0) / runs.length;
 
-describe("selection sorts standing topological variation", () => {
+describe("selection sorts standing topological variation", { timeout: 3_600_000 }, () => {
   const turf = SELECTION_SEEDS.map((seed) => runScenario(TURF_CONFIG, seed));
   const patchwork = SELECTION_SEEDS.map((seed) => runScenario(PATCHWORK_CONFIG, seed));
 
@@ -123,12 +142,38 @@ describe("selection sorts standing topological variation", () => {
     }
   });
 
-  it("measures a share in both worlds", () => {
-    // The two directional thresholds are set from measurement and land with the
-    // ADR §10 table. Until then this pins the mechanics of the experiment —
-    // that both worlds run to the horizon and report a share — so the harness
-    // itself is under test rather than trusted.
-    expect(mean(turf)).toBeGreaterThanOrEqual(0);
-    expect(mean(patchwork)).toBeGreaterThanOrEqual(0);
+  it("selects against memory where there is nothing to remember", () => {
+    // Claim 1. Registers cost upkeep every tick they are retained, and on the
+    // turf the right action is always derivable from the current senses, so
+    // there is nothing for that upkeep to buy. If this did not fall, M16's cost
+    // would be decorative and CLAUDE.md's trade-off rule would be violated.
+    expect(mean(turf)).toBeLessThan(TURF_CEILING_Q);
+    for (const run of turf) {
+      expect(run.shareQ).toBeLessThan(Q / 2);
+    }
+  });
+
+  it("does not price memory out where it can pay", () => {
+    // Claim 2, and the reachability claim proper. The same registers at the
+    // same cost, in a world where rich patches are separated by ground the
+    // senses report nothing useful about. If this fell too, memory would be a
+    // trait evolution can never afford whatever the capability fixtures show.
+    expect(mean(patchwork)).toBeGreaterThan(PATCHWORK_FLOOR_Q);
+    for (const run of patchwork) {
+      expect(run.shareQ).toBeGreaterThan(TURF_CEILING_Q / 2);
+    }
+  });
+
+  it("moves the same founder population in opposite directions", () => {
+    // The two claims together, which is the only form in which either means
+    // anything: one seeded 50/50 population, two ordinary worlds, no fitness
+    // assigned and no topology bit touched after tick 0. The environment
+    // decides whether memory is worth its upkeep — the engine has no opinion.
+    expect(mean(patchwork) - mean(turf)).toBeGreaterThan(SEPARATION_FLOOR_Q);
+    for (let i = 0; i < SELECTION_SEEDS.length; i += 1) {
+      const turfRun = turf[i] as RunResult;
+      const patchworkRun = patchwork[i] as RunResult;
+      expect(patchworkRun.shareQ).toBeGreaterThan(turfRun.shareQ);
+    }
   });
 });

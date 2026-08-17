@@ -212,7 +212,120 @@ blocks in one phase, and asserts each child's full block equals its own parent's
 copy narrower than the genome, and it will keep failing for whatever M19 does to this same
 buffer.
 
-## 9. Cost
+## 9. Reachability, and the calibration defect it caught
+
+§5 is careful that the capability fixtures prove **representability**. CLAUDE.md's evolutionary
+accessibility rule asks a different question, and asks it about memory by name: is there an
+ordinary mutation + inheritance + selection pathway to memory use, on the ordinary engine, with
+realized survival and reproduction as the only fitness?
+
+The first attempt to answer it failed, and the failure was in M16 rather than in the experiment.
+
+### 9a. Thinking was priced out of existence
+
+Run the ordinary engine from founders for 10 000 ticks and count what the population's brains
+actually became. Mean hidden units per organism: **0.002**. Structural mutation was switching
+them on and selection was removing them within a generation, every time.
+
+The arithmetic says why, and it is not subtle. A hidden unit is not a thing a lineage buys on
+its own — a _usable_ one arrives wired to twenty inputs, five outputs and itself, which is
+twenty-six connections. At one whole energy per connection that unit cost 31 energy/tick, and
+the measured basal cost of a founder is **10/tick as a newborn and 30 as an adult mean**. One
+neuron cost an adult's entire basal bill. The most complex expressible brain cost 545/tick.
+
+§3a's original numbers were wrong in exactly the way that hid this: "a brain with all twelve
+hidden units awake pays 36 energy/tick" counted the units and forgot the wires they need to do
+anything. A cost per item is not a cost per capability when the items only come in bundles.
+
+The trade-off rule asks for a credible cost, and a cost that forbids a trait outright is not
+one — it is the "always minimize" failure the rule's second half warns about, arrived at from
+the other direction than M15's free locomotion but every bit as much a defect. Charging for
+complexity is what makes topology evolvable; overcharging for it makes topology decorative.
+
+The coefficients are now Q-scaled. A usable hidden unit costs 1.93/tick, and the maximal brain
+32/tick — roughly double an adult's upkeep, which is the "decision, not a rounding error" §3a
+always meant. Any non-zero excess is billed at least one whole energy per tick, so the
+fractional scale cannot become a free one at the bottom.
+
+### 9b. The experiment's first design was confounded
+
+Worth recording rather than quietly replacing, because the mistake is an easy one to repeat.
+
+It compared a memory-capable brain against **the pristine founder** — and the complex group was
+gone inside 1000 ticks. That is less than one generation at the founder's maturity age, so
+whatever killed it, it was not selection. It was a randomly wired controller behaving worse
+than a tuned reflex one, and the memory registers had nothing to do with it.
+
+Both groups now get an **identical hidden layer with identical weights**, drawn once per pair
+from a stream that never touches the engine's own. They differ in whether the four registers
+exist and are wired, and in nothing else. Only in that arrangement is a difference in outcome
+attributable to memory.
+
+The added weights are drawn small — four small-mutation sigmas — rather than uniformly over the
+legal range. That is faithful as well as necessary: a wire ordinary evolution has just switched
+on carries whatever drift has accumulated on a weight that started at zero, not a full-scale
+random value. The first draw saturated every hidden unit and left networks that had stopped
+responding to their senses, which measures saturation rather than memory.
+
+### 9c. What the two halves measure
+
+Two claims that pull against each other, so the result is a **contrast** rather than a number:
+
+1. complexity that costs and does not pay must be selected **against**, or the cost is
+   decorative;
+2. the same complexity where it can pay must **not** be priced out, or memory is unreachable in
+   practice whatever the fixtures show.
+
+The worlds are M15's, imported rather than re-invented (ADR 0029 §5): on the turf, thin food is
+everywhere and grows back, so the right action is always derivable from the current senses; on
+the patchwork, rich patches are separated by barren ground where the senses report nothing
+useful, so carrying _anything_ across the gap is worth something.
+
+### 9d. What it measured
+
+Share of the living population still carrying a live memory register after 8 000 ticks, from an
+identical 50/50 start, three seeds per world:
+
+| world     | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 | mean      |
+| --------- | ---------- | ---------- | ---------- | --------- |
+| turf      | 0.133      | 0.297      | 0.266      | **0.232** |
+| patchwork | 0.387      | 0.995      | 0.940      | **0.774** |
+
+Both halves hold, and the patchwork column is the stronger result: on two of three seeds the
+memory-carrying group did not merely survive its upkeep but approached fixation, and the
+survivors kept a mean of 3.98 and 3.76 of their four registers rather than trimming to one. The
+same population on the same seeds falls to 0.297 and 0.266 on the turf. Nothing about the two
+worlds mentions brains, no fitness is assigned, and no topology bit is touched after tick 0 —
+the environment decides whether memory is worth its upkeep.
+
+The turf column is also the trade-off rule demonstrated by measurement rather than asserted: a
+retained register costs energy every tick, and where it buys nothing it is removed.
+
+### 9e. Structural exploration, separately
+
+The seeded experiment shows selection sorting standing variation, which is what a selection
+experiment can show. That mutation reaches the variation in the first place is a different
+claim, measured on ordinary unseeded worlds over 10 000 ticks:
+
+| seed       | distinct topologies | connections (min…max) | mean registers |
+| ---------- | ------------------- | --------------------- | -------------- |
+| 0xE0A12026 | 54                  | 99…104                | 0.000          |
+| 0xE0A13F15 | 121                 | 97…105                | 0.001          |
+| 0xE0A17CF3 | 78                  | 99…104                | 0.001          |
+
+One founder topology becomes dozens; the population spans the founder's hundred connections in
+**both** directions, so structural mutation is not a ratchet; and on two of three seeds a memory
+register arose by ordinary mutation and was still present at tick 10 000.
+
+The registers stay rare in an unseeded world, and that is a finding rather than a shortfall. A
+newly switched-on unit has all-zero weights, because that is what `createFounderBrainWeights`
+leaves behind it — so it does nothing at all until drift gives it a role, while costing from the
+first tick. The useless intermediate is a real evolutionary obstacle, not an artefact, and it is
+exactly why the accessibility rule's method is a seeded selection experiment: ADR 0029 §5a made
+the same point for morphology, where a population founded on one genome has no variation to
+sort until mutation supplies it, and that takes far more generations than a gate can run.
+
+## 10. Cost
 
 Per organism: 82 bytes of topology genome, 352 bytes of weights (was 800 for 400 weights — now
 1152 for 576), and 32 bytes of authoritative neural state. Inference gained five mask tests per
