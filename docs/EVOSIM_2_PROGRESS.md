@@ -343,4 +343,63 @@ during it.
 
 ---
 
+### M17 — Rich ecology and niches
+
+| Field            | Value                                     |
+| ---------------- | ----------------------------------------- |
+| Status           | complete                                  |
+| Branch           | `claude/evosim-2-0-implementation-7sjovi` |
+| Engine version   | 0.11.0 → **0.12.0**                       |
+| Config schema    | 10 → **11**                               |
+| Snapshot schema  | 11 → **12**                               |
+| Protocol version | 12 → **13**                               |
+| ADR              | 0031                                      |
+| Deployment URL   | https://martintoddler.github.io/EvoSim/   |
+
+**Delivered.** One plant field became five channels — foliage (the Milestone 0–16 field, number
+for number), browse, fruit, roots, defended — plus meat unchanged. Each makes a *different*
+thing expensive, drawn from four separate budgets: mouth morphology, travel, limb morphology and
+a metabolic gene. Capacity comes from each channel's own temperature, moisture,
+fertility-weight and elevation curves, so the same cell can be excellent foliage ground and
+hopeless for roots; nothing decides a place is a niche. Six continuous processing loci with a
+floor replace the single `diet` gene, so every organism can eat every channel — badly, if badly
+matched. Breadth is priced, not constrained: digestive upkeep bills the sum of the loci above
+the founder's total.
+
+**Acceptance (M17-05).** No single resource strategy is structurally universal — three distinct
+winners over five worlds, no channel winning everywhere, four of five worlds unanimous across
+seeds. Table in ADR 0031 §5d.
+
+**Six defects, all found by measurement rather than by tests.**
+
+1. **Plant demand was written out of bounds** — the claim loop keys demand by channel, the
+   arrays were one cell-plane long, so every write past the first channel was silently
+   discarded and the founder ate nothing.
+2. **The richest channel won for every genome.** The founder spent its first hundred ticks
+   eating 91% defended growth — the one channel that damages it. Energy spread 3.2× against an
+   efficiency spread of 2.3×, so raw richness beat every genetic difference.
+3. **Roots were a faucet.** 6000 free units per cell per 10 000 ticks, in every cell of every
+   world, regardless of the world's resource mix. Roots won a world built to favour fruit.
+4. **Fruit was dead rather than slow** — a grazed patch took longer to return than any run lasts.
+5. **Defended growth was free**, then **instantly lethal** — toxin damage was recorded but never
+   applied to health, and the correction overshot to where seventeen units killed outright.
+6. **`dietQ` had no writer**, so five consumers would have seen a permanently diet-neutral
+   population without failing a test.
+
+Three of these made a channel behave as though it had no cost, and every one came from a number
+whose units were asserted in a comment rather than derived from the mechanism it feeds
+(ADR 0031 §5c).
+
+**Two findings recorded rather than tuned away.** Fruit never wins any world, including its own,
+because the worlds scale capacity and fruit is capacity- and flow-poor. Defended growth wins 8
+of 15 as the fallback for anything bad at plants, and at tick 10 000 of the golden fixture 3164
+of 4733 deaths are toxin against 1538 starvation — poisoning is the leading cause of death in
+the shipped world, with the population stable through it.
+
+**Deferred:** the twelve-seed ecology sweep, still not re-run since M15 recorded 2 of 12 seeds
+at the population cap. M17 moves the fixture population to 1468 (M16: 1262, M15: 1841), so the
+finding remains stale in a direction that has now changed twice.
+
+---
+
 _Stages M16 through the final audit are appended below as they complete._
