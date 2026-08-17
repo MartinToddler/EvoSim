@@ -6,6 +6,9 @@ import {
   MAX_MORPH_SEGMENTS,
 } from "../morphology/morphGenes";
 import { MORPH_MAGNITUDE_SCALE } from "../render/renderSnapshot";
+import { BRAIN_HIDDEN_COUNT, BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
+import { BRAIN_MEMORY_COUNT, NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
+import { TOPOLOGY_BIT_COUNT } from "../brain/topologyMutation";
 import { createMorphologyReference } from "../morphology/physicalPhenotype";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
@@ -803,10 +806,38 @@ function validateBrain(config: DeepReadonly<SimulationConfig>): void {
     "brain: the weight clamp must be symmetric (weightMin === -weightMax)",
   );
 
-  // The quantized inference accumulator sums weightCount products of a Q-scaled
-  // value and a weight (docs/04 §11: "choose bounds safely below exact integer
-  // limit"). Keep the worst case an order of magnitude below 2^53.
-  const worstCaseAccumulator = brain.weightCount * Q * Math.max(-brain.weightMin, brain.weightMax);
+  // Per-tick upkeep of neural complexity beyond the founder's (M16). Zero is a
+  // legal "brains are free" ablation; negative is not, because a cost that can
+  // go negative is an energy source.
+  const complexity = brain.complexity;
+  checkNonNegativeInt(complexity.perSensoryChannel, "brain.complexity.perSensoryChannel");
+  checkNonNegativeInt(complexity.perHiddenUnit, "brain.complexity.perHiddenUnit");
+  checkNonNegativeInt(complexity.perRecurrentLink, "brain.complexity.perRecurrentLink");
+  checkNonNegativeInt(complexity.perMemoryRegister, "brain.complexity.perMemoryRegister");
+  checkNonNegativeInt(complexity.perConnection, "brain.complexity.perConnection");
+  // The most any legal brain could be billed, against the Uint16 the upkeep is
+  // clamped into. A config that could saturate that clamp would make two very
+  // different brains cost the same, which is a silent free lunch at the top.
+  const worstCaseUpkeep =
+    BRAIN_INPUT_COUNT * complexity.perSensoryChannel +
+    BRAIN_HIDDEN_COUNT * complexity.perHiddenUnit +
+    BRAIN_HIDDEN_COUNT * complexity.perRecurrentLink +
+    BRAIN_MEMORY_COUNT * complexity.perMemoryRegister +
+    NEURAL_WEIGHT_COUNT * complexity.perConnection;
+  check(
+    worstCaseUpkeep <= UINT16_MAX,
+    `brain.complexity: the most complex expressible brain would be billed ${worstCaseUpkeep} ` +
+      `energy/tick, which does not fit the Uint16 upkeep is clamped into (<= ${UINT16_MAX}). ` +
+      "Two different brains would then cost the same, which is a free lunch at the top",
+  );
+
+  // The quantized inference accumulator sums every weight a network can use
+  // against a Q-scaled value (docs/04 §11: "choose bounds safely below exact
+  // integer limit"). M16 widened that from `weightCount` to
+  // `NEURAL_WEIGHT_COUNT`, because recurrence and memory add terms. Keep the
+  // worst case an order of magnitude below 2^53.
+  const worstCaseAccumulator =
+    NEURAL_WEIGHT_COUNT * Q * Math.max(-brain.weightMin, brain.weightMax);
   check(
     worstCaseAccumulator <= Number.MAX_SAFE_INTEGER / 8,
     `brain: worst-case inference accumulator ${worstCaseAccumulator} is too close to the exact ` +
@@ -815,7 +846,19 @@ function validateBrain(config: DeepReadonly<SimulationConfig>): void {
 }
 
 function validateMutation(config: DeepReadonly<SimulationConfig>): void {
-  const { ecological, brain, morphology } = config.mutation;
+  const { ecological, brain, morphology, topology } = config.mutation;
+
+  // M16 structural mutation. `maxFlipsPerBirth` bounds the PRNG cost of a birth
+  // as well as the size of the change, so it is checked as a hard positive
+  // rather than left to drift: an unbounded flip count would make one lineage's
+  // structural history shift every other organism's random stream.
+  checkQFraction(topology.structuralProbabilityQ, "mutation.topology.structuralProbabilityQ");
+  checkPositiveInt(topology.maxFlipsPerBirth, "mutation.topology.maxFlipsPerBirth");
+  check(
+    topology.maxFlipsPerBirth <= TOPOLOGY_BIT_COUNT,
+    `mutation.topology.maxFlipsPerBirth must not exceed the ${TOPOLOGY_BIT_COUNT} bits there ` +
+      "are to flip",
+  );
 
   checkQFraction(
     ecological.perGeneMutationProbabilityQ,
