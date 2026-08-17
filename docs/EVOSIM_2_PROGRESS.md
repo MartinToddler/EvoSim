@@ -178,14 +178,15 @@ reachability sweep belongs in the final audit (F-02), not in the per-commit gate
 | ---------------- | ----------------------------------------------------------- |
 | Status           | complete                                                    |
 | Branch           | `claude/evosim-2-0-implementation-7sjovi`                    |
-| Commit SHA       | `f17f194` (mechanism `727b53c`)                              |
+| Commit SHA       | `714fe48` (mechanism `727b53c`, gate `f17f194`)              |
 | Engine version   | 0.9.0 → **0.10.0**                                          |
 | Config schema    | 8 → **9**                                                   |
 | Snapshot schema  | 9 → **10**                                                  |
 | Protocol version | 10 → **11** (render snapshot layout unchanged at 2)          |
 | ADR              | 0029                                                        |
-| `pnpm verify`    | pending                                                     |
-| Deployment       | pending                                                     |
+| `pnpm verify`    | typecheck + lint green; suites green per package             |
+| Deployment       | success (run 32004685873), verified live                     |
+| Deployment URL   | https://martintoddler.github.io/EvoSim/                      |
 
 **Delivered.** One centralized derivation — `morphology/physicalPhenotype.ts` — turning a
 developed body into seventeen Q multipliers: mass, energy storage, basal upkeep, movement cost,
@@ -244,7 +245,17 @@ for out of intake, and every seed went extinct; and an archipelago selects for n
 drowning damage and the terrain-danger sensors mean organisms avoid water rather than crossing
 it. The gaps have to be barren land.
 
-**Deferred:** none recorded yet.
+**Deployment verification.** The served bundle embeds `VITE_APP_VERSION`, so the live site was
+confirmed to be this exact commit by fetching `assets/index-*.js` and matching
+`714fe484946dbcde2719063590dea067f09ba53e` in it — not by trusting a green workflow.
+
+**One process defect, worth recording.** The first merge to `main` failed the deploy workflow's
+typecheck gate: `apps/web` keeps its own `EntityDetailsDto` fixture and it was missed when
+protocol 11 added `physical`. It passed locally because the check read `$?` after a pipe, which
+reports the exit status of `tail` rather than of `pnpm`. The gate did its job; the local check
+did not, and is no longer written that way.
+
+**Deferred:** none.
 
 ---
 
