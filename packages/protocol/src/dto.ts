@@ -150,6 +150,54 @@ export interface WorldSummaryDto {
  * All values are in the same human units as `EntityDetailsDto`. When the
  * population is zero every mean is 0 and the UI is expected to show a gap.
  */
+/**
+ * Population-mean shape of the evolved network (M16).
+ *
+ * The founder reads 20 / 0 / 0 / 0 / 100 at zero upkeep, so any drift from
+ * those five numbers is the population's brains having a history. A mean rather
+ * than a distribution because this rides the low-frequency telemetry channel —
+ * one number per quantity, a few times a second, never a per-organism array.
+ */
+export interface BrainMeansDto {
+  /** Mean active sensory channels. */
+  activeInputs: number;
+  /** Mean active hidden units. */
+  activeHidden: number;
+  /** Mean active recurrent links. */
+  recurrentLinks: number;
+  /** Mean retained memory registers. */
+  memoryRegisters: number;
+  /** Mean wired connections. */
+  activeConnections: number;
+  /** Mean per-tick metabolic upkeep the complexity above costs. */
+  upkeepPerTick: number;
+  /** Share of the population retaining at least one memory register, [0, 1]. */
+  memoryCarrierShare: number;
+}
+
+/**
+ * Population-level resource ecology (M17), all arrays in `Resource` order:
+ * foliage, browse, fruit, roots, defended, meat.
+ *
+ * Resources, never eater types. Six numbers per row and no label: whether a
+ * population "is" herbivorous is the observer's word, and ADR 0027 keeps that
+ * word out of the engine and out of the UI that speaks for it.
+ */
+export interface EcologyStatsDto {
+  /** Standing biomass per plant channel; the meat entry is carcass meat. */
+  biomass: readonly number[];
+  /** Carrying capacity per plant channel; the meat entry is 0 (meat has none). */
+  capacity: readonly number[];
+  /** Share of the living population's lifetime intake taken from each channel. */
+  intakeShare: readonly number[];
+  /** Population-mean processing efficiency per channel, [0, 1]. */
+  processEfficiency: readonly number[];
+  /** Population-mean toxin resistance, [0, 1]. */
+  toxinResistance: number;
+  /** Deaths attributed to chemically defended growth, cumulative. */
+  toxinDeaths: number;
+}
+
 export interface TraitMeansDto {
   /** Mean signed diet in [-1, 1]: -1 herbivore, +1 carnivore. */
   diet: number;
@@ -197,6 +245,10 @@ export interface TelemetryDto {
   meanEnergyFraction: number;
   /** Mean trait values over the alive population; see {@link TraitMeansDto}. */
   traitMeans: TraitMeansDto;
+  /** Population-mean evolved brain shape and what it costs (M16). */
+  brainMeans: BrainMeansDto;
+  /** Population-level resource ecology, per channel (M17). */
+  ecology: EcologyStatsDto;
 
   // --- Species and history (Milestone 8) --------------------------------------
   /** Species with living members right now. */

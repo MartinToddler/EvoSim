@@ -174,6 +174,113 @@ export function StatsPanel(props: StatsPanelProps): React.JSX.Element {
           ]}
         />
       </div>
+
+      <EcologyTable telemetry={props.telemetry} />
+      <BrainSummary telemetry={props.telemetry} />
     </section>
+  );
+}
+
+/** Channel names in `Resource` order. Resources, never eater types (ADR 0027). */
+const RESOURCE_LABELS: readonly string[] = [
+  "Foliage",
+  "Browse",
+  "Fruit",
+  "Roots",
+  "Defended",
+  "Meat",
+];
+
+/**
+ * Per-channel ecology (M17), as a table rather than six charts.
+ *
+ * Six series on one axis is unreadable and six separate charts buries the
+ * comparison that matters — which channel the population is actually living
+ * on against which channels are actually there. A table puts standing stock,
+ * realized intake and mean processing ability side by side per channel.
+ *
+ * Nothing here concludes anything. Six numbers per row and no label: whether
+ * this population "is" herbivorous is the reader's word to use, not the
+ * panel's to assert.
+ */
+function EcologyTable({ telemetry }: { telemetry: TelemetryDto | null }): React.JSX.Element | null {
+  const ecology = telemetry?.ecology;
+  if (ecology === undefined) {
+    return null;
+  }
+  return (
+    <div className="stats-table" aria-label="Resource channels">
+      <h3>Resource channels</h3>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Channel</th>
+            <th scope="col">Standing</th>
+            <th scope="col">Intake</th>
+            <th scope="col">Can process</th>
+          </tr>
+        </thead>
+        <tbody>
+          {RESOURCE_LABELS.map((label, resource) => (
+            <tr key={label}>
+              <th scope="row">{label}</th>
+              <td>{formatCompact(ecology.biomass[resource] ?? 0)}</td>
+              <td>{`${((ecology.intakeShare[resource] ?? 0) * 100).toFixed(0)}%`}</td>
+              <td>{`${((ecology.processEfficiency[resource] ?? 0) * 100).toFixed(0)}%`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="stats-summary">
+        <span>
+          Mean toxin resistance <strong>{`${(ecology.toxinResistance * 100).toFixed(0)}%`}</strong>
+        </span>
+        <span>
+          Toxin deaths <strong>{formatInt(ecology.toxinDeaths)}</strong>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Population-mean evolved brain (M16).
+ *
+ * The founder reads 20 / 0 / 0 / 0 / 100 at zero upkeep, so every number here
+ * is a distance from the founder — which is the cheapest possible answer to
+ * "has anything actually happened to the brains in this world".
+ */
+function BrainSummary({ telemetry }: { telemetry: TelemetryDto | null }): React.JSX.Element | null {
+  const brain = telemetry?.brainMeans;
+  if (brain === undefined) {
+    return null;
+  }
+  return (
+    <div className="stats-table" aria-label="Evolved brain">
+      <h3>Evolved brain (population mean)</h3>
+      <div className="stats-summary">
+        <span>
+          Senses <strong>{formatFixed(brain.activeInputs, 1)}</strong>
+        </span>
+        <span>
+          Hidden <strong>{formatFixed(brain.activeHidden, 2)}</strong>
+        </span>
+        <span>
+          Recurrent <strong>{formatFixed(brain.recurrentLinks, 2)}</strong>
+        </span>
+        <span>
+          Memory <strong>{formatFixed(brain.memoryRegisters, 2)}</strong>
+        </span>
+        <span>
+          Connections <strong>{formatFixed(brain.activeConnections, 1)}</strong>
+        </span>
+        <span>
+          Upkeep <strong>{formatFixed(brain.upkeepPerTick, 2)}</strong>/tick
+        </span>
+        <span>
+          With memory <strong>{`${(brain.memoryCarrierShare * 100).toFixed(1)}%`}</strong>
+        </span>
+      </div>
+    </div>
   );
 }

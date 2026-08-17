@@ -1,4 +1,4 @@
-import { RESOURCE_COUNT } from "../world/resources";
+import { PLANT_RESOURCE_COUNT, RESOURCE_COUNT, Resource } from "../world/resources";
 import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { BRAIN_MEMORY_COUNT } from "../brain/NeuralTopology";
 import {
@@ -12,6 +12,7 @@ import { basalCost, thermalBasalMultiplierQ } from "../organisms/metabolism";
 import { VELOCITY_SCALE } from "../organisms/movement";
 import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { thermalStressQ } from "../organisms/thermal";
+import { DeathCause } from "../organisms/death";
 import type { SimulationEngine } from "../SimulationEngine";
 import { BIOME_NAMES } from "../world/biomes";
 import { speedLUPerTick } from "./renderSnapshot";
@@ -342,6 +343,27 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
 }
 
 /** Mean trait values over the alive population; all zero when it is empty. */
+/** Population-mean evolved brain shape and its cost (M16). */
+export interface BrainMeans {
+  activeInputs: number;
+  activeHidden: number;
+  recurrentLinks: number;
+  memoryRegisters: number;
+  activeConnections: number;
+  upkeepPerTick: number;
+  memoryCarrierShare: number;
+}
+
+/** Population-level resource ecology, arrays in `Resource` order (M17). */
+export interface EcologyStats {
+  biomass: readonly number[];
+  capacity: readonly number[];
+  intakeShare: readonly number[];
+  processEfficiency: readonly number[];
+  toxinResistance: number;
+  toxinDeaths: number;
+}
+
 export interface TraitMeans {
   diet: number;
   maxSpeedLUPerTick: number;
@@ -369,9 +391,11 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
   organismMass: number;
   meanEnergyFraction: number;
   traitMeans: TraitMeans;
+  brainMeans: BrainMeans;
+  ecology: EcologyStats;
 } {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, physical, environment, config } = context;
+  const { organisms, genomes, phenotypes, physical, environment, carcasses, config } = context;
   const massScale = config.organism.massScalePerRadiusSquared;
 
   let maxGeneration = 0;
@@ -386,6 +410,23 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
   let paceSum = 0;
   let thermalSum = 0;
   let alive = 0;
+
+  // M16: the evolved shape of the network, averaged. M17: what the population
+  // can process and what it actually ate. Both are accumulated in the SAME
+  // single pass over the live slots that the trait means already walk — a
+  // second pass would double the cost of the only per-organism sweep on the
+  // telemetry path, for numbers that are read a few times a second.
+  const counts = createNeuralComplexity();
+  let inputsSum = 0;
+  let hiddenSum = 0;
+  let recurrentSum = 0;
+  let memorySum = 0;
+  let connectionsSum = 0;
+  let upkeepSum = 0;
+  let memoryCarriers = 0;
+  let toxinResistanceSum = 0;
+  const efficiencySum = new Array<number>(RESOURCE_COUNT).fill(0);
+  const intakeTotals = new Array<number>(RESOURCE_COUNT).fill(0);
 
   const slotHighWater = organisms.slotHighWater;
   for (let slot = 0; slot < slotHighWater; slot += 1) {
@@ -417,6 +458,27 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
     armorSum += phenotypes.armorQ[slot] as number;
     paceSum += phenotypes.metabolicPaceQ[slot] as number;
     thermalSum += phenotypes.thermalOptimumCentiC[slot] as number;
+
+    countNeuralComplexity(genomes.topology, genomes.topologyOffset(slot), counts);
+    inputsSum += counts.inputs;
+    hiddenSum += counts.hidden;
+    recurrentSum += counts.recurrent;
+    memorySum += counts.memory;
+    connectionsSum += counts.connections;
+    upkeepSum += neuralUpkeep(genomes, slot, config);
+    if (counts.memory > 0) {
+      memoryCarriers += 1;
+    }
+
+    toxinResistanceSum += phenotypes.toxinResistanceQ[slot] as number;
+    for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+      efficiencySum[resource] =
+        (efficiencySum[resource] as number) +
+        (phenotypes.processEfficiencyQ[slot * RESOURCE_COUNT + resource] as number);
+      intakeTotals[resource] =
+        (intakeTotals[resource] as number) +
+        (organisms.resourceEnergyEaten[slot * RESOURCE_COUNT + resource] as number);
+    }
   }
 
   let plantBiomass = 0;
@@ -450,6 +512,65 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
           thermalOptimumC: thermalSum / alive / 100,
         };
 
+  const brainMeans: BrainMeans =
+    alive === 0
+      ? {
+          activeInputs: 0,
+          activeHidden: 0,
+          recurrentLinks: 0,
+          memoryRegisters: 0,
+          activeConnections: 0,
+          upkeepPerTick: 0,
+          memoryCarrierShare: 0,
+        }
+      : {
+          activeInputs: inputsSum / alive,
+          activeHidden: hiddenSum / alive,
+          recurrentLinks: recurrentSum / alive,
+          memoryRegisters: memorySum / alive,
+          activeConnections: connectionsSum / alive,
+          upkeepPerTick: upkeepSum / alive,
+          memoryCarrierShare: memoryCarriers / alive,
+        };
+
+  // Standing stock per channel. Meat is the odd one out and is reported for
+  // what it is: carcass meat has no capacity field because it is not grown, it
+  // is what has already died, so its capacity entry is 0 rather than a number
+  // invented to fill the column.
+  const biomass = new Array<number>(RESOURCE_COUNT).fill(0);
+  const capacity = new Array<number>(RESOURCE_COUNT).fill(0);
+  for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+    let stock = 0;
+    let ceiling = 0;
+    for (let cell = 0; cell < cellCount; cell += 1) {
+      stock += environment.getResourceBiomass(resource, cell);
+      ceiling += environment.getResourceCapacity(resource, cell);
+    }
+    biomass[resource] = stock;
+    capacity[resource] = ceiling;
+  }
+  let meatStanding = 0;
+  for (let i = 0; i < carcasses.remainingMeat.length; i += 1) {
+    meatStanding += carcasses.remainingMeat[i] as number;
+  }
+  biomass[Resource.Meat] = meatStanding;
+
+  const intakeTotal = intakeTotals.reduce((a, b) => a + b, 0);
+  const ecology: EcologyStats = {
+    biomass,
+    capacity,
+    intakeShare:
+      intakeTotal === 0
+        ? new Array<number>(RESOURCE_COUNT).fill(0)
+        : intakeTotals.map((total) => total / intakeTotal),
+    processEfficiency:
+      alive === 0
+        ? new Array<number>(RESOURCE_COUNT).fill(0)
+        : efficiencySum.map((sum) => sum / alive / Q),
+    toxinResistance: alive === 0 ? 0 : toxinResistanceSum / alive / Q,
+    toxinDeaths: organisms.deathsByCause[DeathCause.Toxin] as number,
+  };
+
   return {
     population: organisms.liveCount,
     maxGeneration,
@@ -458,5 +579,7 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
     organismMass,
     meanEnergyFraction: alive === 0 ? 0 : energyFractionSum / alive,
     traitMeans,
+    brainMeans,
+    ecology,
   };
 }

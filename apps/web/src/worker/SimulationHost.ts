@@ -992,6 +992,8 @@ export class SimulationHost {
       organismMass: aggregates.organismMass,
       meanEnergyFraction: aggregates.meanEnergyFraction,
       traitMeans: aggregates.traitMeans,
+      brainMeans: aggregates.brainMeans,
+      ecology: aggregates.ecology,
       activeSpeciesCount: engine.species.activeCount,
       totalSpeciesCount: engine.species.count,
       extinctSpeciesCount:
