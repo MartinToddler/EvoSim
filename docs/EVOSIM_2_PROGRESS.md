@@ -345,16 +345,16 @@ during it.
 
 ### M17 — Rich ecology and niches
 
-| Field            | Value                                     |
-| ---------------- | ----------------------------------------- |
-| Status           | complete                                  |
-| Branch           | `claude/evosim-2-0-implementation-7sjovi` |
-| Engine version   | 0.11.0 → **0.12.0**                       |
-| Config schema    | 10 → **11**                               |
-| Snapshot schema  | 11 → **12**                               |
-| Protocol version | 12 → **13**                               |
-| ADR              | 0031                                      |
-| Deployment URL   | https://martintoddler.github.io/EvoSim/   |
+| Field            | Value                                                     |
+| ---------------- | --------------------------------------------------------- |
+| Status           | complete, including the 0.12.1 corrective pass             |
+| Branch           | `claude/evosim-2-0-implementation-7sjovi`                  |
+| Engine version   | 0.11.0 → **0.12.0** → **0.12.1**                           |
+| Config schema    | 10 → **11** → **12**                                       |
+| Snapshot schema  | 11 → **12** → **13**                                       |
+| Protocol version | 12 → **13** → 14 (14 from the M17 statistics panel, no engine change) |
+| ADR              | 0031                                                       |
+| Deployment URL   | https://martintoddler.github.io/EvoSim/                    |
 
 **Delivered.** One plant field became five channels — foliage (the Milestone 0–16 field, number
 for number), browse, fruit, roots, defended — plus meat unchanged. Each makes a *different*
@@ -368,7 +368,16 @@ the founder's total.
 
 **Acceptance (M17-05).** No single resource strategy is structurally universal — three distinct
 winners over five worlds, no channel winning everywhere, four of five worlds unanimous across
-seeds. Table in ADR 0031 §5d.
+seeds. Table in ADR 0031 §5d, re-measured on 0.12.1 and now enforced by
+`ecology/nicheSelection.test.ts` rather than by a script that ran once.
+
+| world        | 0xE0A12026      | 0xE0A13F15      | 0xE0A17CF3     |
+| ------------ | --------------- | --------------- | -------------- |
+| grass-rich   | foliage (868)   | foliage (1751)  | foliage (733)  |
+| fruit-patchy | foliage (693)   | foliage (1169)  | foliage (344)  |
+| toxin-rich   | defended (1975) | defended (1745) | defended (936) |
+| root-rich    | roots (876)     | roots (879)     | roots (901)    |
+| carrion-rich | foliage (447)   | defended (222)  | foliage (155)  |
 
 **Six defects, all found by measurement rather than by tests.**
 
