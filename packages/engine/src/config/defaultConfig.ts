@@ -187,8 +187,13 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // gone for thousands of ticks, so the living is made by finding the
         // next one rather than by waiting at this one.
         baseCapacityByBiome: [0, 5200, 9000, 700, 500, 400],
-        growthRateQByBiome: [0, 3, 3, 1, 1, 1],
-        seedBankRegenUnits: 1,
+        // Slow, but not "never": at rate 3 a grazed patch took longer than any
+        // run to come back, which made fruit a one-time treasure rather than a
+        // channel a lineage could live on — fruit specialists held 1% of a world
+        // built to favour them. Still the slowest channel by a factor of six
+        // against foliage, so "slow to return" is intact.
+        growthRateQByBiome: [0, 8, 8, 2, 2, 1],
+        seedBankRegenUnits: 2,
         minRegenThreshold: 8,
         energyPerUnit: 48,
         optimumTemperatureCentiC: 2300, // 23 °C — warmer than foliage likes
@@ -208,8 +213,21 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // and happy in dry ground, so it holds the desert.
         baseCapacityByBiome: [0, 9000, 8000, 7200, 8400, 4200],
         growthRateQByBiome: [0, 6, 5, 5, 5, 3],
-        seedBankRegenUnits: 12, // the persistence, in one number
-        minRegenThreshold: 260,
+        // Persistence is the FLOOR, not the rate. The first version had
+        // 12 units per environment step against a threshold of 260, which is
+        // 6000 free units per cell per 10 000 ticks — three times foliage's
+        // and twelve times fruit's, in every cell of every world, regardless
+        // of capacity, fertility, moisture or the world's resource mix. That
+        // is not a persistent channel, it is a faucet grazing cannot close,
+        // and it made roots the best living almost everywhere: it won a world
+        // built to favour fruit (ADR 0031 §5c).
+        //
+        // The rate now matches foliage's, so roots earn no more than anything
+        // else. What still makes them persistent is the threshold — 120 against
+        // 8 … 24 for every other channel — so a grazed root cell holds a real
+        // standing stock where a grazed fruit patch holds nothing.
+        seedBankRegenUnits: 4,
+        minRegenThreshold: 120,
         energyPerUnit: 38,
         optimumTemperatureCentiC: 1500,
         temperatureToleranceCentiC: 3200, // very wide: underground is buffered
