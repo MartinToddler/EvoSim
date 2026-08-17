@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFounderTopology } from "../brain/founderTopology";
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { cloneConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
@@ -219,12 +219,12 @@ describe("mutateBrainWeights", () => {
     config.mutation.brain.weightLargeSigmaQ = 8192;
 
     const rng = Xoshiro128.fromSeed(0xb00c);
-    const weights = new Int16Array(BRAIN_WEIGHT_COUNT);
+    const weights = new Int16Array(NEURAL_WEIGHT_COUNT);
     let sawMin = false;
     let sawMax = false;
     for (let generation = 0; generation < 400; generation += 1) {
       mutateBrainWeights(weights, 0, rng, config);
-      for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+      for (let i = 0; i < NEURAL_WEIGHT_COUNT; i += 1) {
         const value = weights[i] as number;
         expect(value).toBeGreaterThanOrEqual(DEFAULT_CONFIG.brain.weightMin);
         expect(value).toBeLessThanOrEqual(DEFAULT_CONFIG.brain.weightMax);
@@ -237,7 +237,7 @@ describe("mutateBrainWeights", () => {
     expect({ sawMin, sawMax }).toEqual({ sawMin: true, sawMax: true });
   });
 
-  it("mutates about 2% of the 400 weights per birth at the default rate", () => {
+  it("mutates about 2% of the whole weight block per birth at the default rate", () => {
     const rng = Xoshiro128.fromSeed(0x4242);
     const base = createFounderBrainWeights(
       DEFAULT_CONFIG.brain.weightScale,
@@ -250,15 +250,19 @@ describe("mutateBrainWeights", () => {
     for (let birth = 0; birth < births; birth += 1) {
       const weights = Int16Array.from(base);
       mutateBrainWeights(weights, 0, rng, DEFAULT_CONFIG);
-      for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+      for (let i = 0; i < NEURAL_WEIGHT_COUNT; i += 1) {
         if (weights[i] !== base[i]) changed += 1;
       }
     }
-    // docs/04 §18: "At 400 weights, 2% ~ 8 changed weights/birth". Zero deltas
-    // are possible, so the observed mean sits slightly below the nominal 8.
+    // docs/04 §18 states the rate as a fraction, so the expectation is derived
+    // from the block width rather than restated as a number: M16 widened the
+    // block from 400 to NEURAL_WEIGHT_COUNT and the nominal count moved with it.
+    // Zero deltas are possible, so the observed mean sits slightly below nominal.
+    const nominal =
+      (NEURAL_WEIGHT_COUNT * DEFAULT_CONFIG.mutation.brain.perWeightMutationProbabilityQ) / Q;
     const perBirth = changed / births;
-    expect(perBirth).toBeGreaterThan(6);
-    expect(perBirth).toBeLessThan(10);
+    expect(perBirth).toBeGreaterThan(nominal * 0.75);
+    expect(perBirth).toBeLessThan(nominal * 1.25);
   });
 });
 

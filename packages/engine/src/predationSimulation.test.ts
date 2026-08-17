@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createFounderTopology } from "./brain/founderTopology";
 import { SimulationEngine } from "./SimulationEngine";
-import { BrainOutput, BrainInput, BRAIN_WEIGHT_COUNT, ioWeightIndex } from "./brain/BrainLayout";
+import { BrainOutput, BrainInput, ioWeightIndex } from "./brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "./brain/NeuralTopology";
 import { cloneConfig } from "./config/cloneConfig";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import type { SimulationConfig } from "./config/SimulationConfig";
@@ -41,7 +42,7 @@ const DEVELOPED_ENERGY_FRACTION_Q = qmul(Q, 3686);
 function skipBrain(
   entries: readonly { output: number; input: number; weight: number }[],
 ): Int16Array {
-  const weights = new Int16Array(BRAIN_WEIGHT_COUNT);
+  const weights = new Int16Array(NEURAL_WEIGHT_COUNT);
   for (const entry of entries) {
     weights[ioWeightIndex(entry.output, entry.input)] = entry.weight;
   }

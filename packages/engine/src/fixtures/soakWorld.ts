@@ -29,7 +29,7 @@
  * A 64x64 variant was measured first and rejected: it goes extinct around tick
  * 25 000, after which a soak silently stops testing anything.
  */
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
@@ -432,7 +432,7 @@ export function measureBrainDrift(engine: SimulationEngine): {
     config.brain.weightMax,
   );
   let founderNormSq = 0;
-  for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+  for (let i = 0; i < NEURAL_WEIGHT_COUNT; i += 1) {
     founderNormSq += (founderBrain[i] as number) ** 2;
   }
 
@@ -446,7 +446,7 @@ export function measureBrainDrift(engine: SimulationEngine): {
     const base = genomes.weightOffset(slot);
     let dot = 0;
     let normSq = 0;
-    for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+    for (let i = 0; i < NEURAL_WEIGHT_COUNT; i += 1) {
       const weight = genomes.brainWeights[base + i] as number;
       dot += weight * (founderBrain[i] as number);
       normSq += weight * weight;
@@ -462,7 +462,7 @@ export function measureBrainDrift(engine: SimulationEngine): {
     meanSimilarity: brainsMeasured > 0 ? similaritySum / brainsMeasured : 0,
     brainsMeasured,
     clampedFraction:
-      brainsMeasured > 0 ? weightsAtClamp / (brainsMeasured * BRAIN_WEIGHT_COUNT) : 0,
+      brainsMeasured > 0 ? weightsAtClamp / (brainsMeasured * NEURAL_WEIGHT_COUNT) : 0,
   };
 }
 

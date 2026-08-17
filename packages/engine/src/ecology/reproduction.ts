@@ -1,4 +1,3 @@
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
 import type { EngineContext } from "../EngineContext";
 import { GENE_COUNT } from "../genetics/genes";
 import { mutateBrainWeights, mutateEcologicalGenes } from "../genetics/mutation";
@@ -8,7 +7,7 @@ import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/p
 import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
 import { mutateMorphologyGenes } from "../morphology/morphMutation";
 import { mutateTopology } from "../brain/topologyMutation";
-import { TOPOLOGY_WORD_COUNT } from "../brain/NeuralTopology";
+import { NEURAL_WEIGHT_COUNT, TOPOLOGY_WORD_COUNT } from "../brain/NeuralTopology";
 import { spawnOrganism } from "../organisms/spawn";
 
 /**
@@ -235,9 +234,14 @@ export function resolveReproduction(ctx: EngineContext): void {
     // energy the child was given.
     const geneBase = genomes.geneOffset(parentSlot);
     scratch.childGenes.set(genomes.genes.subarray(geneBase, geneBase + GENE_COUNT));
+    // The whole weight block, not just the feed-forward part. The scratch buffer
+    // is reused across every birth in the phase, so a partial copy would leave
+    // the previous child's recurrent and memory weights in the tail and hand
+    // them to this one — inheritance from an unrelated organism, through a
+    // buffer that is neither hashed nor snapshotted.
     const weightBase = genomes.weightOffset(parentSlot);
     scratch.childBrainWeights.set(
-      genomes.brainWeights.subarray(weightBase, weightBase + BRAIN_WEIGHT_COUNT),
+      genomes.brainWeights.subarray(weightBase, weightBase + NEURAL_WEIGHT_COUNT),
     );
     const morphBase = genomes.morphOffset(parentSlot);
     scratch.childMorphGenes.set(

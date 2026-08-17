@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFounderTopology } from "./brain/founderTopology";
-import { BRAIN_WEIGHT_COUNT } from "./brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "./brain/NeuralTopology";
 import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
 import { SpeciesEndReason } from "./evolution/SpeciesStore";
@@ -95,7 +95,7 @@ function plantCloud(
   for (const [gene, valueQ] of Object.entries(profile)) {
     genes[Number(gene) % GENE_COUNT] = geneFromQ(valueQ as number);
   }
-  const silentBrain = new Int16Array(BRAIN_WEIGHT_COUNT);
+  const silentBrain = new Int16Array(NEURAL_WEIGHT_COUNT);
   const cellSizePos = environment.cellSizeLU * POS_SCALE;
 
   let planted = 0;

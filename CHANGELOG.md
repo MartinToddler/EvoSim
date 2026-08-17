@@ -6,6 +6,94 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## M16 — Evolvable brain topology and generic memory (engine 0.11.0, protocol 12, snapshot 11, config 10)
+
+The network's shape is inherited, and an organism has somewhere to keep a thought. ADR 0030.
+
+### Added
+
+- **`brain/NeuralTopology.ts` — the shape of the network is genetic.** Five bitmasks over a
+  ceiling the layout already declares: 20 input bits, 12 hidden, 12 recurrent, 4 memory and 576
+  connection bits. Forty-one Uint16 words per organism, whatever the network. Nothing grows: the
+  maximum brain is a compile-time constant and a genome can only switch parts of it off, which
+  is what "no unbounded NEAT growth" means in practice.
+- **Masks rather than zeroed weights**, for two reasons. Complexity becomes _countable_ — a
+  popcount, so it can be charged for — and a lineage can switch a connection off **without
+  losing what it learned**: a masked weight keeps its value and comes back with one bit flip.
+  Reversible structural change is the point of evolving topology.
+- **Four memory registers, numbered and never named.** Each is written through a **gate** and a
+  **value** drive from the hidden layer, blending `memory += gate × (value − memory)`, so a gate
+  near zero holds and a gate near one overwrites. One weight block could express latching or
+  averaging but not both, and the capability fixtures need both. The gate is clamped to
+  `[0, Q]`, so a negative drive means "do not write" — the resting state a register needs to
+  hold anything.
+- **Writes happen after the outputs are read.** A register written first would let a network
+  react in tick N to a value it decided to store in tick N: a zero-delay loop wearing the word
+  "memory". Every register is exactly one tick old when read, and a test asserts it.
+- **`brain/NeuralStateStore.ts` — authoritative, not derived.** Unlike `MorphologyStore` and
+  `PhysicalPhenotypeStore`, memory is history rather than a function of the genome, so it is
+  hashed with the world, written into every snapshot and restored verbatim. An organism holding
+  a value it latched two hundred ticks ago is still that organism after a save, a rewind and in
+  every branch. Memory does not survive death and is not inherited; a recycled slot is wiped.
+- **Complexity is charged for, from the first commit.** Per-tick metabolic upkeep on every mask
+  bit above the founder's allowance — the only basal term that does not scale with mass, because
+  nervous tissue is billed by what it is. The founder pays exactly zero by construction, so M16
+  does not re-tune the calibrated ecology by existing. All twelve hidden units awake costs 36
+  energy/tick and all four registers another 20, against a founder basal cost around 30.
+- **The excess is floored at zero.** A lineage that trims below the founder pays nothing extra
+  and earns no rebate. This is the shape M15's offspring-construction cost had to be given after
+  the twelve-seed sweep caught it creating energy (ADR 0029 §3f); applying it preemptively here
+  is the cheapest lesson in the project so far.
+- **Structural mutation draws a count, not a bit.** A per-bit roll over 624 bits would cost 624
+  PRNG draws per birth for a block where nearly every draw resolves to "no change". A gate, then
+  a count, then two draws per flip: `1 + 2 × flips`, bounded by config and **independent of
+  network size**. That independence is a determinism requirement — if the draw count tracked how
+  complicated an organism's brain was, one lineage's structural history would shift the random
+  stream of every organism born after it. A test runs an empty genome and a full one from the
+  same seed for 500 births and asserts the PRNG states stay identical.
+- **Nine capability fixtures** showing the architecture can _represent_ food approach, threat
+  avoidance, state-dependent action, temporal alternation and a bearing held for forty ticks
+  after its cue disappears. None is installed into any organism, and nothing outside the test
+  file constructs them: a behaviour the engine _provides_ is a scripted role, while one it can
+  merely _express_ is a place evolution is allowed to go.
+- **`EntityDetailsDto.brain`** — five counts, the upkeep they cost, and the register contents.
+  The founder reads 20/0/0/0/100 at zero upkeep, so any organism whose numbers differ has an
+  evolutionary history. Registers are shown **unlabelled**, as four numbers; a column headed
+  "home X" would be ADR 0027's forbidden direction of causation arriving through the UI.
+
+### Fixed
+
+- **Widening the weight block left the inheritance copy at 400.** `resolveReproduction` assembles
+  the child genome in a **scratch buffer reused by every birth in the phase**, so a 400-wide copy
+  into a 576-wide buffer did not leave the tail zeroed — it left the _previous child's_ recurrent
+  and memory weights there and handed them to this one. Inheritance from an unrelated organism,
+  through a buffer that is deliberately neither hashed nor snapshotted.
+
+  It surfaced as a save/restore divergence rather than as anything about brains: restore
+  reproduced the state hash exactly and then diverged as it continued, which is precisely the
+  signature of authoritative state that is neither hashed nor serialized. A scratch buffer is
+  exactly that by design — correctly, _provided every use overwrites all of it_. A partial write
+  silently promotes scratch to state. The guard is a test that switches mutation off, reproduces
+  two parents with distinct weight blocks in one phase and asserts each child's full block equals
+  its own parent's.
+
+- Two further 400-width call sites, both harmless but wrong: the test harness's silent brain and
+  the soak world's weight-clamp scan, which was reporting a clamped fraction over the
+  feed-forward block alone.
+- Two reproduction tests asserted the child's energy ceiling through the pre-M15 mass-only
+  helper, so they disagreed with the production clamp for any body that is not the founder's.
+  They now ask the same question the engine asks.
+
+### Hashes
+
+Every golden fixture checkpoint and both soak hashes regenerated for one intentional
+authoritative change on four counts: the topology genome is inherited state and joins the
+canonical stream; authoritative neural state joins it as its own section; the weight block grew
+400 → 576; and structural mutation adds draws at every birth. Tick 0 moves through the config
+digest, the wider genome and the founder's topology; the trajectory diverges from the first
+birth. By tick 10 000 the fixture world holds population 1377 (M15: 1841) with 4650 births and
+3273 deaths — brain upkeep is a real drain on any lineage that grows one.
+
 ## M15 — Functional morphology (engine 0.10.0, protocol 11, snapshot 10, config 9)
 
 The developed body now has physical consequence. ADR 0029.

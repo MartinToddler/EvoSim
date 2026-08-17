@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import type { EngineContext } from "../EngineContext";
 import { Gene } from "../genetics/genes";
 import { POS_SCALE, Q } from "../math/fixed";
 import { applyMetabolismGrowthThermalAging } from "../organisms/metabolism";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import {
   createTestWorld,
   reassignTestSpecies,
@@ -184,14 +185,16 @@ describe("reproduction energy accounting (task E02)", () => {
 
     const child = liveSlots(ctx).find((s) => s !== slot) as number;
     const childEnergy = ctx.organisms.energy[child] as number;
-    const childMax = maxEnergyForMass(
-      massFromRadiusPos(
-        currentRadiusPos(
-          ctx.phenotypes.adultRadiusPos[child] as number,
-          ctx.organisms.developmentQ[child] as number,
-        ),
-        ctx.config.organism.massScalePerRadiusSquared,
-      ),
+    // The child's own ceiling, through its own body plan (M15): the mass-only
+    // helper would answer for a founder-shaped organism, not for this one.
+    const childRadius = currentRadiusPos(
+      ctx.phenotypes.adultRadiusPos[child] as number,
+      ctx.organisms.developmentQ[child] as number,
+    );
+    const childMax = maxEnergyForOrganism(
+      ctx.physical,
+      child,
+      bodyMass(ctx.physical, child, childRadius, ctx.config.organism.massScalePerRadiusSquared),
       ctx.config,
     );
 
@@ -280,9 +283,16 @@ describe("reproduction energy accounting (task E02)", () => {
         ctx.phenotypes.adultRadiusPos[slot] as number,
         organisms.developmentQ[slot] as number,
       );
-      const mass = massFromRadiusPos(radius, ctx.config.organism.massScalePerRadiusSquared);
+      const mass = bodyMass(
+        ctx.physical,
+        slot,
+        radius,
+        ctx.config.organism.massScalePerRadiusSquared,
+      );
       expect(energy).toBeGreaterThanOrEqual(0);
-      expect(energy).toBeLessThanOrEqual(maxEnergyForMass(mass, ctx.config));
+      expect(energy).toBeLessThanOrEqual(
+        maxEnergyForOrganism(ctx.physical, slot, mass, ctx.config),
+      );
     }
   });
 });
@@ -363,6 +373,59 @@ describe("child identity and lineage (task E05)", () => {
         fresh.genomes.geneOffset(freshSlot) + 16,
       ),
     );
+  });
+
+  it("copies the whole weight block, so one birth cannot leak into the next", () => {
+    // The scratch child genome is reused by every birth in the phase. A copy
+    // narrower than the genome leaves the previous child's tail in the buffer
+    // and hands it to this one — inheritance from an unrelated organism through
+    // a buffer that is neither hashed nor snapshotted, so it survives a save and
+    // reappears as a divergence after restore. Mutation is switched off here so
+    // that inheritance is exact and any leak is an exact mismatch.
+    const world = createTestWorld({
+      configure: (config) => {
+        config.mutation.brain.perWeightMutationProbabilityQ = 0;
+        config.mutation.brain.largeWeightMutationProbabilityQ = 0;
+        config.mutation.topology.structuralProbabilityQ = 0;
+      },
+    });
+    const { ctx } = world;
+
+    // Two adults whose weight blocks differ everywhere, including the recurrent
+    // and memory region a feed-forward-width copy would miss.
+    const parents = [0, 1].map((index) => {
+      const { xPos, yPos } = world.cellCenter(20 + index * 4, 20);
+      const weights: Record<number, number> = {};
+      for (let i = 0; i < NEURAL_WEIGHT_COUNT; i += 1) {
+        weights[i] = ((i + 1) * (index + 1) * 7) % 4096;
+      }
+      return spawnTestOrganism(world, {
+        xPos,
+        yPos,
+        weights,
+        ageTicks: MATURE_AGE,
+        developmentQ: Q,
+        energyFractionQ: Q,
+      });
+    });
+
+    for (const parent of parents) {
+      requestReproduction(ctx, parent);
+    }
+    resolveReproduction(ctx);
+
+    const children = liveSlots(ctx).filter((slot) => !parents.includes(slot));
+    expect(children).toHaveLength(2);
+    for (const child of children) {
+      const parent = parents.find(
+        (slot) => ctx.organisms.entityId[slot] === ctx.organisms.parentEntityId[child],
+      ) as number;
+      const childBase = ctx.genomes.weightOffset(child);
+      const parentBase = ctx.genomes.weightOffset(parent);
+      expect(ctx.genomes.brainWeights.subarray(childBase, childBase + NEURAL_WEIGHT_COUNT)).toEqual(
+        ctx.genomes.brainWeights.subarray(parentBase, parentBase + NEURAL_WEIGHT_COUNT),
+      );
+    }
   });
 });
 

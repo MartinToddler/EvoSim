@@ -1,4 +1,4 @@
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { createFounderTopology } from "../brain/founderTopology";
 import type { SimulationConfig } from "../config/SimulationConfig";
@@ -239,7 +239,7 @@ export function spawnTestOrganism(world: TestWorld, options: TestOrganismOptions
   }
 
   const weights = options.silentBrain
-    ? new Int16Array(BRAIN_WEIGHT_COUNT)
+    ? new Int16Array(NEURAL_WEIGHT_COUNT)
     : createFounderBrainWeights(
         config.brain.weightScale,
         config.brain.weightMin,

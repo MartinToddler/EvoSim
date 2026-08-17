@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "../SimulationEngine";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import { GENE_COUNT } from "../genetics/genes";
 import { DEATH_CAUSE_COUNT } from "../organisms/death";
 import { InterventionKind } from "../commands/SimulationCommand";
@@ -61,7 +61,7 @@ describe("estimateEngineMemory (task L03)", () => {
 
     // Uint16 genes, Int16 brain weights — both two bytes per element.
     expect(bytes.genes).toBe(capacity * GENE_COUNT * 2);
-    expect(bytes.brains).toBe(capacity * BRAIN_WEIGHT_COUNT * 2);
+    expect(bytes.brains).toBe(capacity * NEURAL_WEIGHT_COUNT * 2);
   });
 
   it("scales the environment with the grid, not with the population", () => {

@@ -766,14 +766,31 @@ trade-off defects were found by this milestone's own audit and all three are fix
 mouth, a costs-only tail, and locomotion that was free at the point of use and won in every
 environment tested until movement cost started reading the propulsive apparatus.
 
-### M16 Evolvable brain and memory
-- [ ] M16-01 bounded neural genotype: input/hidden/connection/recurrent masks.
-- [ ] M16-02 generic recurrent state and memory registers (no semantic names).
-- [ ] M16-03 complexity cost from active neurons, connections, memory and sensors.
-- [ ] M16-04 bounded deterministic mutation operators.
-- [ ] M16-05 capability fixtures (approach, avoid, state-dependent, alternation, persistent
-      strategy) - representable, not installed.
-- [ ] M16-06 brain-phase benchmark before/after.
+### M16 Evolvable brain and memory (ADR 0030)
+- [x] M16-01 bounded neural genotype: five bitmasks over a compile-time ceiling — 20 input,
+      12 hidden, 12 recurrent, 4 memory and 576 connection bits. 41 Uint16 words (82 bytes) per
+      organism whatever the network; no growth, no per-organism graph, nothing allocated per
+      tick. Masks rather than zero weights so complexity is COUNTABLE (and therefore chargeable)
+      and so switching a connection off keeps its weight, making structural change reversible.
+- [x] M16-02 generic recurrent state and memory registers, numbered never named. Four registers
+      written through a gate/value pair so a register can latch or hold loosely; writes happen
+      AFTER outputs are read, so a register is always exactly one tick old and no zero-delay
+      loop is possible. Authoritative: hashed, serialized and restored verbatim, unlike M14's
+      and M15's derived caches, because memory is history rather than a function of the genome.
+- [x] M16-03 complexity cost from active sensory channels, hidden units, recurrent links, memory
+      registers and connections, billed as per-tick basal upkeep. Measured against the founder's
+      brain and floored at zero: the founder pays 0 so the calibrated ecology is not moved by the
+      mechanism existing, and a simpler brain is free but never profitable (the M15 lesson from
+      ADR 0029 §3f applied preemptively).
+- [x] M16-04 bounded deterministic mutation operators: a probability gate, then a flip COUNT,
+      then two draws per flip, so a birth costs `1 + 2 x flips` regardless of network size. Per-
+      bit rolls would cost 624 draws per birth and would make one lineage's structural history
+      shift every other organism's stream.
+- [x] M16-05 capability fixtures (approach, avoid, state-dependent, alternation, persistent
+      location from generic memory and a cue) — nine of them, all passing, none installed into
+      any organism and nothing outside the test file constructing them.
+- [x] M16-06 inspector exposes the evolved network: five counts, its upkeep and the register
+      contents, shown unlabelled because the engine does not know what a lineage keeps in them.
 
 ### M17 Rich ecology and niches
 - [ ] M17-01 distinct resource systems with continuous genetic processing efficiencies.

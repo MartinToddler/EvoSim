@@ -184,7 +184,30 @@ The registers are shown **unlabelled**, as four numbers. The engine does not kno
 keeps in `memory2` and the panel must not pretend otherwise; a column headed "home X" would be
 ADR 0027's forbidden direction of causation arriving through the UI instead of the engine.
 
-## 8. Cost
+## 8. The defect widening the genome caused, and the guard against it
+
+Growing the weight block from 400 to 576 left three call sites copying 400: the test harness's
+silent brain, the soak world's weight scan, and — the one that mattered — the inheritance copy
+in `resolveReproduction`.
+
+That third one is worth stating precisely, because its failure mode is not the obvious one. The
+child genome is assembled in a **scratch buffer reused by every birth in the phase**, so copying
+only the first 400 entries did not leave the tail zeroed; it left the _previous child's_
+recurrent and memory weights there and handed them to this one. Inheritance from an unrelated
+organism, through a buffer that is deliberately neither hashed nor snapshotted.
+
+It surfaced as a save/restore divergence rather than as anything about brains. Restore
+reproduced the state hash exactly and then diverged as it continued, which is the signature of
+authoritative state that is neither hashed nor serialized — and a scratch buffer is exactly that
+by design, correctly, _provided every use overwrites all of it_. A partial write silently
+promotes scratch to state.
+
+The guard is a test that switches mutation off, reproduces two parents with distinct weight
+blocks in one phase, and asserts each child's full block equals its own parent's. It fails on any
+copy narrower than the genome, and it will keep failing for whatever M19 does to this same
+buffer.
+
+## 9. Cost
 
 Per organism: 82 bytes of topology genome, 352 bytes of weights (was 800 for 400 weights — now
 1152 for 576), and 32 bytes of authoritative neural state. Inference gained five mask tests per
