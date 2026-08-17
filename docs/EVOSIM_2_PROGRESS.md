@@ -265,14 +265,14 @@ did not, and is no longer written that way.
 | ---------------- | ------------------------------------------------ |
 | Status           | complete                                         |
 | Branch           | `claude/evosim-2-0-implementation-7sjovi`        |
-| Commit SHA       | pending merge                                    |
+| Commit SHA | `6246bc9` (mechanism `e7bb88f`, fixes `d57815c` / `2ce4403`) |
 | Engine version   | 0.10.0 → **0.11.0**                              |
 | Config schema    | 9 → **10**                                       |
 | Snapshot schema  | 10 → **11**                                      |
 | Protocol version | 11 → **12**                                      |
 | ADR              | 0030                                             |
-| `pnpm verify`    | pending                                          |
-| Deployment       | pending                                          |
+| `pnpm verify` | green — typecheck, lint, 1432 tests / 112 files, build |
+| Deployment | success (run 32020886807), verified live |
 | Deployment URL   | https://martintoddler.github.io/EvoSim/          |
 
 **Delivered.** The network's shape is inherited and an organism has somewhere to keep a thought.
@@ -324,6 +324,17 @@ surviving to the end on two of three seeds.
 randomly wired controller is worse than a tuned reflex one" — the complex group was gone inside
 1000 ticks, less than one generation, so not selection at all. Both groups now share an
 identical hidden layer with identical weights and differ only in whether the registers exist.
+
+**Deployment verification.** The served bundle embeds `VITE_APP_VERSION`, so the live site was
+confirmed to be this exact commit by fetching `assets/index-BJdpbi86.js` and matching
+`6246bc92e9f3e9cd709c46b59bf9e0e67d6457ff` and engine `0.11.0` inside it — not by trusting a
+green workflow.
+
+**One process defect, worth recording.** M16-01 through M16-06 were marked complete before the
+reachability gate existed, on the strength of the capability fixtures. Those fixtures prove the
+architecture can *represent* memory use, which is not the claim CLAUDE.md's accessibility rule
+makes, and the gate that was missing is the one that found the calibration defect. For M17
+onward the reachability experiment is written before any milestone task is ticked, not after.
 
 **Deferred:** the twelve-seed ecology sweep has not been re-run since M15 recorded 2 of 12 seeds
 reaching the population cap. M16's brain upkeep pulls populations down (fixture tick-10 000
