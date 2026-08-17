@@ -801,11 +801,25 @@ environment tested until movement cost started reading the propulsive apparatus.
       54/78/121 distinct topologies from one founder topology, connection counts spanning the
       founder's hundred in both directions. ADR 0030 §9.
 
-### M17 Rich ecology and niches
-- [ ] M17-01 distinct resource systems with continuous genetic processing efficiencies.
-- [ ] M17-02 spatial ecology driven by temperature/moisture/fertility/biome/terrain.
-- [ ] M17-03 generic resource sensors, no best-food-for-me input.
-- [ ] M17-04 multi-seed controlled niche environments.
+### M17 Rich ecology and niches (ADR 0031)
+- [x] M17-01 five plant channels plus meat, each costing a DIFFERENT thing to get at: browse
+      costs bite force, fruit costs travel, roots cost excavation, defended growth costs
+      resistance or health. Processing is six continuous loci with a floor, so every organism can
+      eat every channel and poorly matched food is edible badly — a categorical "you cannot
+      process this" is the fitness valley ADR 0025 removed from carcass feeding. No Grazer,
+      Browser, Frugivore or Scavenger type, enum, field or branch exists.
+- [x] M17-02 capacity per channel from its OWN temperature, moisture, fertility-weight and
+      elevation curves, so the same cell can be excellent foliage ground and hopeless for roots.
+      Nothing decides a place is a niche; five suitability curves peak in different places.
+- [x] M17-03 five local densities and five gradient pairs, each normalized against its own
+      channel's local capacity. No best-food-for-me input of any kind: a ranked input would feed
+      the engine's opinion of an organism's diet back as perception. BRAIN_INPUT_COUNT 20 -> 32.
+- [x] M17-04 breadth is PRICED, not constrained: digestive upkeep bills the sum of the six loci
+      above the founder's total, measured against the founder and floored at zero. A normalized
+      allocation would make specialization an identity enforced by the representation; whether a
+      generalist is viable is an answer the world should give.
+- [ ] M17-05 multi-seed controlled niche environments (grass-rich, fruit-patchy, toxin-rich,
+      root-rich, carrion-rich) showing no single resource strategy is structurally universal.
 
 ### M18 Climate and natural events
 - [ ] M18-01 deterministic seasons, regional variation, longer drift cycles.
