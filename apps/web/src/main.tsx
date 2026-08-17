@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { APP_VERSION } from "./app/appVersion";
 import { registerServiceWorker } from "./app/pwa";
-import { warmSimulationWorkerCache } from "./app/warmWorkerCache";
 import { readViewFromLocation } from "./app/route";
 import { EnvironmentDebugView } from "./dev/EnvironmentDebugView";
 import { MorphologyGalleryView } from "./dev/MorphologyGalleryView";
@@ -46,10 +45,3 @@ void registerServiceWorker({
   enabled: import.meta.env.PROD,
   host: globalThis.navigator?.serviceWorker,
 });
-
-// The simulation Worker is a separate chunk that nothing fetches until a world
-// is created, so an installed app that had never created one could not create
-// its first world offline. Fetch it now, while the network is presumably still
-// there. Production only: in development there is no service worker to cache
-// into, and the extra Worker would only cost a spin-up.
-warmSimulationWorkerCache(import.meta.env.PROD);

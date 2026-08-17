@@ -17,18 +17,20 @@ exposed.
 
 ### Fixed
 
-- **An installed EON could not create its first world offline.** `public/sw.js` precaches the
-  shell only, by design — "everything else is content-hashed and picked up on first use". That
-  is sound for the render and UI chunks, which the first page load fetches anyway. It is not
-  sound for one asset: `simulation.worker-*.js` is referenced from nowhere in `index.html`,
-  because Vite emits it as a separate chunk fetched the first time `new Worker(new URL(...))`
-  runs — which happens when a world is created, not when the app loads. So an app that had
-  never created a world had no copy of the simulation, and creating one with the network off
-  hung on "Creating world…" forever: the Worker fetch failed, no `WORLD_READY` ever arrived,
-  and the top bar sat at tick 0 with an empty world. docs/07 Milestone 13 promises the
-  opposite. The app now pulls that chunk into the cache at startup, in production, by
-  constructing and immediately terminating a Worker — the only way to name exactly the
-  content-hashed chunk the real session will ask for is to ask for it the same way.
+- **An installed EON could not create a world offline at all.** `public/sw.js` precached the
+  shell only, reasoning that "everything else is content-hashed and picked up on first use".
+  The second half of that is false for any chunk the first page load does not touch, and there
+  are two: `simulation.worker-*.js`, fetched when a world is created, and Pixi's
+  `browserAll-*.js` renderer backend, `import()`ed when a renderer starts. Both happen after a
+  user has gone offline. With the network off the app hung on "Creating world…" forever; fixing
+  only the Worker moved the failure one stage later, to `renderer failed to start: Failed to
+fetch dynamically imported module`. docs/07 Milestone 13 promises "an offline EON is a fully
+  working EON — all the way through creating and running a world with the network off", so the
+  fix covers the whole bundle rather than the two chunks that happened to be caught: a build
+  plugin injects the emitted asset list into the service worker, which caches it on install.
+  The original objection to precaching stands and is respected — that list is _emitted by the
+  build_, not guessed, and each entry is cached individually so one unlucky asset costs that
+  asset rather than the entire offline app.
 - **The browser end-to-end job never built the app** (CI). `playwright.config.ts` serves
   `apps/web/dist` via `vite preview`; the job went straight from `playwright install` to
   `pnpm e2e` and died in under a second with `The directory "dist" does not exist`. Jobs run on

@@ -44,20 +44,49 @@ const CACHE_NAME = `eon-shell-${VERSION}`;
 const SCOPE = new URL("./", self.location.href);
 
 /**
- * What is fetched eagerly on install.
- *
- * Only the shell entry: everything else is content-hashed and picked up on
- * first use. Precaching a guessed asset list would fail the whole install if
- * one guess were wrong, which is a worse failure than a second visit being the
- * one that completes the offline copy.
+ * The navigation shell. Its absence is fatal to an offline start, so it is
+ * cached strictly: if this fails, the install fails.
  */
 const SHELL = [SCOPE.href, new URL("index.html", SCOPE).href];
+
+/**
+ * Every file the build emitted, injected by the `eon-precache-built-assets`
+ * plugin in `apps/web/vite.config.ts`. The literal below is replaced at build
+ * time; it stays an empty list in `vite dev`, where no worker is registered.
+ *
+ * ## Why this is a list now
+ *
+ * It used to be the shell alone, reasoning that "everything else is
+ * content-hashed and picked up on first use" and that precaching a GUESSED list
+ * would fail the whole install if one guess were wrong. The second half of that
+ * is still true, which is why this list is emitted by the build rather than
+ * guessed — but the first half was wrong, because "first use" is not the first
+ * page load for every chunk.
+ *
+ * Two chunks proved it, both found by the offline browser scenario:
+ * `simulation.worker-*.js`, fetched when a world is created, and Pixi's
+ * `browserAll-*.js` renderer backend, `import()`ed when a renderer starts.
+ * Neither is touched by opening the app, so an installed EON that had never run
+ * a world could not start one offline — it sat on "Creating world…", and once
+ * that was fixed, on "renderer failed to start". docs/07 Milestone 13 promises
+ * a fully working offline EON, so the fix has to cover the whole bundle rather
+ * than the two chunks that happened to be caught.
+ */
+const PRECACHE_ASSETS = "__EON_PRECACHE_ASSETS__";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
       await cache.addAll(SHELL);
+      // The bundle is cached best-effort and INDIVIDUALLY. `addAll` rejects
+      // wholesale on a single failure, which would turn one unlucky asset into
+      // no offline app at all; a missing chunk should cost only that chunk.
+      if (Array.isArray(PRECACHE_ASSETS)) {
+        await Promise.allSettled(
+          PRECACHE_ASSETS.map((asset) => cache.add(new URL(asset, SCOPE).href)),
+        );
+      }
       // Take over as soon as the new build is cached; the alternative is a user
       // who reloads to get a fix and is served the old worker anyway.
       await self.skipWaiting();
