@@ -240,6 +240,24 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element {
           </details>
 
           <details className="section">
+            <summary className="section-title">Diet (what it can process, and what it ate)</summary>
+            <dl>
+              {RESOURCE_LABELS.map((label, resource) => (
+                <Fragment key={label}>
+                  <dt>{label}</dt>
+                  <dd>
+                    {formatPercent(details.processEfficiency[resource] ?? 0)}
+                    {" · "}
+                    {formatInt(details.resourceIntake[resource] ?? 0)} eaten
+                  </dd>
+                </Fragment>
+              ))}
+              <dt>Toxin resistance</dt>
+              <dd>{formatPercent(details.toxinResistance)}</dd>
+            </dl>
+          </details>
+
+          <details className="section">
             <summary className="section-title">Brain (evolved shape)</summary>
             <dl>
               <dt>Senses</dt>
@@ -338,6 +356,23 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element {
  * make another one. Labels name the *consequence*, not the morphological gene —
  * the genes are visible in the drawing.
  */
+/**
+ * Channel names, in `Resource` order.
+ *
+ * Resources, never eater types. The panel shows six efficiencies and six intake
+ * totals and draws no conclusion from them: whether a lineage "is" a grazer is
+ * the observer's word, and ADR 0027 keeps that word out of the engine — and out
+ * of the UI that speaks for it.
+ */
+const RESOURCE_LABELS: readonly string[] = [
+  "Foliage",
+  "Browse",
+  "Fruit",
+  "Roots",
+  "Defended",
+  "Meat",
+];
+
 const PHYSICAL_ROWS: readonly (readonly [string, keyof PhysicalPhenotypeDto])[] = [
   ["Mass", "mass"],
   ["Energy store", "energyStore"],

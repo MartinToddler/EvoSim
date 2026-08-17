@@ -1,3 +1,4 @@
+import { RESOURCE_COUNT } from "../world/resources";
 import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { BRAIN_MEMORY_COUNT } from "../brain/NeuralTopology";
 import {
@@ -60,6 +61,9 @@ export interface EntityDetails {
   mass: number;
 
   diet: number;
+  processEfficiency: readonly number[];
+  resourceIntake: readonly number[];
+  toxinResistance: number;
   maxSpeedLUPerTick: number;
   visionRangeLU: number;
   visionFovDegrees: number;
@@ -255,6 +259,16 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
     mass,
 
     diet: (phenotypes.dietQ[slot] as number) / Q,
+    processEfficiency: Array.from(
+      { length: RESOURCE_COUNT },
+      (_, resource) =>
+        (phenotypes.processEfficiencyQ[slot * RESOURCE_COUNT + resource] as number) / Q,
+    ),
+    resourceIntake: Array.from(
+      { length: RESOURCE_COUNT },
+      (_, resource) => organisms.resourceEnergyEaten[slot * RESOURCE_COUNT + resource] as number,
+    ),
+    toxinResistance: (phenotypes.toxinResistanceQ[slot] as number) / Q,
     maxSpeedLUPerTick: (phenotypes.maxSpeedVel[slot] as number) / VELOCITY_UNITS_PER_LU,
     visionRangeLU: (phenotypes.visionRangePos[slot] as number) / POS_SCALE,
     // The store caches HALF the field of view, because that is what the

@@ -308,8 +308,28 @@ export interface EntityDetailsDto {
   radiusLU: number;
   mass: number;
 
-  /** Signed diet in [-1, 1]: -1 herbivore specialist, +1 carnivore specialist. */
+  /**
+   * Signed diet in [-1, 1]: -1 plant specialist, +1 meat specialist.
+   *
+   * A derived summary of the six processing loci (M17), not a gene: meat
+   * processing against the best plant channel. Kept because it is what the
+   * timeline, the species tree and organism colouring have always meant by
+   * "diet", and because one number is the right size for a glance.
+   */
   diet: number;
+  /**
+   * Processing efficiency for each resource channel, in [0, 1], in `Resource`
+   * order: foliage, browse, fruit, roots, defended, meat (M17).
+   *
+   * Six numbers rather than a label. The engine has no concept of a grazer or a
+   * scavenger and the panel must not invent one — what an observer gets is what
+   * the organism is actually good at, and the noun is theirs to choose.
+   */
+  processEfficiency: readonly number[];
+  /** Lifetime energy taken from each channel, same order. What it ACTUALLY ate. */
+  resourceIntake: readonly number[];
+  /** Resistance to chemically defended growth, [0, 1]. */
+  toxinResistance: number;
   maxSpeedLUPerTick: number;
   visionRangeLU: number;
   visionFovDegrees: number;

@@ -1,6 +1,15 @@
 import { assert, type DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
-import { ANGLE_STEPS, POS_SCALE, Q, TRIG_SCALE, clamp, clampQ, qmul } from "../math/fixed";
+import {
+  ANGLE_STEPS,
+  POS_SCALE,
+  Q,
+  TRIG_SCALE,
+  clamp,
+  clampQ,
+  clampSignedQ,
+  qmul,
+} from "../math/fixed";
 import { cosLut } from "../math/trigLut";
 import type { PhysicalPhenotypeStore } from "../morphology/physicalPhenotype";
 import { FOV_COS_SCALE } from "../spatial/fov";
@@ -26,7 +35,7 @@ import {
 } from "../genetics/genes";
 import { FOUNDER_PROCESS_TOTAL_Q } from "../genetics/founderGenome";
 import type { GenomeStore } from "./GenomeStore";
-import { RESOURCE_COUNT } from "../world/resources";
+import { PLANT_RESOURCE_COUNT, RESOURCE_COUNT, Resource } from "../world/resources";
 
 /**
  * Derived phenotype cache (docs/10 §8, task D02/D03).
@@ -244,6 +253,29 @@ export function derivePhenotype(
 
   const toxinResistanceQ = geneToQ(raw[base + Gene.ToxinResistance] as number);
   phenotypes.toxinResistanceQ[slot] = toxinResistanceQ;
+
+  // The plant↔meat axis, kept as a DERIVED SUMMARY of the six loci (M17).
+  //
+  // Milestones 0-16 had this as the `diet` gene itself; M17 removed it, and the
+  // five consumers that outlived it — the speciation trait vector, the
+  // carnivore-lineage badge, organism colouring and the inspector — would
+  // otherwise have read a field nothing writes and seen every organism as
+  // exactly diet-neutral forever. Silently, and without failing a test.
+  //
+  // Meat processing against the BEST plant channel, which preserves the old
+  // meaning exactly: -Q is a plant specialist, +Q a meat specialist, 0
+  // balanced. Comparing against foliage alone would call a fruit specialist a
+  // carnivore. Nothing authoritative reads this — it summarizes the genome for
+  // observers, and the feeding phase uses the loci themselves.
+  let bestPlantProcessQ = 0;
+  for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+    const processQ = geneToQ(raw[base + Gene.Process + resource] as number);
+    if (processQ > bestPlantProcessQ) {
+      bestPlantProcessQ = processQ;
+    }
+  }
+  const meatProcessQ = geneToQ(raw[base + Gene.Process + Resource.Meat] as number);
+  phenotypes.dietQ[slot] = clampSignedQ(meatProcessQ - bestPlantProcessQ);
 
   // Effective attack and armor: what the mouth can bite with and what the
   // plating actually stops. The genetic value is the investment, the
