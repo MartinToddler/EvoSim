@@ -265,6 +265,25 @@ function detailsFixture(entityId: number): EntityDetailsDto {
     biomeName: "Grassland",
     cellTemperatureC: 20,
     cellPlantBiomass: 100,
+    physical: {
+      mass: 1,
+      energyStore: 1,
+      basalUpkeep: 1,
+      movementCost: 1,
+      growthCost: 1,
+      maxSpeed: 1,
+      acceleration: 1,
+      turnRate: 1,
+      waterSpeed: 1,
+      armor: 1,
+      attack: 1,
+      biteSize: 1,
+      visionRange: 1,
+      visionArc: 1,
+      thermalTolerance: 1,
+      contactExtent: 1,
+      offspringCost: 1,
+    },
   };
 }
 
