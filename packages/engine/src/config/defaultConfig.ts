@@ -111,10 +111,27 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     // cap with headroom while keeping 12/12 survival and universal
     // scavenging. docs/08 §24: tuned through named experiments, recorded
     // here and in the changelog.
-    // M17 (docs/11 §M17, ADR 0031). Five channels. Foliage IS the Milestone
-    // 0-16 field, unchanged in every number, so the ecology those milestones
-    // calibrated survives the split intact and the four new channels are
-    // additions on top of it rather than a redistribution of it.
+    // M17 (docs/11 §M17, ADR 0031). Five channels that PARTITION the world's
+    // productivity rather than stack on it.
+    //
+    // The first version kept foliage at its Milestone 0-16 values and added the
+    // other four on top, reasoning that preserving foliage preserved the
+    // calibrated ecology. It did the opposite: measured over three seeds, total
+    // plant capacity came out 3.5-4.4x the old foliage-only figure, foliage
+    // fell to 23-28% of its own world, and the 100 000-tick soak finished
+    // pinned at 8192 organisms — exactly `limits.maxOrganisms`, against 572 for
+    // M16. docs/01 §12 makes the cap setting carrying capacity a release-gate
+    // failure, and ADR 0006 §7 had already described the same shape.
+    //
+    // Every channel is now scaled so the SUM matches what Milestones 0-13
+    // calibrated: 95.7M / 108.7M / 116.7M against the old foliage-only 93.1M /
+    // 107.2M / 125.1M on the same three seeds. Foliage keeps the plurality it
+    // is specified to have — 44-48% — with roots, browse and defended growth
+    // filling the ground it does not want and fruit staying the rarity it is.
+    //
+    // The lesson is the one M17 kept relearning: "unchanged" describes a number
+    // in isolation, and an ecology is a sum. Preserving one term of a sum while
+    // adding four more does not preserve the sum.
     //
     // ## Why the energy spread is narrow (30 … 48, measured)
     //
@@ -142,11 +159,12 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     // hot/dry margin where almost nothing else stands.
     resources: [
       {
-        // Foliage — the Milestone 0-16 field, number for number. Its capacity
-        // table was tuned through the named twelve-seed experiments recorded in
-        // docs/08 §24 and the changelog; changing it here would silently retune
-        // the whole project, so it is copied rather than reconsidered.
-        baseCapacityByBiome: [0, 21600, 31200, 4200, 6000, 2400],
+        // Foliage — the Milestone 0-16 field at 0.45x, so that it keeps the
+        // plurality of a world it now shares with four other channels while the
+        // TOTAL stays what docs/08 §24's twelve-seed experiments calibrated.
+        // Its shape (growth rates, seed bank, energy, climate curves) is
+        // untouched; only the scale moved, and it moved because the sum did.
+        baseCapacityByBiome: [0, 9720, 14040, 1890, 2700, 1080],
         growthRateQByBiome: [0, 49, 37, 12, 12, 6], // ~.012 .009 .003 .003 .0015
         seedBankRegenUnits: 4,
         minRegenThreshold: 16,
@@ -165,7 +183,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // to one, and it comes back roughly six times slower, so a browsed
         // stand is a standing store rather than a renewing one. Forest and
         // grassland only: this is woody growth.
-        baseCapacityByBiome: [0, 18000, 46000, 1200, 3000, 1800],
+        baseCapacityByBiome: [0, 3780, 9660, 252, 630, 378],
         growthRateQByBiome: [0, 8, 7, 2, 2, 1],
         seedBankRegenUnits: 2,
         minRegenThreshold: 24,
@@ -211,7 +229,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // is the channel that is never quite absent, including where every
         // other channel has been grazed flat. Nearly indifferent to fertility
         // and happy in dry ground, so it holds the desert.
-        baseCapacityByBiome: [0, 9000, 8000, 7200, 8400, 4200],
+        baseCapacityByBiome: [0, 1377, 1224, 1102, 1285, 643],
         growthRateQByBiome: [0, 6, 5, 5, 5, 3],
         // Persistence is the FLOOR, not the rate. The first version had
         // 12 units per environment step against a threshold of 260, which is
@@ -243,7 +261,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // health to eat. Placed in the hot dry margin where the others are
         // weakest, so the trade it offers is real: the ground nobody else can
         // use, in exchange for damage that only a resistant lineage can absorb.
-        baseCapacityByBiome: [0, 7000, 6000, 11000, 4000, 5200],
+        baseCapacityByBiome: [0, 1260, 1080, 1980, 720, 936],
         growthRateQByBiome: [0, 10, 9, 12, 6, 7],
         seedBankRegenUnits: 3,
         minRegenThreshold: 20,
