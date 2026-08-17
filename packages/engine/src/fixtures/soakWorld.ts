@@ -140,7 +140,25 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * alive, one species and 3 timeline events in 1137 s. The undivided world
  * still refuses to split, which is the point of it.
  */
-export const GOLDEN_SOAK_HASH = "a134ed2ffa600843";
+/**
+ * Engine 0.12.0 (M17, ADR 0031) moved it again, and the number to read is not
+ * the hash: the 100 000-tick soak finishes with **8192 alive, which is exactly
+ * `limits.maxOrganisms`**. The world is pinned at the safety cap.
+ *
+ * M16 finished the same soak at 572. M17 added four plant channels on top of an
+ * unchanged foliage field, so the world carries several times the food it did,
+ * and the population went where the food went — until the cap, not the ecology,
+ * stopped it. docs/01 §12 makes "population does not normally slam into engine
+ * cap" a release-gate failure, and this is that failure: the cap is filtering by
+ * storage order instead of by biology, exactly as ADR 0006 §7 described when
+ * three of six seeds pinned in Milestone 4.
+ *
+ * The hash below is correct for the code as it stands and is recorded as
+ * measured. It is not evidence that the calibration is right — it is evidence
+ * of what needs recalibrating, and the plant capacity tables are where that
+ * work goes (the M15 twelve-seed sweep is the harness for it).
+ */
+export const GOLDEN_SOAK_HASH = "60db1363d4ce97ab";
 
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {

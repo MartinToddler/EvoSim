@@ -396,9 +396,23 @@ of 15 as the fallback for anything bad at plants, and at tick 10 000 of the gold
 of 4733 deaths are toxin against 1538 starvation — poisoning is the leading cause of death in
 the shipped world, with the population stable through it.
 
-**Deferred:** the twelve-seed ecology sweep, still not re-run since M15 recorded 2 of 12 seeds
-at the population cap. M17 moves the fixture population to 1468 (M16: 1262, M15: 1841), so the
-finding remains stale in a direction that has now changed twice.
+**Release-gate failure carried out of this milestone: the soak world is pinned at the population
+cap.** The 100 000-tick soak finishes with **8192 alive, exactly `limits.maxOrganisms`**, against
+572 for M16. M17 added four plant channels on top of an unchanged foliage field, so the world
+carries several times the food it did and the population went where the food went — until the
+cap, not the ecology, stopped it. docs/01 §12 names exactly this as a gate failure, and ADR 0006
+§7 described the same shape in Milestone 4: the cap filters by storage order rather than by
+biology.
+
+The soak hash is recorded as measured and is correct for the code as it stands. It is not
+evidence that the calibration is right; it is the evidence of what needs recalibrating. The plant
+capacity tables are where that work goes, and the twelve-seed sweep is the harness — **this must
+be done before M18 builds climate stress on top of it**, or M18 will be calibrated against a
+world whose carrying capacity is an array bound.
+
+**Deferred, and now overtaken:** the twelve-seed ecology sweep has not been re-run since M15
+recorded 2 of 12 seeds at the cap. That finding is no longer merely stale — M17 has made the cap
+problem materially worse, and the sweep is now the tool for fixing it rather than a check on it.
 
 ---
 
