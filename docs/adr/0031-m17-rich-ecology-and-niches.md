@@ -113,7 +113,7 @@ Worth recording plainly: no unit test could have caught this. Every part worked 
 specified; the specification produced a degenerate ecology. It took running the engine and
 looking at what the population actually ate.
 
-## 5. Two more defects, both found the same way
+## 5. Four more defects, and the pattern behind them
 
 **Plant demand was written out of bounds.** The claim loop keys demand by
 `resource * cellCount + cell`, so that four organisms grazing a cell's foliage compete with each
@@ -124,8 +124,51 @@ and was silently discarded. The founder ate nothing at all.
 **`dietQ` had no writer.** Removing the `diet` gene left five consumers reading a phenotype field
 nothing filled — the speciation trait vector, the carnivore-lineage badge, organism colouring and
 the inspector — and every one of them would have seen a permanently diet-neutral population
-without failing a test. It is now derived from the loci: meat processing against the best plant
-channel, which keeps the old meaning and does not misfile a fruit specialist as a carnivore.
+without failing a test.
+
+### 5a. Roots were a faucet, not a persistent channel
+
+`seedBankRegenUnits: 12` against a threshold of 260 delivers 6000 free units per cell per 10 000
+ticks — three times foliage's and twelve times fruit's — in **every cell of every world**,
+regardless of capacity, fertility, moisture or the world's resource mix. Roots won a world built
+to favour fruit.
+
+Persistence is the floor now, not the rate. The rate matches foliage's; what still makes roots
+persistent is a threshold far above every other channel's, so a grazed root cell holds a real
+standing stock where a grazed fruit patch holds nothing. Fruit needed the same correction in the
+other direction: at growth rate 3 a grazed patch took longer to return than any run lasts, which
+made it a one-time treasure rather than something a lineage could live on.
+
+### 5b. Defended growth was free, and then it was lethal
+
+Combat applies its damage to `healthQ` inside the combat phase; `damageThisTick` in the
+physiology phase is a **report** that becomes `lastDamageQ`. The toxin term was added to that
+report and nothing subtracted it from health — so defended growth cost nothing and toxin
+resistance was a gene with a metabolic bill and no upside. The trade-off rule broken in both
+directions at once, and it invalidated a niche-world result: the toxin-rich world had been
+measuring "the richest channel with no downside".
+
+Damage now lands where it is computed, exactly as combat does it, with its own `DeathCause.Toxin`
+— folding it into starvation or combat would make the timeline report a famine or a predation
+that never happened.
+
+The correction then overshot. `damageQ = allocated × toxicityQ` and health runs `0 … Q`, so
+`toxicityQ: 246` made seventeen units fatal and a single bite of a 64-unit maximum killed
+outright. Sized against the bite instead, 12 per unit costs a full bite about 19% of health.
+
+### 5c. The pattern
+
+Three of these four made a channel behave as though it had no cost, and every one of them came
+from **a number whose units were asserted in a comment rather than derived from the mechanism it
+feeds**. `toxicityQ: 246, // 0.06 health per unit` was not 0.06 of anything. `seedBankRegenUnits:
+12, // the persistence, in one number` encoded a qualitative property as an unbounded income
+stream. The energy table in §4 assumed a value scale the efficiency range could answer, and never
+checked that it could.
+
+None of them was reachable by a unit test, because each part did exactly what its own test said.
+What caught them was arithmetic against the mechanism — what does this cost as a fraction of the
+thing it is spent from — and running the engine to see what the population actually ate. Both are
+cheap. Neither happens by itself.
 
 ## 6. Sensors report, they do not rank
 
