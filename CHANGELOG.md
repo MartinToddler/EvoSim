@@ -18,8 +18,8 @@ as a release-gate failure. The cause was not capacity. ADR 0031 §5e.
   capacity, growth rate and grazing pressure, so a cell held just under the threshold was a
   permanent food source. Accounted at tick 40 000 of the shipped world, **87.4% of all plant
   production came from it** and 12.6% from the logistic term capacity governs — which is why
-  scaling capacity to 0.55, 0.40 and 0.30 all still ended at the cap, and why population scaled
-  as only `capacity^0.6`. The seed bank now fires only on a cell emptied to exactly zero, which
+  scaling capacity to 0.30 still ended at the cap — a 70% cut bought at most a factor of 2.3 in
+  population, against an uncensored 18 712 for the unscaled world. The seed bank now fires only on a cell emptied to exactly zero, which
   is what its own comment always said it did. The 100 000-tick soak ends at 910 organisms instead
   of 8192, with standing biomass flat across the last 30 000 ticks and population oscillating
   between 449 and 1004.

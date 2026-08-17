@@ -409,10 +409,10 @@ Milestone 4.
 
 The first diagnosis was wrong, and it was wrong three times. M17 had added four plant channels on
 top of an already-calibrated foliage field, so capacity was the obvious suspect; rebalancing the
-five channels to partition rather than stack still ended at 8192, and so did capacity scaled to
-0.55, 0.40 and 0.30. Fitting those four points gives `population ∝ capacity^0.6`, which says the
-world would need cutting to ~7% of its capacity to come in under the cap — a lever that weak is
-not a calibration problem.
+five channels to partition rather than stack still ended at 8192, and neither did cutting
+capacity to 0.30 of that — which still reached 8192 by tick 100 000, against an uncensored 18 712
+for the unscaled world. A 70% capacity cut bought at most a factor of 2.3 in population, and a
+lever that weak is not a calibration problem.
 
 What found it was accounting for where the energy actually came from. `growPlants` added a flat
 `seedBankRegenUnits` to any cell below a per-channel threshold, a term independent of capacity,

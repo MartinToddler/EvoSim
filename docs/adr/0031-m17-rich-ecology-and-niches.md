@@ -258,12 +258,15 @@ capacity it used to. Rebalancing the five channels to **partition** that capacit
 stack on it (§5f) was clearly right on its own terms, so it was done — and the soak still ended
 at 8192.
 
-So did the next three attempts. Capacity scaled to 0.55, 0.40 and 0.30 of the recalibrated
-figures all reached the cap; the last was confirmed at exactly 8192 at tick 100 000. Fitting the
-four points gives `population ∝ capacity^0.6`, and extrapolating that curve says the world would
-have to be cut to roughly **7% of its capacity** to come in under the cap — which would leave
-nothing worth partitioning and no niches to speak of. A lever that weak is not a calibration
-problem. It means capacity was not what the population was living on.
+Nor did cutting it further. Capacity scaled to 0.30 of the recalibrated figures **still reached
+8192** by tick 100 000; 0.40 and 0.55 were at 3257 and 4016 by tick 60 000 and climbing steeply
+when those probes were stopped. Run with the cap lifted to 40 000 so the number is not censored,
+the unscaled world reaches **18 712** at tick 100 000 and is still rising.
+
+So a 70% capacity cut bought at most a factor of 2.3 in population — 18 712 against a lower bound
+of 8192 — which is an exponent of at most 0.69 on capacity, and it did not clear the cap. A lever
+that weak is not a calibration problem. It means capacity was not what the population was living
+on.
 
 It was living on the seed bank. `growPlants` carried a per-channel `minRegenThreshold` and added
 a flat `seedBankRegenUnits` to any cell below it. That term is independent of capacity, of growth
@@ -281,8 +284,8 @@ the shipped world at tick 40 000, with 2841 organisms on it:
 | **all**  |                       | **228 920**     | **1 587 020**    | **87.4%**  |
 
 **87.4% of the world's plant production came from the flat term**, and only 12.6% from the
-logistic term that capacity governs. That is the whole explanation of the K^0.6 curve: capacity
-was deciding an eighth of the food. Fully grazed, the floor is worth 247 797 energy per tick
+logistic term that capacity governs. That is the whole explanation of the weak capacity lever:
+capacity was deciding an eighth of the food. Fully grazed, the floor is worth 247 797 energy per tick
 against 65 343 from the logistic term of an _ungrazed_ world — the recovery mechanism was
 running at nearly four times the ecology it was meant to protect.
 
@@ -318,7 +321,8 @@ is 12% of the cap. Two secondary results are worth recording:
 
 - **Capacity is a live lever again.** Re-running with the pre-partition capacities and the fix
   gives 2035 organisms at tick 10 000 against 691 — population now scales with capacity roughly
-  linearly, where before it scaled as K^0.6. The partition in §5f is therefore no longer what
+  linearly, where before a 70% cut bought at most a factor of 2.3. The partition in §5f is
+  therefore no longer what
   keeps the population off the cap; it stands on its own argument, not on this one.
 - **The magnitude of `seedBankRegenUnits` barely matters** once the threshold is gone. Flattening
   every channel to 1 unit lands at 447 organisms against 910, and with a _less_ settled biomass

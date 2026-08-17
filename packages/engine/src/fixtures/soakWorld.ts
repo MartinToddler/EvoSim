@@ -150,8 +150,8 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  *
  * Engine 0.12.1 fixed it, and not where it was first looked for. Capacity was
  * the obvious suspect and it was not the cause: rebalancing the five channels
- * to partition rather than stack still ended at 8192, and so did capacity
- * scaled to 0.55, 0.40 and 0.30. What actually fed the world was the seed bank
+ * to partition rather than stack still ended at 8192, and so did cutting that
+ * capacity by a further 70%. What actually fed the world was the seed bank
  * — a flat per-cell regeneration that fired below a threshold and therefore
  * ignored capacity, growth rate and grazing pressure alike. Accounted at tick
  * 40 000, it was supplying **87.4% of all plant production**. It now fires only

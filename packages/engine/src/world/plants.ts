@@ -194,7 +194,7 @@ export function recomputeAllPlantCapacities(
  * 144x144 soak world could draw 247 797 energy per tick from the seed banks
  * against 65 343 from the logistic term of an *ungrazed* world — the floor was
  * nearly four times the real production, it set the population ceiling by
- * itself, and it is why population scaled as only K^0.6 when capacity was cut.
+ * itself, and it is why cutting capacity by 70% still ended at the population cap.
  * Firing on empty cells alone restores capacity as the thing that decides how
  * much a place can feed.
  */
