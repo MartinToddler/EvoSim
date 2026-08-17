@@ -170,6 +170,42 @@ What caught them was arithmetic against the mechanism — what does this cost as
 thing it is spent from — and running the engine to see what the population actually ate. Both are
 cheap. Neither happens by itself.
 
+## 5d. What the five worlds selected
+
+The acceptance criterion is that **no single resource strategy is structurally universal**.
+Five worlds, three seeds each, 10 000 ticks, founders dealt round-robin across the six channels
+as specialists and otherwise identical. What is measured is each organism's argmax processing
+locus — a derived observational label the engine never reads.
+
+| world        | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 |
+| ------------ | ---------- | ---------- | ---------- |
+| grass-rich   | foliage    | foliage    | foliage    |
+| fruit-patchy | defended   | defended   | defended   |
+| toxin-rich   | defended   | defended   | defended   |
+| root-rich    | roots      | roots      | roots      |
+| carrion-rich | defended   | foliage    | defended   |
+
+Three distinct winners; no channel wins everywhere; foliage takes 4 of 15, roots 3, defended 8.
+Four of the five worlds are unanimous across their seeds, so the outcome is a property of the
+world rather than of the seed. The criterion holds.
+
+Two results are recorded as they are rather than tuned into a prettier shape.
+
+**Fruit never wins any world, including its own.** The worlds scale a channel's _capacity_, and
+fruit has both the smallest capacity and the slowest regrowth, so a 1.6× capacity boost does not
+outweigh defended growth's much faster flow. The world is fruit-**boosted**, not fruit-dominant,
+and calling it "fruit-patchy" describes what was intended rather than what it does. Fixing that
+means scaling flow as well as standing stock, which is a fixture change and a re-measurement, not
+an engine change.
+
+**Defended growth wins 8 of 15.** At the efficiency floor every plant channel is equal, so
+`energyPerUnit` alone decides and the richest one wins — defended growth is the fallback for
+anything bad at plants. It is not universal, because a specialist never touches it: foliage at
+1.0 yields 30 per unit against defended's 8.8. But it is the default for the poorly matched, and
+it shows in the shipped world's mortality — 3164 of 4733 deaths at tick 10 000 of the golden
+fixture are toxin, against 1538 from starvation. The population is stable through it, so this is
+a hazard the ecology absorbs rather than one that collapses it.
+
 ## 6. Sensors report, they do not rank
 
 Five local densities and five gradient pairs, one per channel, each normalized against that

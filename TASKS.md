@@ -818,8 +818,12 @@ environment tested until movement cost started reading the propulsive apparatus.
       above the founder's total, measured against the founder and floored at zero. A normalized
       allocation would make specialization an identity enforced by the representation; whether a
       generalist is viable is an answer the world should give.
-- [ ] M17-05 multi-seed controlled niche environments (grass-rich, fruit-patchy, toxin-rich,
-      root-rich, carrion-rich) showing no single resource strategy is structurally universal.
+- [x] M17-05 multi-seed controlled niche environments (grass-rich, fruit-patchy, toxin-rich,
+      root-rich, carrion-rich), 3 seeds each, 10 000 ticks. Winners by world: foliage / defended /
+      defended / roots / mixed — three distinct strategies, no channel winning everywhere, four of
+      five worlds unanimous across seeds. Recorded as measured: fruit never wins (the worlds scale
+      capacity, and fruit is capacity- and flow-poor) and defended wins 8 of 15 as the fallback
+      for anything bad at plants. ADR 0031 §5d.
 
 ### M18 Climate and natural events
 - [ ] M18-01 deterministic seasons, regional variation, longer drift cycles.
