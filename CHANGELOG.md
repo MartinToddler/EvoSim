@@ -25,10 +25,12 @@ The developed body now has physical consequence. ADR 0029.
   centred on a body nothing grows. Tests assert both.
 - **`EntityDetailsDto.physical`** — the sixteen multipliers on the wire, shown in the inspector
   as a "Body plan" section against the founder body.
-- **`fixtures/morphologySelection.ts`** — two controlled selection environments and an observer
-  that measures the selection differential from realized reproduction: the mean body plan of
-  the organisms that actually produced offspring against the mean of the population they came
-  from. No fitness is assigned.
+- **`fixtures/morphologySelection.ts`** — two controlled selection environments, each seeded
+  with an identical 50/50 mix of two locomotor morphs and judged by realized survival and
+  reproduction only. On the patchwork, where rich patches are separated by barren ground, the
+  mobile morph reaches a share of 0.837 across three seeds; on the turf, where thin food is
+  everywhere and grows back, it falls to 0.476. No fitness is assigned, no body is scored, and
+  no morphological gene is touched.
 
 ### Changed
 
@@ -48,6 +50,13 @@ The developed body now has physical consequence. ADR 0029.
 
 ### Fixed
 
+- **Locomotion was free at the point of use.** Movement cost read only mass, and limbs are a
+  small share of body area, so a limbed morph swept to fixation in every environment tested —
+  the "always maximize" shape the trade-off rule forbids. Movement cost now carries its own
+  factor driven by limb area and lateral silhouette, so locomotion is billed twice: once for
+  maintaining the apparatus and once for using it. `speedTailGainQ` also dropped from 0.30 to
+  0.10 — a tail was buying 15% of top speed on land for 2% of mass — and keeps its water
+  contribution, which is what a tail is for.
 - **The mouth was free** — it bought attack power and bite size and cost nothing. It now
   contributes to bulk as dense tissue, carries jaw upkeep, and costs turning as mass at the
   nose.

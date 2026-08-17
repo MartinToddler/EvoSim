@@ -177,9 +177,8 @@ two controlled worlds and seeds each with standing variation in locomotor invest
 it is eaten. Food is everywhere and a grazed cell is worth grazing again, so there is nothing to
 travel for; what binds is what an organism spends existing and moving.
 
-**Archipelago.** The same generator with the sea raised until land is fragmented. Food is on the
-fragments, so an organism that never enters water competes with its own descendants for the
-patch it was born on. Water is slow, expensive and — past a shortened grace window — damaging.
+**Patchwork.** The same generator and the same biome classification, but only grassland and
+forest carry biomass. Land is rich islands separated by ground that feeds nobody.
 
 Both are seeded with an identical 50/50 mix of two locomotor morphs: long limbs and a long tail
 against stubs. Both are ordinary points in the genome space, spawned as ordinary organisms with
@@ -205,7 +204,7 @@ What made the experiment tractable was seeding **standing variation** instead of
 mutation to supply it. That is what a selection experiment is: selection sorts variation it is
 given, and a population founded on one genome has none.
 
-### 5b. Two morph pairs failed before one worked, and the failures are findings
+### 5b. The first morph pair had no axis where both ends could win
 
 **Heavy versus light** — bulk, plating, jaw and limbs together against a minimal body — swept
 to the light morph in every world within 4 000 to 8 000 ticks. Diagnosed rather than assumed:
@@ -215,17 +214,17 @@ particular buys armor, and armor is an insurance policy whose premium is paid ev
 whose payout requires a predator; the shipped worlds record zero kills, so it is correctly
 selected away. That is the trade-off rule working, not failing.
 
-**Mobile versus sedentary** on limbs and tail alone then swept the _other_ way in every world.
-That one was a genuine defect — see below.
+The experiment needs an axis where both ends can win, which is why the shipped pair differs in
+locomotor investment alone.
 
 ### 5c. Locomotion was free at the point of use, and that is what the experiment found
 
-A limbed morph won on thin uniform turf, on fast-regrowing turf, on a slow-regrowing patchwork
-and in an archipelago. Tripling limb upkeep barely moved it. The diagnosis was not upkeep at
-all: `movementCost = mass × speedFraction² × coefficient` reads only mass, and limbs are a small
-share of body area — so a body could grow a large propulsive apparatus and push with it at
-almost no marginal cost. A trait that wins in every environment is exactly the "always maximize"
-shape CLAUDE.md forbids, and no scenario design can hide it.
+A limbed morph then won on thin uniform turf, on fast-regrowing turf, on a slow-regrowing
+patchwork and in an archipelago. Tripling limb upkeep barely moved it. The diagnosis was not
+upkeep at all: `movementCost = mass × speedFraction² × coefficient` reads only mass, and limbs
+are a small share of body area — so a body could grow a large propulsive apparatus and push with
+it at almost no marginal cost. A trait that wins in every environment is exactly the "always
+maximize" shape CLAUDE.md forbids, and no scenario design can hide it.
 
 The fix is physical rather than cosmetic: movement cost now carries its own factor, driven by
 limb area and lateral silhouette. Locomotion is billed twice, as it should be — once for
@@ -233,16 +232,42 @@ maintaining the apparatus and once for using it. `speedTailGainQ` also dropped f
 0.10, because a tail was buying 15% of top speed on land for 2% of mass; it keeps its water
 contribution, which is what a tail is actually for.
 
-With that in place the two worlds separate in **opposite** directions from the same 50/50
-start: the turf drives the mobile share to 0.44 and the archipelago to 0.59.
+The coefficient was then bracketed by measurement rather than chosen. At `movementLimbGainQ`
+0.45 the mobile morph still won everywhere; at 0.90 the turf turned against it. 0.90 is what
+ships.
 
-### 5d. This is not finished
+### 5d. The gaps have to be land, because organisms do not swim
 
-That contrast has been measured once. It has **not** yet reproduced across the seed set, and an
-attempt to cut the gate's cost by shrinking the worlds destroyed it — populations crashed to
-tens and drift took over, which is the same lesson ADR 0028 §5 recorded about the soak fixture.
-`morphologySelection.test.ts` states the gate; until it passes on the full seed set, M15-04 is
-open and M16 does not start.
+Scenario B was originally an archipelago: raise the sea until land fragments, and let the
+crossing select for limbs and tails. It measured **no advantage to mobility at all** — mobile
+shares of 0.51 and 0.39 at `movementLimbGainQ` 0.90, on the wrong side of the 50/50 start.
+
+The premise was wrong, and the engine had been saying so all along. Water is slow, expensive
+and, past the grace window, damaging, and the terrain-danger sensors give avoidance something to
+act on — so flooding the map does not create a swimming niche. It creates isolated populations
+that **stay put**, which is the same pressure the turf applies. An organism will walk across
+barren ground; it will not swim across water.
+
+So the gaps are dry. Only grassland and forest carry biomass; desert, tundra and mountain are
+barren, and the seed-bank regeneration floor is switched off so barren ground stays barren.
+
+### 5e. What it measures
+
+At `SELECTION_HORIZON` = 8 000 ticks on a 128² world, from an identical 50/50 start, where 0.0
+is "every survivor is as sedentary as the seeded stub morph" and 1.0 "as mobile as the seeded
+limbed morph":
+
+| world     | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 | mean      |
+| --------- | ---------- | ---------- | ---------- | --------- |
+| patchwork | 0.823      | 0.846      | 0.843      | **0.837** |
+| turf      | 0.447      | 0.458      | 0.522      | **0.476** |
+
+The gate asserts the patchwork mean above 0.65, the turf mean below 0.55 and the separation
+above 0.20 — margins with real headroom against the measurement, not fitted to it. Every
+patchwork seed must favour mobility, because the effect is large enough to demand it; the turf's
+effect is smaller and closer to the 50/50 start, so a majority of seeds is what is asserted
+there. Demanding a fixed outcome on every stochastic run is the brittle shape ADR 0027 §3b
+forbids.
 
 ## 6. Why every hash moved
 

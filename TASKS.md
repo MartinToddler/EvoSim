@@ -744,19 +744,27 @@ not near-extinction (ADR 0028 §5). No DEFAULT_CONFIG value changed and no asser
       allocation, and a 3 000-body search finds no morphology that dominates on every axis.
       The audit found THREE defects in the first design and all three are fixed (ADR 0029 §3a,
       §5c): a free mouth, a costs-only tail, and locomotion that was free at the point of use.
-- [ ] M15-04 two opposing controlled selection environments (turf and archipelago,
+- [x] M15-04 two opposing controlled selection environments (turf and patchwork,
       `fixtures/morphologySelection.ts`) judged by realized survival and reproduction only.
-      **NOT YET ESTABLISHED.** The mechanism and the fixtures are in place and one measured
-      pass showed the contrast (turf 0.44, archipelago 0.59 from an identical 50/50 start of
-      two locomotor morphs), but it has not yet reproduced across the seed set: shrinking the
-      worlds to cut the gate cost crashed populations into drift and destroyed the signal.
-      A full three-seed measurement at the parameters that worked is the outstanding work.
+      From an identical 50/50 mix of two locomotor morphs, three seeds each: patchwork
+      0.823/0.846/0.843 (mean 0.837, mobility favoured), turf 0.447/0.458/0.522 (mean 0.476,
+      mobility selected against). Three designs failed first and all three are recorded
+      (ADR 0029 §5): 20 000 ticks is 13 generations and measures only drift; a compressed life
+      history is not a faster clock because growth to the reproduction gate is paid for out of
+      intake; and an archipelago selects for nothing because organisms avoid water rather than
+      crossing it, so the gaps have to be barren land.
 - [x] M15-05 inspector exposes the physical phenotype: `EntityDetailsDto.physical`, seventeen
       multipliers against the founder body, rendered as a "Body plan" section.
 
-M15 gate: **NOT PASSED YET** — M15-04 is open. Everything else is delivered, tested and
-version-bumped (engine 0.9.0 -> 0.10.0, protocol 10 -> 11, snapshot 9 -> 10, config 8 -> 9;
-ADR 0029). Do not start M16 until M15-04 reproduces.
+M15 gate: **PASS** (engine 0.9.0 -> 0.10.0, protocol 10 -> 11, snapshot 9 -> 10, config 8 -> 9;
+ADR 0029). Every golden hash regenerated for one intentional change: the developed body now
+decides mass, energy storage, upkeep, movement cost, growth cost, speed, acceleration, turn
+rate, water performance, armor, attack, bite size, vision, thermal tolerance, contact extent and
+offspring cost. Tick 0 moves through the config digest alone, because the founder body is
+exactly neutral in all seventeen factors; the trajectory diverges from the first birth. Three
+trade-off defects were found by this milestone's own audit and all three are fixed: a free
+mouth, a costs-only tail, and locomotion that was free at the point of use and won in every
+environment tested until movement cost started reading the propulsive apparatus.
 
 ### M16 Evolvable brain and memory
 - [ ] M16-01 bounded neural genotype: input/hidden/connection/recurrent masks.

@@ -18,3 +18,6 @@ playwright-report/
 # Editor/OS noise
 .DS_Store
 *.local
+
+# Scratch space for calibration probes and one-off measurement scripts.
+scripts/tmp/

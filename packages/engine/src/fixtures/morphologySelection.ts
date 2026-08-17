@@ -47,12 +47,17 @@ import type { SimulationEngine } from "../SimulationEngine";
  * tail are billed every tick whether or not they are used, so the body that eats
  * last and still reproduces is the cheap one.
  *
- * **Archipelago.** The same generator with the sea raised until land is
- * fragmented. Food is on the fragments, so an organism that never enters water
- * competes with its own descendants for the patch it was born on. Water is slow
- * to cross, expensive to cross and — past a shortened grace window — damaging,
- * and what carries a body across it is exactly the limb area and tail that the
- * turf makes a liability.
+ * **Patchwork.** The same generator and the same biome classification, but only
+ * grassland and forest carry biomass: desert, tundra and mountain are barren.
+ * Land is rich islands separated by ground that feeds nobody, and — this is the
+ * load-bearing detail — the gaps are LAND. An organism will walk across barren
+ * ground; it will not swim. A first version of this scenario raised the sea
+ * instead and measured no advantage to mobility at all, because drowning damage
+ * and the terrain-danger sensors mean organisms avoid water rather than crossing
+ * it, so flooding the map produces isolated populations that stay put rather
+ * than a swimming niche (ADR 0029 §5d). Reaching the next patch across dry
+ * ground is what the limb area and tail buy, and it is exactly what the turf
+ * makes a liability.
  *
  * Neither world is told any of that, and neither knows what a patch is. Both run
  * the shipped feeding, metabolism, movement and reproduction phases; the only
@@ -150,24 +155,20 @@ export const TURF_CONFIG: ReadonlySimulationConfig = (() => {
 })();
 
 /**
- * Scenario B — an archipelago: land is fragmented and water is everywhere.
+ * Scenario B — a patchwork: the same generator and biome classification, but
+ * only grassland and forest carry biomass. Land is rich islands separated by
+ * ground that feeds nobody, and the gaps are LAND — an organism will cross
+ * barren ground, where it will not cross water.
  */
-export const ARCHIPELAGO_CONFIG: ReadonlySimulationConfig = (() => {
+export const PATCHWORK_CONFIG: ReadonlySimulationConfig = (() => {
   const config = scenarioBase();
-  // The ordinary generator, run with the sea raised until land is fragmented.
-  // The land-fraction window opens downward so a flooded world is accepted
-  // rather than retried until a continent turns up.
-  config.world.seaLevelQ = 2400;
-  config.world.minLandFractionQ = 512; // 0.125
-  config.world.maxLandFractionQ = 1638; // 0.40
-  config.plants.baseCapacityByBiome = [0, 27000, 27000, 5400, 7600, 3000];
-  config.plants.growthRateQByBiome = [0, 300, 300, 300, 300, 300];
-  // A shorter grace window makes a slow crossing genuinely dangerous rather
-  // than merely tedious. It is the same rule for everyone, applied to a world
-  // where everyone has to cross.
-  config.organism.movement.waterGraceTicks = Math.floor(
-    DEFAULT_CONFIG.organism.movement.waterGraceTicks / 2,
-  );
+  config.plants.baseCapacityByBiome = [0, 27000, 27000, 0, 0, 0];
+  // Rich but slow: a grazed patch stays grazed for a long time, so the living
+  // is made by reaching the next one.
+  config.plants.growthRateQByBiome = [0, 12, 12, 0, 0, 0];
+  // Barren ground stays barren: without this the seed bank refills every dead
+  // cell to the regeneration floor and the gaps stop being gaps.
+  config.plants.plantSeedBankRegenUnits = 0;
   return config;
 })();
 

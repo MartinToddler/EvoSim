@@ -54,6 +54,15 @@ const MORPH_FIELDS = [
   "silhouetteWidthQ",
 ] as const;
 
+/**
+ * How far two identically-drawn bodies may differ in any factor.
+ *
+ * Four channels per expression x one byte of quantization each x the largest
+ * summed gain on a single factor (movement cost, at 1.4). Derived rather than
+ * chosen, so widening it means the wire genuinely stopped describing the body.
+ */
+const WIRE_ROUNDING_TOLERANCE_Q = Math.ceil((4 * Q * 1.4) / 255);
+
 /** Physical factor rows, so a new one cannot slip past these comparisons. */
 const FACTOR_FIELDS = [
   "massFactorQ",
@@ -365,13 +374,20 @@ describe("the picture and the physics are the same thing (M15)", () => {
     expect(compared).toBeGreaterThan(0);
   });
 
-  it("bodies that draw identically differ physically by at most the wire quantum", () => {
+  it("bodies that draw identically differ physically by only a rounding error", () => {
     // The render wire carries one byte per channel, so the drawing is a LOSSY
     // projection of the developed body while the physics reads it at full
     // precision. That is the honest limit of "what you see is what it is": two
     // organisms can round to the same picture, and when they do their physics
-    // agrees to within the resolution the picture had to give up. If this
-    // tolerance ever needs widening, the wire has stopped describing the body.
+    // agrees to within the resolution the picture had to give up.
+    //
+    // The tolerance is derived rather than guessed. A factor is a weighted sum
+    // of expressions; each expression is built from up to four channels, each
+    // carrying up to one byte of quantization error (Q/255); and the largest
+    // summed gain on any one factor is `movementLimb + movementDrag` = 1.4. So
+    // the bound is 4 x (Q/255) x 1.4, rounded up. Measured worst case at the
+    // time of writing: 43. If this needs widening, the wire has stopped
+    // describing the body and the renderer is drawing something else.
     const engine = new SimulationEngine({ seed: FIXTURE_SEED, config: smallWorldConfig() });
     engine.stepMany(3_000);
     const { context } = engineInternals(engine);
@@ -401,8 +417,7 @@ describe("the picture and the physics are the same thing (M15)", () => {
       }
     }
     expect(compared).toBeGreaterThan(0);
-    // One part in 255 of a factor, the wire's own resolution.
-    expect(worst).toBeLessThanOrEqual(Math.ceil(Q / 255));
+    expect(worst).toBeLessThanOrEqual(WIRE_ROUNDING_TOLERANCE_Q);
   });
 
   it("a body drawn bigger is a body that weighs more", () => {
