@@ -6,6 +6,82 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## M17 — Rich ecology and niches (engine 0.12.0, protocol 13, snapshot 12, config 11)
+
+One plant field became five channels that differ in where they grow and what it costs to get at
+them. ADR 0031.
+
+### Added
+
+- **Five plant channels plus meat.** Foliage (the Milestone 0–16 field, number for number),
+  browse, fruit, roots and defended growth. Each exists to make a **different** thing expensive —
+  bite force, travel, excavation, resistance — drawn from four separate budgets, so being good at
+  one does not come with being good at the next. A channel whose cost came from the same budget
+  as another's would be two names for one niche.
+- **Capacity per channel from its own curves.** Temperature, moisture, fertility-weight and
+  elevation, read per channel, so the same cell can be excellent foliage ground and hopeless for
+  roots. Nothing decides that a place is a niche; five suitability curves peak in different parts
+  of the world. `fertilityWeightQ` is the lever that matters most — a channel that ignores
+  fertility can hold ground nothing else grows on.
+- **Six processing loci and a toxin-resistance locus**, replacing the single signed `diet` gene.
+  Every organism has an efficiency for every channel, always above zero, so every organism can eat
+  every channel — badly, if badly matched. A categorical "you cannot process this" is the fitness
+  valley ADR 0025 removed from carcass feeding, and five of them would be five times the defect.
+- **No role classes, meant literally.** There is no `Grazer`, `Browser`, `Frugivore` or
+  `Scavenger` type, enum, field or branch. The feeding phase ranks six channels by expected
+  obtainable gain and takes the best, ties to the lowest index. It reads the genome and the cell;
+  there is nothing else to read.
+- **Physical access as a multiplier, never a gate.** Browse scales with the mouth M15 derives,
+  roots with a new dig factor from the limb investment M15 already bills for — so a digging
+  lineage pays the limb bill twice and gets a channel nothing else reaches. A limbless body still
+  takes roots, slowly.
+- **Per-channel sensing.** Five local densities and five gradient pairs, each normalized against
+  its own channel's local capacity. No "best food here" input of any kind: a ranked input would
+  compute the engine's opinion of an organism's diet and feed it back as perception, which is ADR
+  0027's forbidden direction of causation arriving through a sensor. `BRAIN_INPUT_COUNT` 20 → 32.
+- **`EntityDetailsDto` carries six efficiencies, six lifetime intake totals and the resistance**,
+  shown in the inspector as a Diet section. Six numbers rather than a label, because whether a
+  lineage "is" a grazer is the observer's word and the UI must not invent it on the engine's
+  behalf.
+
+### Changed
+
+- **Breadth is priced, not constrained.** Digestive upkeep bills the sum of the six loci above
+  the founder's total. A normalized allocation summing to a constant was the obvious alternative
+  and is worse: it makes specialization an identity enforced by the representation, which is a
+  rule about what evolution may express. A price lets the environment answer instead. Measured
+  against the founder and floored at zero, as M15's offspring cost and M16's neural upkeep both
+  had to be.
+- The founder's foliage and meat efficiencies are bit-for-bit what the `diet` locus gave it
+  (0.84 and 0.36), so the ecology Milestones 0–13 calibrated survives the split.
+- `dietQ` is now a derived summary of the loci — meat against the best plant channel — kept
+  because the timeline, species tree and organism colouring have always meant that by "diet".
+
+### Fixed
+
+- **Plant demand was written out of bounds.** The claim loop keys demand by
+  `resource * cellCount + cell` so a grazer and a digger on the same ground are not competitors,
+  but the demand arrays were still one cell-plane long. Every write past the first channel landed
+  outside the typed array and was silently discarded; the founder ate nothing at all.
+- **The richest channel won for every genome.** Expected gain is `energyPerUnit × efficiency`;
+  the founder's efficiencies span 2.3× and the first energy table spanned 3.2×, so raw richness
+  beat every genetic difference and the founder spent its first hundred ticks eating 91% defended
+  growth — the one channel that damages it, that it has no resistance to, and that it is worst at
+  processing. That is a universal strategy wearing five names, which is exactly what the
+  milestone's acceptance criterion forbids. The spread is now compressed inside the efficiency
+  spread.
+- **Roots were a faucet rather than a persistent channel.** `seedBankRegenUnits: 12` at a
+  threshold of 260 delivered 6000 free units per cell per 10 000 ticks — 3× foliage and 12× fruit
+  — in every cell of every world, independent of capacity, fertility, moisture or resource mix.
+  Roots won a world built to favour fruit. Persistence is the **floor** now, not the rate: the
+  rate matches foliage's and the threshold stays far above every other channel's.
+- **Fruit was dead rather than slow.** At growth rate 3 a grazed patch took longer to return than
+  any run lasts, so fruit was a one-time treasure rather than something a lineage could live on.
+  Still six times slower than foliage.
+- **`dietQ` had no writer** after the `diet` gene was removed, so five consumers — the speciation
+  trait vector, the carnivore-lineage badge, organism colouring and the inspector — would have
+  seen a permanently diet-neutral population without failing a test.
+
 ## M16 — Evolvable brain topology and generic memory (engine 0.11.0, protocol 12, snapshot 11, config 10)
 
 The network's shape is inherited, and an organism has somewhere to keep a thought. ADR 0030.
