@@ -810,20 +810,22 @@ function validateBrain(config: DeepReadonly<SimulationConfig>): void {
   // legal "brains are free" ablation; negative is not, because a cost that can
   // go negative is an energy source.
   const complexity = brain.complexity;
-  checkNonNegativeInt(complexity.perSensoryChannel, "brain.complexity.perSensoryChannel");
-  checkNonNegativeInt(complexity.perHiddenUnit, "brain.complexity.perHiddenUnit");
-  checkNonNegativeInt(complexity.perRecurrentLink, "brain.complexity.perRecurrentLink");
-  checkNonNegativeInt(complexity.perMemoryRegister, "brain.complexity.perMemoryRegister");
-  checkNonNegativeInt(complexity.perConnection, "brain.complexity.perConnection");
+  checkNonNegativeInt(complexity.perSensoryChannelQ, "brain.complexity.perSensoryChannelQ");
+  checkNonNegativeInt(complexity.perHiddenUnitQ, "brain.complexity.perHiddenUnitQ");
+  checkNonNegativeInt(complexity.perRecurrentLinkQ, "brain.complexity.perRecurrentLinkQ");
+  checkNonNegativeInt(complexity.perMemoryRegisterQ, "brain.complexity.perMemoryRegisterQ");
+  checkNonNegativeInt(complexity.perConnectionQ, "brain.complexity.perConnectionQ");
   // The most any legal brain could be billed, against the Uint16 the upkeep is
   // clamped into. A config that could saturate that clamp would make two very
   // different brains cost the same, which is a silent free lunch at the top.
-  const worstCaseUpkeep =
-    BRAIN_INPUT_COUNT * complexity.perSensoryChannel +
-    BRAIN_HIDDEN_COUNT * complexity.perHiddenUnit +
-    BRAIN_HIDDEN_COUNT * complexity.perRecurrentLink +
-    BRAIN_MEMORY_COUNT * complexity.perMemoryRegister +
-    NEURAL_WEIGHT_COUNT * complexity.perConnection;
+  const worstCaseUpkeep = Math.trunc(
+    (BRAIN_INPUT_COUNT * complexity.perSensoryChannelQ +
+      BRAIN_HIDDEN_COUNT * complexity.perHiddenUnitQ +
+      BRAIN_HIDDEN_COUNT * complexity.perRecurrentLinkQ +
+      BRAIN_MEMORY_COUNT * complexity.perMemoryRegisterQ +
+      NEURAL_WEIGHT_COUNT * complexity.perConnectionQ) /
+      Q,
+  );
   check(
     worstCaseUpkeep <= UINT16_MAX,
     `brain.complexity: the most complex expressible brain would be billed ${worstCaseUpkeep} ` +

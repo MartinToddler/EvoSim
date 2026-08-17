@@ -376,19 +376,33 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     weightScale: 4096,
     weightMin: -8192,
     weightMax: 8192,
-    // M16. Calibrated against the founder's own basal cost rather than picked:
-    // a founder pays roughly 30 energy/tick in basal upkeep, so a hidden unit at
-    // 3 and a memory register at 5 make a substantially rewired brain a
-    // noticeable fraction of an organism's running cost without being lethal on
-    // its own. Connections are the cheapest because a brain needs many of them;
-    // memory is the dearest because a register is the only thing here that
-    // persists between ticks.
+    // M16, recalibrated against measurement (ADR 0030 §10). Reference points:
+    // a newborn founder pays 10 energy/tick in basal upkeep and the adult mean
+    // is 30.
+    //
+    // The unit that matters is not a connection but a *usable hidden unit*,
+    // which arrives wired to 20 inputs, 5 outputs and itself — 26 connections.
+    // The first calibration charged one whole energy per connection, so that
+    // unit cost 26 + 3 + 2 = 31/tick: an adult's entire basal bill for one
+    // neuron. Measured over 10 000 ticks of an ordinary world, the mean hidden
+    // unit count was 0.002 — mutation switched them on and selection removed
+    // them every time. A cost that forbids a trait is not a trade-off.
+    //
+    // Now: one usable hidden unit costs 0.75 + 0.40 + 26 x 0.03 = 1.93/tick,
+    // about a fifth of a newborn's basal cost. The maximum brain — every unit,
+    // every register, every wire — costs 32/tick, which roughly doubles an
+    // adult's upkeep. That is the intended shape: a real bill that a lineage
+    // can choose to pay, rather than one it cannot.
+    //
+    // Connections stay cheapest because a brain needs many; memory is dearest
+    // per item because a register is the only thing here that persists between
+    // ticks, and persistence is the capability being sold.
     complexity: {
-      perSensoryChannel: 1,
-      perHiddenUnit: 3,
-      perRecurrentLink: 2,
-      perMemoryRegister: 5,
-      perConnection: 1,
+      perSensoryChannelQ: 4096, // 1.00 — unreachable: the founder holds all 20
+      perHiddenUnitQ: 3072, // 0.75
+      perRecurrentLinkQ: 1638, // 0.40
+      perMemoryRegisterQ: 4096, // 1.00
+      perConnectionQ: 123, // 0.03
     },
   },
 

@@ -139,6 +139,14 @@ avoidance, state-dependent action, temporal alternation and a persistent locatio
 built from generic memory and cues. Fixtures only — none of these are installed into any
 organism.
 
+**Reachability.** Representability is not accessibility, and CLAUDE.md's evolutionary
+accessibility rule names memory use explicitly. So the fixtures are joined by a controlled
+selection experiment on the ordinary engine, with realized survival and reproduction as the
+only fitness. Its two halves pull against each other on purpose: complexity that costs and does
+not pay must be selected *against*, or the cost is decorative; and complexity that can pay must
+not be priced out of existence, or the mechanism is unreachable in practice whatever the unit
+tests show. It is therefore a contrast between two worlds rather than an absolute number.
+
 ### M17 — Rich Ecology & Niches
 
 **Resource modes.** Low vegetation (common, cheap, fast), tough vegetation (dense, slow, hard

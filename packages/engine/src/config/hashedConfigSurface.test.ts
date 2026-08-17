@@ -18,11 +18,11 @@ import { DEFAULT_CONFIG } from "./defaultConfig";
  * (@eon/protocol).
  */
 const HASHED_CONFIG_LEAF_PATHS: readonly string[] = [
-  "brain.complexity.perConnection",
-  "brain.complexity.perHiddenUnit",
-  "brain.complexity.perMemoryRegister",
-  "brain.complexity.perRecurrentLink",
-  "brain.complexity.perSensoryChannel",
+  "brain.complexity.perConnectionQ",
+  "brain.complexity.perHiddenUnitQ",
+  "brain.complexity.perMemoryRegisterQ",
+  "brain.complexity.perRecurrentLinkQ",
+  "brain.complexity.perSensoryChannelQ",
   "brain.hiddenCount",
   "brain.inputCount",
   "brain.outputCount",

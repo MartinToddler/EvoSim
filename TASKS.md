@@ -791,6 +791,12 @@ environment tested until movement cost started reading the propulsive apparatus.
       any organism and nothing outside the test file constructing them.
 - [x] M16-06 inspector exposes the evolved network: five counts, its upkeep and the register
       contents, shown unlabelled because the engine does not know what a lineage keeps in them.
+- [ ] M16-07 evolutionary reachability for memory use (CLAUDE.md "Evolutionary accessibility
+      rule"): the ordinary engine, ordinary mutation and inheritance, realized survival and
+      reproduction as the only fitness. Two halves that pull against each other — complexity
+      that costs and does not pay must be selected AGAINST, and complexity that can pay must not
+      be priced out of existence — measured as a contrast between two worlds across multiple
+      seeds, plus structural exploration from an unseeded founder population.
 
 ### M17 Rich ecology and niches
 - [ ] M17-01 distinct resource systems with continuous genetic processing efficiencies.

@@ -1,6 +1,6 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
-import { clamp } from "../math/fixed";
+import { Q, clamp } from "../math/fixed";
 import type { GenomeStore } from "../organisms/GenomeStore";
 import { BRAIN_INPUT_COUNT } from "./BrainLayout";
 import {
@@ -111,10 +111,20 @@ export const FOUNDER_COMPLEXITY: Readonly<NeuralComplexity> = {
 };
 
 /**
- * Per-tick upkeep for one organism's brain, in energy units.
+ * Per-tick upkeep for one organism's brain, in whole energy units.
  *
  * Every term is `max(0, count - founderCount) × coefficient`, so the founder
- * pays nothing and only the excess is billed.
+ * pays nothing and only the excess is billed. The coefficients are Q-scaled —
+ * a connection costs a small fraction of an energy unit, because the thing a
+ * lineage actually buys is a hidden unit and one of those arrives wired to
+ * twenty-six of them (see `NeuralComplexityConfig`).
+ *
+ * The Q sum is reduced to whole energy once at the end rather than term by
+ * term, and **any non-zero excess is billed at least one energy per tick**.
+ * That floor is what keeps "no free complexity" true at a fractional scale:
+ * without it a lineage could add a handful of connections, round down to zero
+ * and carry them for nothing. The result stays monotone in every count, so
+ * more complexity can never cost less.
  */
 export function neuralUpkeep(
   genomes: GenomeStore,
@@ -126,12 +136,15 @@ export function neuralUpkeep(
   countNeuralComplexity(genomes.topology, genomes.topologyOffset(slot), counts);
 
   const excess = (count: number, allowance: number): number => Math.max(0, count - allowance);
-  const total =
-    excess(counts.inputs, FOUNDER_COMPLEXITY.inputs) * cost.perSensoryChannel +
-    excess(counts.hidden, FOUNDER_COMPLEXITY.hidden) * cost.perHiddenUnit +
-    excess(counts.recurrent, FOUNDER_COMPLEXITY.recurrent) * cost.perRecurrentLink +
-    excess(counts.memory, FOUNDER_COMPLEXITY.memory) * cost.perMemoryRegister +
-    excess(counts.connections, FOUNDER_COMPLEXITY.connections) * cost.perConnection;
+  const totalQ =
+    excess(counts.inputs, FOUNDER_COMPLEXITY.inputs) * cost.perSensoryChannelQ +
+    excess(counts.hidden, FOUNDER_COMPLEXITY.hidden) * cost.perHiddenUnitQ +
+    excess(counts.recurrent, FOUNDER_COMPLEXITY.recurrent) * cost.perRecurrentLinkQ +
+    excess(counts.memory, FOUNDER_COMPLEXITY.memory) * cost.perMemoryRegisterQ +
+    excess(counts.connections, FOUNDER_COMPLEXITY.connections) * cost.perConnectionQ;
 
-  return clamp(total, 0, 65535);
+  if (totalQ === 0) {
+    return 0;
+  }
+  return clamp(Math.max(1, Math.trunc(totalQ / Q)), 1, 65535);
 }

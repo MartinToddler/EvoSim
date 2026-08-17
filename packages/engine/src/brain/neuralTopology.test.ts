@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { ConfigValidationError, validateConfig } from "../config/validateConfig";
 import { GenomeStore } from "../organisms/GenomeStore";
 import { Xoshiro128 } from "../random/Xoshiro128";
+import { Q } from "../math/fixed";
 import { BRAIN_HIDDEN_COUNT, BRAIN_INPUT_COUNT, BRAIN_WEIGHT_COUNT } from "./BrainLayout";
 import { NeuralStateStore } from "./NeuralStateStore";
 import {
@@ -171,9 +172,16 @@ describe("complexity is charged for (M16, CLAUDE.md trade-off rule)", () => {
       }
     });
     const upkeep = neuralUpkeep(maximal, 0, DEFAULT_CONFIG);
-    // Against a founder basal cost around 30 energy/tick, a maximal brain has
-    // to be a decision rather than a rounding error.
-    expect(upkeep).toBeGreaterThan(100);
+    // A newborn founder's whole basal bill is 10 energy/tick and the adult mean
+    // is 30 (measured, ADR 0030 §10). A maximal brain has to be a decision
+    // rather than a rounding error — and it also has to be a decision a lineage
+    // could conceivably make, which is the half the first calibration failed:
+    // at one whole energy per connection the same brain cost 545/tick, and
+    // measurement found hidden units being switched on by mutation and removed
+    // by selection every time.
+    const ADULT_BASAL = 30;
+    expect(upkeep).toBeGreaterThan(ADULT_BASAL);
+    expect(upkeep).toBeLessThan(ADULT_BASAL * 4);
     expect(upkeep).toBeLessThanOrEqual(65535);
   });
 });
@@ -263,7 +271,7 @@ describe("neural state is authoritative (M16)", () => {
 describe("the config cannot ask for a brain that has no meaning (M16)", () => {
   it("rejects a complexity cost that would saturate its own storage", () => {
     const config = cloneConfig(DEFAULT_CONFIG);
-    config.brain.complexity.perConnection = 1000;
+    config.brain.complexity.perConnectionQ = 1000 * Q;
     expect(() => validateConfig(config)).toThrow(ConfigValidationError);
     expect(() => validateConfig(config)).toThrow(/free lunch at the top/);
   });

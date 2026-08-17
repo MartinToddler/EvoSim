@@ -619,20 +619,31 @@ export interface TopologyMutationConfig {
  * What a brain costs to keep alive, per tick, per unit of excess complexity
  * over the founder's (M16).
  *
- * Absolute energy units rather than Q fractions, because this is billed
- * alongside `basal.minimumBasalPerTick` and reads in the same currency.
+ * Energy units, Q-scaled: `Q` is one energy per tick. The fractional scale is
+ * load-bearing rather than tidy. A connection is the smallest unit of brain
+ * there is and there are 576 of them, while a *useful* hidden unit arrives
+ * wired to twenty inputs and five outputs; charging a whole energy unit per
+ * connection made one such unit cost 26/tick against an adult's whole basal
+ * bill of ~30, which is not a trade-off but a prohibition, and the first
+ * measurement showed hidden units being switched on by mutation and removed by
+ * selection within a generation every time (ADR 0030 §10).
+ *
+ * The billed total is whole energy with a floor of one for any non-zero
+ * excess, so a fractional scale never becomes a free one: the smallest
+ * addressable change a lineage can make still costs something every tick it
+ * lives.
  */
 export interface NeuralComplexityConfig {
   /** Per sensory channel active beyond the founder's twenty. */
-  perSensoryChannel: number;
+  perSensoryChannelQ: number;
   /** Per hidden unit switched on. */
-  perHiddenUnit: number;
+  perHiddenUnitQ: number;
   /** Per recurrent link switched on. */
-  perRecurrentLink: number;
+  perRecurrentLinkQ: number;
   /** Per memory register retained. */
-  perMemoryRegister: number;
+  perMemoryRegisterQ: number;
   /** Per connection active beyond the founder's hundred. */
-  perConnection: number;
+  perConnectionQ: number;
 }
 
 export interface MutationConfig {

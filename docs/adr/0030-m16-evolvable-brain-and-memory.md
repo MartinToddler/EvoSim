@@ -120,9 +120,14 @@ Parsimony still pays, just not through a rebate. An unused sense whose channel i
 stops feeding noise into the network, and an unused wire stops carrying a mutation's drift into
 an output. Those are behavioural benefits, which is where the benefit of simplicity belongs.
 
-Measured with the shipped coefficients: the founder pays 0, a brain with all twelve hidden units
-awake pays 36 energy/tick, and one that also retains all four registers pays 56 — against a
-founder basal cost around 30. A maximal brain is a decision, not a rounding error.
+Measured with the shipped coefficients: the founder pays 0 and the most complex expressible
+brain — every unit, every register, every wire — pays 32 energy/tick, against a measured basal
+cost of 10 for a newborn founder and a 30 adult mean. A maximal brain roughly doubles an adult's
+upkeep: a decision, not a rounding error, and not a prohibition either. §10 is about the first
+calibration, which was the third of those.
+
+The coefficients are Q-scaled, and any non-zero excess is billed at least one whole energy per
+tick. That floor is what stops a fractional scale from becoming a free one at the bottom.
 
 ## 4. Structural mutation draws a count, not a bit
 
