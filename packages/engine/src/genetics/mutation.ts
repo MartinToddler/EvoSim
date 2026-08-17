@@ -1,5 +1,5 @@
 import type { DeepReadonly } from "@eon/shared";
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { Q, clamp, qmul } from "../math/fixed";
 import type { GenomeStore } from "../organisms/GenomeStore";
@@ -36,7 +36,7 @@ import { GENE_COUNT, GENE_RAW_MAX } from "./genes";
  *
  * ## Draw accounting
  *
- * Exactly `GENE_COUNT + MORPH_GENE_COUNT + BRAIN_WEIGHT_COUNT` = 443
+ * Exactly `GENE_COUNT + MORPH_GENE_COUNT + NEURAL_WEIGHT_COUNT` = 619
  * classification draws per birth, plus one {@link Xoshiro128.approxNormalQ}
  * (12 draws) per continuously mutated locus, one uniform draw per reset locus
  * and one uniform draw per structural step. The block order is ecological
@@ -157,7 +157,12 @@ export function mutateEcologicalGenes(
 }
 
 /**
- * Mutate the 400 brain weights of one weight block in place.
+ * Mutate every brain weight of one weight block in place.
+ *
+ * `NEURAL_WEIGHT_COUNT`, not the M14 count: M16 appended the recurrent and
+ * memory blocks, and a weight that mutation never reaches can never evolve. The
+ * memory gate and value weights in particular would be permanently zero, which
+ * would make every register unwritable and the whole mechanism decoration.
  *
  * Weights are clamped to the configured symmetric bound (±8192 by default,
  * docs/08 §17), so a lineage cannot accumulate unbounded weights and push the
@@ -172,7 +177,7 @@ export function mutateBrainWeights(
   const mutation = config.mutation.brain;
   const { weightMin, weightMax } = config.brain;
 
-  for (let i = 0; i < BRAIN_WEIGHT_COUNT; i += 1) {
+  for (let i = 0; i < NEURAL_WEIGHT_COUNT; i += 1) {
     const kind = classifyWeightRoll(rng.nextQ(), mutation);
     if (kind === MutationClass.None) {
       continue;

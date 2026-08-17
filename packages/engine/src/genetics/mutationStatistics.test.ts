@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT as BRAIN_WEIGHT_COUNT } from "../brain/NeuralTopology";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
@@ -137,15 +137,23 @@ describe("mutation statistics on a deterministic large sample", () => {
     const expectedWeights = (BRAIN_WEIGHT_COUNT * weightRateQ) / Q;
 
     // A changed locus is counted by value, so a delta that truncates to zero
-    // reads as "unchanged" — the observed rate is at most the roll rate.
-    expect(sample.genesChangedPerBirth).toBeLessThanOrEqual(expectedGenes);
+    // reads as "unchanged" — the observed rate is at most the roll rate IN
+    // EXPECTATION. It is not bounded by it in a finite sample, and asserting
+    // that it is was a defect this file carried until M16's wider weight block
+    // moved the stream and produced 1.3657 against an expectation of 1.36328.
+    // Both are the same number to within a fifth of a standard error; the
+    // sample was never going to sit permanently below its own mean. The band
+    // below is symmetric for that reason.
+    expect(sample.genesChangedPerBirth).toBeLessThan(expectedGenes * 1.03);
     expect(sample.genesChangedPerBirth).toBeGreaterThan(expectedGenes * 0.97);
-    expect(sample.weightsChangedPerBirth).toBeLessThanOrEqual(expectedWeights);
+    expect(sample.weightsChangedPerBirth).toBeLessThan(expectedWeights * 1.03);
     expect(sample.weightsChangedPerBirth).toBeGreaterThan(expectedWeights * 0.97);
 
-    // docs/04 §18: "At 400 weights, 2% ≈ 8 changed weights/birth."
-    expect(sample.weightsChangedPerBirth).toBeGreaterThan(7.5);
-    expect(sample.weightsChangedPerBirth).toBeLessThan(9);
+    // docs/04 §18 says "At 400 weights, 2% ≈ 8 changed weights/birth". M16
+    // widened the block to 576 for the recurrent and memory weights, so the
+    // same rate is ~11.5 — the rate did not change, the network did.
+    expect(sample.weightsChangedPerBirth).toBeGreaterThan(10.5);
+    expect(sample.weightsChangedPerBirth).toBeLessThan(12.5);
   });
 
   it("draws symmetric weight deltas at the configured mixture sigma", () => {
@@ -191,9 +199,14 @@ describe("mutation statistics on a deterministic large sample", () => {
     const expected = (geneMissQ / Q) ** GENE_COUNT * (weightMissQ / Q) ** BRAIN_WEIGHT_COUNT;
 
     expect(expected).toBeLessThan(1e-4);
-    // Observed at this sample size is single-digit births; assert the order of
-    // magnitude rather than a count the PRNG happens to give.
-    expect(sample.exactCloneFraction).toBeLessThan(10 * expected);
+    // Assert what this sample can actually resolve. With 619 loci the analytic
+    // clone probability is around 1e-6, i.e. well under one expected clone in
+    // the whole sample — so "within 10x of the analytic value" is asking 20 000
+    // draws to measure something twenty times finer than their own resolution,
+    // and a single clone (5e-5) fails it for no reason but Poisson noise. The
+    // claim worth defending is the one the comment above states: a clone must
+    // be RARE, not that its frequency matches an unmeasurable prediction.
+    expect(sample.exactCloneFraction).toBeLessThan(1e-3);
   });
 });
 

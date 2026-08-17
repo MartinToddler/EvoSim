@@ -18,6 +18,11 @@ import { DEFAULT_CONFIG } from "./defaultConfig";
  * (@eon/protocol).
  */
 const HASHED_CONFIG_LEAF_PATHS: readonly string[] = [
+  "brain.complexity.perConnection",
+  "brain.complexity.perHiddenUnit",
+  "brain.complexity.perMemoryRegister",
+  "brain.complexity.perRecurrentLink",
+  "brain.complexity.perSensoryChannel",
   "brain.hiddenCount",
   "brain.inputCount",
   "brain.outputCount",
@@ -78,6 +83,8 @@ const HASHED_CONFIG_LEAF_PATHS: readonly string[] = [
   "mutation.morphology.resetProbabilityQ",
   "mutation.morphology.smallSigmaQ",
   "mutation.morphology.structuralProbabilityQ",
+  "mutation.topology.maxFlipsPerBirth",
+  "mutation.topology.structuralProbabilityQ",
   "organism.basal.armorMaintCoeffQ",
   "organism.basal.attackMaintCoeffQ",
   "organism.basal.baseMassPaceCoeffQ",

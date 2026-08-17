@@ -1,18 +1,22 @@
 {
-  "description": "Mutation golden fixture (docs/07 §2 Genome/Brain mutation, tasks E03/E04). Pins the exact result of mutating the founder genome through a 50-generation lineage with a fixed PRNG seed, plus the PRNG draw count of a single birth. Any change to the draw order, the roll-interval partition, the sigma scaling or the clamp moves these values and is an ENGINE_VERSION event. Engine 0.5.0, 0.6.0, 0.7.0 and 0.8.0 all touched none of those: Milestone 8's species analysis draws nothing from the PRNG, and Milestone 9's command appliers are deliberately PRNG-free and never mutate a genome, and 0.8.0's expected-gain feeding rule and plant-capacity retune (ADR 0025) never touch a genome either — so the gene block, the brain digest and the PRNG state below are byte-identical to 0.4.0, and only the version stamps moved. Engine 0.9.0 (M14) regenerated every value: the morphological genome joined the inherited state and is mutated between the ecological block and the brain, so the PRNG stream, the resulting genes and the brain digest all move. A single birth now draws 599 words (was 572); the fixture gained a morphGenes array.",
-  "engineVersion": "0.9.0",
-  "configSchemaVersion": 8,
+  "description": "Mutation golden fixture (docs/07 \u00a72 Genome/Brain mutation, tasks E03/E04). Pins the exact result of mutating the founder genome through a 50-generation lineage with a fixed PRNG seed, plus the PRNG draw count of a single birth. Any change to the draw order, the roll-interval partition, the sigma scaling or the clamp moves these values and is an ENGINE_VERSION event. Engine 0.5.0, 0.6.0, 0.7.0 and 0.8.0 all touched none of those: Milestone 8's species analysis draws nothing from the PRNG, and Milestone 9's command appliers are deliberately PRNG-free and never mutate a genome, and 0.8.0's expected-gain feeding rule and plant-capacity retune (ADR 0025) never touch a genome either \u2014 so the gene block, the brain digest and the PRNG state below are byte-identical to 0.4.0, and only the version stamps moved. Engine 0.9.0 (M14) regenerated every value: the morphological genome joined the inherited state and is mutated between the ecological block and the brain, so the PRNG stream, the resulting genes and the brain digest all move. A single birth now draws 599 words (was 572); the fixture gained a morphGenes array. Engine 0.11.0 (M16, ADR 0030) regenerated every value again: the neural topology genome joined the inherited state and is mutated between the morphological block and the weights, and the weight block itself grew 400 -> 576 for the recurrent and memory connections. A single birth now draws 788 words (was 599); the fixture gained a topology array. Weight mutation deliberately covers all 576: a weight mutation never reaches can never evolve, and the memory gate and value weights would have stayed permanently zero, making every register unwritable and the whole mechanism decoration.",
+  "engineVersion": "0.11.0",
+  "configSchemaVersion": 10,
   "seedHex": "0xE04A2026",
   "generations": 50,
-  "firstBirthPrngWords": 599,
+  "firstBirthPrngWords": 788,
   "genes": [
-    23859, 38092, 34377, 36532, 54806, 19343, 13101, 8790, 19100, 30836, 38966, 36310, 26510, 33585,
-    37121, 19829
+    37956, 31515, 35687, 33381, 28543, 38419, 13202, 7928, 8080, 30130, 38049, 35589, 27849, 39467,
+    28626, 22808
   ],
-  "brainWeightDigest": "ba191f9e96c15676",
-  "rngStateAfter": [3176202931, 1926400614, 799279291, 537121990],
+  "brainWeightDigest": "f30820869e0186e2",
+  "rngStateAfter": [4121303581, 3494056614, 687932068, 37362066],
   "morphGenes": [
-    34687, 30077, 44319, 26228, 19660, 31788, 32761, 35372, 28724, 21339, 34577, 34437, 32729,
-    23916, 33047, 38965, 28594, 22271, 40181, 7267, 7839, 33202, 35994, 27922, 8263, 0, 33570
+    43416, 45898, 46622, 25522, 19660, 34735, 32761, 40266, 31184, 22316, 32055, 28537, 32595,
+    37431, 30243, 49468, 18365, 27071, 38361, 6888, 2959, 33307, 32337, 31714, 14347, 0, 56657
+  ],
+  "topology": [
+    65535, 15, 0, 128, 0, 0, 8192, 0, 0, 0, 0, 0, 0, 2048, 0, 0, 0, 0, 0, 0, 0, 0, 32768, 62468,
+    65535, 65503, 65535, 65535, 65535, 65535, 0, 0, 0, 0, 0, 1, 0, 512, 0, 0, 16
   ]
 }

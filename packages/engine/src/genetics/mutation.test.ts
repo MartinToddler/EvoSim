@@ -302,6 +302,7 @@ describe("mutation golden fixture", () => {
 
     expect([...genomes.genes]).toEqual(goldenMutation.genes);
     expect([...genomes.morphGenes]).toEqual(goldenMutation.morphGenes);
+    expect([...genomes.topology]).toEqual(goldenMutation.topology);
     expect(weightDigest(genomes.brainWeights)).toBe(goldenMutation.brainWeightDigest);
     expect(rng.serializeState()).toEqual(goldenMutation.rngStateAfter);
   });
