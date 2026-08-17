@@ -375,7 +375,12 @@ Logistic:
 delta = rate * biomass * (capacity - biomass) / capacity
 ```
 
-Include tiny seed-bank regeneration below threshold so a cell can recover from exactly zero.
+Include tiny seed-bank regeneration on a cell at **exactly zero**, and only there, so grazing
+cannot permanently sterilise it. Not "below a threshold": the regeneration is a flat number of
+units, so it is independent of capacity, of growth rate and of grazing pressure, and any version
+of it that a cell with biomass left can still reach is a food source rather than a recovery
+mechanism. Implemented as a threshold, it supplied 87.4% of the world's plant production and set
+the population ceiling on its own (ADR 0031 §5e).
 
 Initial per-environment-step rates:
 

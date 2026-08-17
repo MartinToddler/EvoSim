@@ -55,7 +55,13 @@ export const NICHE_HORIZON = 10_000;
 /** Seeds each world is run on. Stochastic outcomes need more than one. */
 export const NICHE_SEEDS: readonly number[] = [0xe0a12026, 0xe0a13f15, 0xe0a17cf3];
 
-function nicheBase(): SimulationConfig {
+/**
+ * The niche geography with the **shipped** resource mix, unscaled.
+ *
+ * Exported because it is the control the five worlds are read against, and
+ * because the capacity shares that set their multipliers are measured on it.
+ */
+export function nicheBase(): SimulationConfig {
   const config = cloneConfig(DEFAULT_CONFIG);
   const grid = NICHE_GRID_SIZE;
   config.world.envGridSize = grid;
@@ -93,11 +99,67 @@ function scaleCapacity(config: SimulationConfig, resource: number, factorPct: nu
   );
 }
 
-/** A world where one channel is abundant and the rest are scarce. */
+/**
+ * Realised share of total plant capacity per channel, in hundredths of a
+ * percent, measured on this geography with the shipped mix across all three
+ * `NICHE_SEEDS`: foliage 46.50%, browse 23.37%, fruit 4.66%, roots 17.32%,
+ * defended 8.14%.
+ *
+ * Realised rather than declared, because a channel's base capacity says very
+ * little about how much of it a world actually has. Fruit's base is the second
+ * largest of the five and its suitability window is narrow enough that it lands
+ * at a twentieth of the world's capacity.
+ */
+const REALISED_CAPACITY_SHARE_BP: readonly number[] = [4650, 2337, 466, 1732, 814];
+
+/**
+ * Per-world capacity multipliers, as percentages: the favoured channel first,
+ * every other channel second.
+ *
+ * Chosen so that each world has the **same total plant capacity** as the
+ * shipped mix and differs only in how that capacity is distributed. Given a
+ * channel's realised share `s`, boosting it by `F` and damping the rest by
+ * `m = (1 - F·s) / (1 - s)` leaves the total unchanged; `F` targets a 50% share
+ * for the favoured channel.
+ *
+ * Fruit is the exception and cannot reach 50%: `baseCapacityByBiome` has to fit
+ * a Uint16, which caps its boost at 7.28x and its share at 33.9%. That still
+ * makes it the largest channel in its own world — foliage lands at 32.1% — but
+ * only just, and the ADR records it rather than forcing it.
+ *
+ * The previous construction (favoured x1.60, everything else x0.25) is what
+ * these replace. It changed each world's total richness as well as its mix, so
+ * "any difference in outcome is attributable to the mix" was not true of it:
+ * a world favouring a small channel ended up a third as rich as one favouring
+ * foliage. That went unnoticed while the seed-bank floor supplied most of the
+ * food and capacity barely moved the population; with the floor closed
+ * (ADR 0031 §5e) it showed up immediately as three of the five worlds falling
+ * to double-digit populations or dying outright.
+ */
+const FAVOUR_MULTIPLIER_PCT: readonly number[] = [
+  108, // foliage  -> 50.2%
+  214, // browse   -> 50.0%
+  728, // fruit    -> 33.9%, the Uint16 ceiling
+  289, // roots    -> 50.1%
+  614, // defended -> 50.0%
+];
+
+/** A world where one channel is the bulk of the capacity and the rest share the remainder. */
 function worldFavouring(resource: number): ReadonlySimulationConfig {
   const config = nicheBase();
+  const favouredPct = FAVOUR_MULTIPLIER_PCT[resource];
+  const shareBp = REALISED_CAPACITY_SHARE_BP[resource];
+  if (favouredPct === undefined || shareBp === undefined) {
+    throw new Error(`no capacity calibration measured for channel ${resource}`);
+  }
+
+  // The damping that keeps the world's total capacity where it was. Derived
+  // rather than tabulated, so the invariant cannot drift away from the boost.
+  const share = shareBp / 10_000;
+  const othersPct = Math.round((100 * (1 - (favouredPct / 100) * share)) / (1 - share));
+
   for (let other = 0; other < config.plants.resources.length; other += 1) {
-    scaleCapacity(config, other, other === resource ? 160 : 25);
+    scaleCapacity(config, other, other === resource ? favouredPct : othersPct);
   }
   return config;
 }
@@ -118,14 +180,32 @@ export const ROOT_RICH_CONFIG: ReadonlySimulationConfig = worldFavouring(Resourc
  * Scenario E — carrion-rich: every plant channel is poor, so bodies matter.
  *
  * Meat has no capacity field to raise — it comes from organisms dying — so the
- * only honest way to make a carrion world is to make plants scarce enough that
- * a substantial share of the population's energy has to come from what has
- * already died. The engine is not told this; it follows from the ecology.
+ * only available way to make a carrion world is to make plants scarce and see
+ * what share of the living has to come from what has already died. The engine
+ * is not told this; it follows from the ecology.
+ *
+ * ## What it actually produces, recorded rather than tuned away
+ *
+ * Not scavengers. Measured across the three seeds at 45%, meat is 0.09%, 0.59%
+ * and 0.06% of intake — a rounding error, and the population still lives on
+ * plants. Making the world poorer does not help, because it is the wrong
+ * direction: scarce plants mean fewer and thinner bodies, bodies being made of
+ * plants. At 22%, which is where this fixture started, the world went extinct on
+ * its first seed and carried 30 and 67 organisms on the others.
+ *
+ * So this is the lean world rather than the carrion world, and it earns its
+ * place in the acceptance set by being uniformly poor rather than by feeding
+ * anything on meat. Carnivory as a selectable strategy is demonstrated where it
+ * can be demonstrated honestly — `predationSimulation.test.ts`, "rewards the
+ * carnivore specialist in a world of meat".
+ *
+ * 45% is the calibration: poor enough to be a distinctly harder world, rich
+ * enough that all three seeds keep a population worth reading.
  */
 export const CARRION_RICH_CONFIG: ReadonlySimulationConfig = (() => {
   const config = nicheBase();
   for (let resource = 0; resource < config.plants.resources.length; resource += 1) {
-    scaleCapacity(config, resource, 22);
+    scaleCapacity(config, resource, 45);
   }
   return config;
 })();

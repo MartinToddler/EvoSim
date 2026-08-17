@@ -167,7 +167,6 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         baseCapacityByBiome: [0, 9720, 14040, 1890, 2700, 1080],
         growthRateQByBiome: [0, 49, 37, 12, 12, 6], // ~.012 .009 .003 .003 .0015
         seedBankRegenUnits: 4,
-        minRegenThreshold: 16,
         energyPerUnit: 30,
         optimumTemperatureCentiC: 1800, // 18 °C
         temperatureToleranceCentiC: 2200, // roughly -4 °C … 40 °C
@@ -186,7 +185,6 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         baseCapacityByBiome: [0, 3780, 9660, 252, 630, 378],
         growthRateQByBiome: [0, 8, 7, 2, 2, 1],
         seedBankRegenUnits: 2,
-        minRegenThreshold: 24,
         energyPerUnit: 34,
         optimumTemperatureCentiC: 1600,
         temperatureToleranceCentiC: 2600, // tolerates cold better than foliage
@@ -212,7 +210,6 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // against foliage, so "slow to return" is intact.
         growthRateQByBiome: [0, 8, 8, 2, 2, 1],
         seedBankRegenUnits: 2,
-        minRegenThreshold: 8,
         energyPerUnit: 48,
         optimumTemperatureCentiC: 2300, // 23 °C — warmer than foliage likes
         temperatureToleranceCentiC: 900, // and much fussier about it
@@ -245,7 +242,6 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         // 8 … 24 for every other channel — so a grazed root cell holds a real
         // standing stock where a grazed fruit patch holds nothing.
         seedBankRegenUnits: 4,
-        minRegenThreshold: 120,
         energyPerUnit: 38,
         optimumTemperatureCentiC: 1500,
         temperatureToleranceCentiC: 3200, // very wide: underground is buffered
@@ -264,7 +260,6 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         baseCapacityByBiome: [0, 1260, 1080, 1980, 720, 936],
         growthRateQByBiome: [0, 10, 9, 12, 6, 7],
         seedBankRegenUnits: 3,
-        minRegenThreshold: 20,
         energyPerUnit: 44,
         optimumTemperatureCentiC: 2600, // 26 °C — the hot end
         temperatureToleranceCentiC: 2000,

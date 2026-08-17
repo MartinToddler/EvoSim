@@ -6,6 +6,49 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## M17 corrective pass — the seed bank was the food supply (engine 0.12.1, snapshot 13, config 12)
+
+M17 shipped with the soak world pinned at exactly `limits.maxOrganisms`, which docs/01 §12 names
+as a release-gate failure. The cause was not capacity. ADR 0031 §5e.
+
+### Fixed
+
+- **Plant regrowth no longer has a flat production floor.** `growPlants` added
+  `seedBankRegenUnits` to any cell below a per-channel `minRegenThreshold`. That term ignores
+  capacity, growth rate and grazing pressure, so a cell held just under the threshold was a
+  permanent food source. Accounted at tick 40 000 of the shipped world, **87.4% of all plant
+  production came from it** and 12.6% from the logistic term capacity governs — which is why
+  scaling capacity to 0.55, 0.40 and 0.30 all still ended at the cap, and why population scaled
+  as only `capacity^0.6`. The seed bank now fires only on a cell emptied to exactly zero, which
+  is what its own comment always said it did. The 100 000-tick soak ends at 910 organisms instead
+  of 8192, with standing biomass flat across the last 30 000 ticks and population oscillating
+  between 449 and 1004.
+
+### Removed
+
+- **`ResourceProfile.minRegenThreshold`**, rather than set to a small number. A threshold is the
+  shape of mistake that reopens this, and the validator that was supposed to bound it checked
+  against declared base capacity while the cells that matter carry realised capacity — it passed
+  the configuration that caused the failure. Per-channel `seedBankRegenUnits` stays: how
+  vigorously a channel recolonises dead ground is a real property of a channel, and firing once
+  per emptying bounds it.
+
+### Changed
+
+- **The niche worlds hold total capacity constant** instead of scaling one channel to 160% and
+  the rest to 25%, which varied each world's total richness as well as its mix and contradicted
+  the fixture's own claim that "any difference in outcome is attributable to the mix". Harmless
+  while the seed-bank floor supplied most of the food; with the floor closed, fruit-patchy fell to
+  30 organisms and carrion-rich went extinct. ADR 0031 §5f.
+
+### Added
+
+- **`nicheSelection.test.ts`** — M17's acceptance criterion as a test rather than a table in an
+  ADR produced by an ad-hoc script. The unenforced version went stale exactly as expected: the
+  seed-bank fix invalidated all fifteen measurements and nothing in the suite noticed.
+- **A regression test for the invariant**: a cell with any biomass at all, however little, gains
+  nothing but its logistic term.
+
 ## M17 — Rich ecology and niches (engine 0.12.0, protocol 13, snapshot 12, config 11)
 
 One plant field became five channels that differ in where they grow and what it costs to get at

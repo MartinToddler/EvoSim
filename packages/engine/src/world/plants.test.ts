@@ -191,19 +191,46 @@ describe("growPlants (docs/03 §20)", () => {
     expect(midDelta).toBeGreaterThan(highDelta);
   });
 
+  it("never tops up a cell that still has biomass, however little", () => {
+    // The defect this pins down: the seed bank used to fire below a per-channel
+    // `minRegenThreshold`, so a cell grazed just under it collected a flat
+    // deposit every step forever. That is a food source rather than a recovery
+    // mechanism — it is independent of capacity and of growth rate, so it set
+    // the population ceiling by itself and made capacity tuning nearly inert.
+    //
+    // One unit of biomass in a 10 000-capacity cell grows by 49·1·9999/10000 =
+    // 48 Q per step, so 10 steps accumulate 480 Q — well short of the 4096 Q
+    // that buys a whole unit. The cell must therefore be *exactly* unchanged.
+    const store = grasslandStore(10_000, 1);
+    for (let step = 0; step < 10; step += 1) {
+      growPlants(store, DEFAULT_CONFIG);
+    }
+    expect(store.resourceBiomass[0] as number).toBe(1);
+
+    // The same cell emptied completely gets exactly one deposit, once.
+    const emptied = grasslandStore(10_000, 0);
+    growPlants(emptied, DEFAULT_CONFIG);
+    const regen = foliageProfile(DEFAULT_CONFIG).seedBankRegenUnits;
+    expect(emptied.resourceBiomass[0] as number).toBe(regen);
+    growPlants(emptied, DEFAULT_CONFIG);
+    expect(emptied.resourceBiomass[0] as number).toBeLessThan(regen * 2);
+  });
+
   it("recovers a cell grazed to exactly zero via the seed bank", () => {
     const store = grasslandStore(10_000, 0);
     growPlants(store, DEFAULT_CONFIG);
     expect(store.resourceBiomass[0] as number).toBeGreaterThan(0);
 
-    // It must climb past the seed-bank threshold under its own logistic growth,
-    // not sit at the trickle. The pace matches the continuous solution
-    // (16·e^(0.012·200) ≈ 176), so recovery is slow at first by design.
+    // It must climb away from the trickle under its own logistic growth rather
+    // than being carried by repeated seed-bank deposits — the seed bank fires
+    // once, on the empty cell, and never again. The pace matches the continuous
+    // solution from a single 4-unit deposit (10000/(1 + 2499·e^(-0.012·200)) ≈
+    // 44), so recovery is slow at first by design.
     for (let step = 0; step < 200; step += 1) {
       growPlants(store, DEFAULT_CONFIG);
     }
     const after200 = store.resourceBiomass[0] as number;
-    expect(after200).toBeGreaterThan(foliageProfile(DEFAULT_CONFIG).minRegenThreshold * 4);
+    expect(after200).toBeGreaterThan(foliageProfile(DEFAULT_CONFIG).seedBankRegenUnits * 8);
 
     // Given enough time it recovers fully rather than stalling.
     for (let step = 0; step < 800; step += 1) {

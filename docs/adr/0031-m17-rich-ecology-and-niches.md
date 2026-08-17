@@ -1,7 +1,10 @@
 # ADR 0031 — M17: rich ecology and niches
 
-Status: accepted · Date: 2026-08-17 · Engine 0.11.0 → **0.12.0** ·
-Snapshot schema 11 → **12** · Config schema 10 → **11** · Protocol 12 → **13**
+Status: accepted · Date: 2026-08-17 · Engine 0.11.0 → **0.12.0** → **0.12.1** ·
+Snapshot schema 11 → **12** → **13** · Config schema 10 → **11** → **12** · Protocol 12 → **13**
+
+The second set of numbers is the corrective pass in §5e and §5f, which removed
+`ResourceProfile.minRegenThreshold` and fixed the release-gate failure M17 shipped with.
 
 M14 made the body inherited, M15 made it physical, M16 made the controller's shape inherited.
 All three evolved against a world with exactly one thing to eat. A single plant field admits a
@@ -57,9 +60,14 @@ does would simply be foliage with a different name.
 
 Fruit is specified as intermittent. It gets there through a regrowth rate two orders of magnitude
 below foliage's against a small capacity: a stripped patch stays stripped for thousands of ticks,
-so the living is made by finding the next one rather than waiting at this one. Roots invert the
-same dial — a high regeneration floor and a slow rate make them the channel that is always there
-in small amounts, which is what "persistent" has to mean mechanically.
+so the living is made by finding the next one rather than waiting at this one. Roots are the
+channel that is always there in small amounts, and that comes from the capacity side rather than
+the growth side — a near-zero fertility weight and a growth rate that barely varies by biome
+(6, 5, 5, 5, 3 against foliage's 49, 37, 12, 12, 6) mean roots hold ground nothing else will grow
+on, which is what "persistent" has to mean mechanically.
+
+Roots originally got that property from a high seed-bank regeneration floor instead, and §5e is
+the record of what that cost: a flat floor is a food source, not a character trait.
 
 A clock would have been easier and wrong. A time-varying environment is M18's milestone, and
 pre-empting it here would have made M18's own acceptance criteria untestable against a baseline
@@ -188,34 +196,161 @@ Five worlds, three seeds each, 10 000 ticks, founders dealt round-robin across t
 as specialists and otherwise identical. What is measured is each organism's argmax processing
 locus — a derived observational label the engine never reads.
 
-| world        | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 |
-| ------------ | ---------- | ---------- | ---------- |
-| grass-rich   | foliage    | foliage    | foliage    |
-| fruit-patchy | defended   | defended   | defended   |
-| toxin-rich   | defended   | defended   | defended   |
-| root-rich    | roots      | roots      | roots      |
-| carrion-rich | defended   | foliage    | defended   |
+Measured on engine 0.12.1, with the seed-bank floor closed (§5e) and the worlds rebuilt to hold
+total capacity constant (§5f). Population at the horizon in brackets, because a world that is
+dying labels nothing:
 
-Three distinct winners; no channel wins everywhere; foliage takes 4 of 15, roots 3, defended 8.
+| world        | 0xE0A12026      | 0xE0A13F15      | 0xE0A17CF3     |
+| ------------ | --------------- | --------------- | -------------- |
+| grass-rich   | foliage (868)   | foliage (1751)  | foliage (733)  |
+| fruit-patchy | foliage (693)   | foliage (1169)  | foliage (344)  |
+| toxin-rich   | defended (1975) | defended (1745) | defended (936) |
+| root-rich    | roots (876)     | roots (879)     | roots (901)    |
+| carrion-rich | foliage (447)   | defended (222)  | foliage (155)  |
+
+Three distinct winners; no channel wins everywhere; foliage takes 8 of 15, defended 4, roots 3.
 Four of the five worlds are unanimous across their seeds, so the outcome is a property of the
-world rather than of the seed. The criterion holds.
+world rather than of the seed. The criterion holds, and it now holds as a test —
+`nicheSelection.test.ts` — rather than as a table an ad-hoc script produced once.
+
+The earlier version of this table, taken before either fix, read foliage 4 of 15 and defended 8.
+The reversal is the seed bank's doing. A flat per-cell subsidy is worth most to whatever has the
+highest `energyPerUnit`, because the subsidy arrives in units and is converted at the channel's
+own rate, and defended growth is the richest channel per unit. Remove the subsidy and channels
+compete on production instead, which is where foliage's regrowth rate of 49 against defended's 10
+tells. What looked like "defended is the fallback for anything bad at plants" was substantially an
+artifact of the defect.
 
 Two results are recorded as they are rather than tuned into a prettier shape.
 
-**Fruit never wins any world, including its own.** The worlds scale a channel's _capacity_, and
-fruit has both the smallest capacity and the slowest regrowth, so a 1.6× capacity boost does not
-outweigh defended growth's much faster flow. The world is fruit-**boosted**, not fruit-dominant,
-and calling it "fruit-patchy" describes what was intended rather than what it does. Fixing that
-means scaling flow as well as standing stock, which is a fixture change and a re-measurement, not
-an engine change.
+**Fruit never wins any world, including its own** — and it is no longer capacity that explains it.
+In the rebuilt fruit-patchy world fruit is the _largest_ channel by capacity, at 34.1% against
+foliage's 32.2%, and foliage still wins all three seeds. Capacity is standing stock; what feeds a
+population is production, and fruit's growth rate of 8 against foliage's 49 means the boosted
+channel supplies a fraction of the flow despite holding more of the biomass. Fruit is genuinely
+hard to live on, which is what "concentrated, slow to return" was specified to mean. Calling the
+world fruit-patchy still describes its construction rather than its outcome.
 
-**Defended growth wins 8 of 15.** At the efficiency floor every plant channel is equal, so
-`energyPerUnit` alone decides and the richest one wins — defended growth is the fallback for
-anything bad at plants. It is not universal, because a specialist never touches it: foliage at
-1.0 yields 30 per unit against defended's 8.8. But it is the default for the poorly matched, and
-it shows in the shipped world's mortality — 3164 of 4733 deaths at tick 10 000 of the golden
-fixture are toxin, against 1538 from starvation. The population is stable through it, so this is
-a hazard the ecology absorbs rather than one that collapses it.
+**Carrion-rich feeds nobody on carrion.** Meat is 0.09%, 0.59% and 0.06% of intake across its
+three seeds. Making the world poorer does not raise that, it lowers it — scarce plants mean fewer
+and thinner bodies, bodies being made of plants — and at the 22% this fixture originally used, the
+world went extinct on its first seed. So it is the lean world rather than the carrion world, and
+it earns its place in the set by being uniformly poor. Carnivory as a selectable strategy is
+demonstrated where it can be demonstrated honestly, in `predationSimulation.test.ts`.
+
+The shipped world's mortality moved with it, and the same explanation covers both. Under 0.12.0,
+tick 10 000 of the golden fixture recorded **3164 toxin deaths against 1538 starvation** —
+defended growth was the leading cause of death in the shipped world, and §5d's earlier text
+treated that as a fact about the ecology. Under 0.12.1 it is **886 toxin against 896 starvation**,
+with population 650 rather than 1468. Poisoning is now one hazard among others rather than the
+dominant one. The seed bank had been paying organisms to eat the poisonous channel.
+
+## 5e. The seed bank was the food supply
+
+M17's first 100 000-tick soak finished at **exactly 8192 organisms** — `limits.maxOrganisms`, to
+the individual. M16's finished at 572. docs/01 §12 requires that "population does not normally
+slam into engine cap", and §11 says why it is not cosmetic: a hard cap refuses births, and a
+birth refused for being the 8193rd is a selection filter with no ecology behind it.
+
+The obvious suspect was capacity. Five channels had been added on top of a foliage field that was
+already calibrated, and measurement confirmed the world was carrying 3.5–4.4x the standing plant
+capacity it used to. Rebalancing the five channels to **partition** that capacity rather than
+stack on it (§5f) was clearly right on its own terms, so it was done — and the soak still ended
+at 8192.
+
+So did the next three attempts. Capacity scaled to 0.55, 0.40 and 0.30 of the recalibrated
+figures all reached the cap; the last was confirmed at exactly 8192 at tick 100 000. Fitting the
+four points gives `population ∝ capacity^0.6`, and extrapolating that curve says the world would
+have to be cut to roughly **7% of its capacity** to come in under the cap — which would leave
+nothing worth partitioning and no niches to speak of. A lever that weak is not a calibration
+problem. It means capacity was not what the population was living on.
+
+It was living on the seed bank. `growPlants` carried a per-channel `minRegenThreshold` and added
+a flat `seedBankRegenUnits` to any cell below it. That term is independent of capacity, of growth
+rate, and of how hard the cell is being grazed, so a cell held just under the threshold is a
+permanent food source that no capacity tuning can turn down. Accounting one environment step of
+the shipped world at tick 40 000, with 2841 organisms on it:
+
+| channel  | cells below threshold | logistic energy | seed-bank energy | seed share |
+| -------- | --------------------- | --------------- | ---------------- | ---------- |
+| foliage  | 2630 of 11 183        | 120 120         | 315 600          | 72.4%      |
+| browse   | 3623 of 11 033        | 15 470          | 246 364          | 94.1%      |
+| fruit    | 105 of 477            | 288             | 10 080           | 97.2%      |
+| roots    | 5057 of 11 478        | 46 930          | 768 664          | 94.2%      |
+| defended | 1866 of 8131          | 46 112          | 246 312          | 84.2%      |
+| **all**  |                       | **228 920**     | **1 587 020**    | **87.4%**  |
+
+**87.4% of the world's plant production came from the flat term**, and only 12.6% from the
+logistic term that capacity governs. That is the whole explanation of the K^0.6 curve: capacity
+was deciding an eighth of the food. Fully grazed, the floor is worth 247 797 energy per tick
+against 65 343 from the logistic term of an _ungrazed_ world — the recovery mechanism was
+running at nearly four times the ecology it was meant to protect.
+
+It was not M17 that introduced the term, but M17 that made it dominant. One channel became five,
+each with its own floor, and the thresholds were set as fractions of much smaller capacities:
+roots' 120 against a median realised capacity of 792 is a door that opens at 15% depletion, where
+foliage's 16 against 1492 needs 99%. Roots alone supplied 42% of all production in the table
+above.
+
+The fix is to make the term mean what its own comment always said it meant — "lifts a cell off
+exactly zero, where the logistic term is identically zero". It now fires **only** on an empty
+cell, and `minRegenThreshold` is gone from `ResourceProfile` entirely rather than set to a small
+number, because a threshold is exactly the shape of mistake that reopens this. Per-channel
+`seedBankRegenUnits` stays: how vigorously a channel recolonises dead ground is a real property
+of a channel, and bounded by firing once per emptying.
+
+The same soak, unchanged in every other respect:
+
+| tick    | before         | after   |
+| ------- | -------------- | ------- |
+| 20 000  | 959            | 936     |
+| 40 000  | 2870           | 785     |
+| 60 000  | 7504           | 859     |
+| 80 000  | 12 006         | 943     |
+| 100 000 | 8192 — the cap | **910** |
+
+("Before" past tick 60 000 is from a run with the cap lifted to 40 000, because the shipped cap
+censors the number that matters. Uncapped, that world was still climbing at tick 80 000.)
+
+Standing biomass settles at 3.3M units and is flat across the last 30 000 ticks while population
+oscillates between 449 and 1004 — a consumer-resource equilibrium rather than a ceiling. The peak
+is 12% of the cap. Two secondary results are worth recording:
+
+- **Capacity is a live lever again.** Re-running with the pre-partition capacities and the fix
+  gives 2035 organisms at tick 10 000 against 691 — population now scales with capacity roughly
+  linearly, where before it scaled as K^0.6. The partition in §5f is therefore no longer what
+  keeps the population off the cap; it stands on its own argument, not on this one.
+- **The magnitude of `seedBankRegenUnits` barely matters** once the threshold is gone. Flattening
+  every channel to 1 unit lands at 447 organisms against 910, and with a _less_ settled biomass
+  curve. The shipped values are kept.
+
+Recorded plainly, as §4 was: three rounds of capacity tuning were spent on a lever that governed
+an eighth of the food supply. What found it was accounting for where the energy actually came
+from, one step at a time — not another sweep of the parameter that was already suspected.
+
+## 5f. The niche worlds were measuring richness, not mix
+
+`nicheSelection.ts` builds each world by scaling one channel to 160% and the rest to 25%, and its
+own comment claims "any difference in outcome is attributable to the mix". That was not true: the
+construction changes each world's **total** capacity as well as its distribution, and by a lot —
+a world favouring fruit, which is 4.7% of the shipped world's realised capacity, came out at a
+third of the richness of one favouring foliage at 46.5%.
+
+This was invisible while the seed-bank floor supplied 87% of the food, because total capacity
+barely moved the population. With the floor closed it was immediate: fruit-patchy fell to 30
+organisms, carrion-rich went **extinct** on its first seed, and the outcomes those worlds
+reported were noise off a dying population rather than selection.
+
+The worlds are now built to hold total capacity fixed. For a channel with realised share `s`,
+boosting it by `F` and damping every other channel by `m = (1 - F·s) / (1 - s)` leaves the total
+unchanged; `F` targets a 50% share. Measured across the three niche seeds, the rebuilt worlds sit
+at 99.6–100% of the base world's capacity with the favoured channel at 50.2%, 50.3% and 50.3%.
+
+Fruit is the exception. `baseCapacityByBiome` must fit a Uint16, which caps fruit's boost at
+7.28x and its share at 34.1% — enough to make it the largest channel in its own world, with
+foliage at 32.2%, and not enough to make it dominant. That is a consequence of fruit's narrow
+suitability window rather than something to force, and §5d's older note that "fruit never wins
+any world, including its own" should be read against this constraint.
 
 ## 6. Sensors report, they do not rank
 

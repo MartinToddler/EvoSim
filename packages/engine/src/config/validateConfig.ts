@@ -493,8 +493,22 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
         profile.growthRateQByBiome[Biome.Water] === 0,
       `${name}: water biome capacity and growth rate must be 0 while aquatic life is out of scope`,
     );
-    checkNonNegativeInt(profile.seedBankRegenUnits, `${name}.seedBankRegenUnits`);
-    checkNonNegativeInt(profile.minRegenThreshold, `${name}.minRegenThreshold`);
+    // Capacity without a growth rate is a channel that only the seed bank ever
+    // feeds: emptied, it comes back to `seedBankRegenUnits` and stops there, and
+    // whatever grazes it collects that flat amount forever. That is the shape of
+    // the defect in ADR 0031 §5e, so it is rejected rather than left available.
+    for (let i = 0; i < profile.baseCapacityByBiome.length; i += 1) {
+      check(
+        (profile.baseCapacityByBiome[i] as number) === 0 ||
+          (profile.growthRateQByBiome[i] as number) > 0,
+        `${name}: biome ${i} has capacity ${profile.baseCapacityByBiome[i]} but growth rate 0, ` +
+          `which leaves the seed bank as its only production`,
+      );
+    }
+    // Positive, not merely non-negative: with the regeneration threshold gone
+    // this is the only way a cell grazed to zero ever comes back, so a channel
+    // configured at 0 is one that grazing permanently sterilises.
+    checkPositiveInt(profile.seedBankRegenUnits, `${name}.seedBankRegenUnits`);
     checkPositiveInt(profile.energyPerUnit, `${name}.energyPerUnit`);
     checkCentiCelsius(profile.optimumTemperatureCentiC, `${name}.optimumTemperatureCentiC`);
     checkPositiveInt(profile.temperatureToleranceCentiC, `${name}.temperatureToleranceCentiC`);
@@ -508,19 +522,6 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
     checkQFraction(profile.optimumElevationQ, `${name}.optimumElevationQ`);
     checkPositiveInt(profile.elevationToleranceQ, `${name}.elevationToleranceQ`);
     checkQFraction(profile.toxicityQ, `${name}.toxicityQ`);
-
-    // The seed bank must not out-run the channel's own ceiling, or a cell whose
-    // capacity is below the regeneration floor would be pinned at capacity
-    // forever and the channel would stop responding to grazing at all.
-    const smallestNonZeroBase = profile.baseCapacityByBiome.reduce(
-      (best, value) => (value > 0 && value < best ? value : best),
-      UINT16_MAX,
-    );
-    check(
-      smallestNonZeroBase === UINT16_MAX || profile.minRegenThreshold < smallestNonZeroBase,
-      `${name}: minRegenThreshold ${profile.minRegenThreshold} must stay below the smallest ` +
-        `non-zero biome capacity ${smallestNonZeroBase}, or grazing cannot deplete the channel`,
-    );
   }
 
   // At least one channel has to be edible somewhere, or there is no ecology.

@@ -141,24 +141,30 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * still refuses to split, which is the point of it.
  */
 /**
- * Engine 0.12.0 (M17, ADR 0031) moved it again, and the number to read is not
- * the hash: the 100 000-tick soak finishes with **8192 alive, which is exactly
- * `limits.maxOrganisms`**. The world is pinned at the safety cap.
+ * Engine 0.12.0 (M17, ADR 0031) moved it again, and shipped a release-gate
+ * failure with it: that soak finished with **8192 alive, exactly
+ * `limits.maxOrganisms`**, against 572 for M16. docs/01 §12 makes "population
+ * does not normally slam into engine cap" a gate, and §11 says why it is not
+ * cosmetic — a cap refuses births, so it selects by storage order rather than
+ * by biology, exactly as ADR 0006 §7 described in Milestone 4.
  *
- * M16 finished the same soak at 572. M17 added four plant channels on top of an
- * unchanged foliage field, so the world carries several times the food it did,
- * and the population went where the food went — until the cap, not the ecology,
- * stopped it. docs/01 §12 makes "population does not normally slam into engine
- * cap" a release-gate failure, and this is that failure: the cap is filtering by
- * storage order instead of by biology, exactly as ADR 0006 §7 described when
- * three of six seeds pinned in Milestone 4.
+ * Engine 0.12.1 fixed it, and not where it was first looked for. Capacity was
+ * the obvious suspect and it was not the cause: rebalancing the five channels
+ * to partition rather than stack still ended at 8192, and so did capacity
+ * scaled to 0.55, 0.40 and 0.30. What actually fed the world was the seed bank
+ * — a flat per-cell regeneration that fired below a threshold and therefore
+ * ignored capacity, growth rate and grazing pressure alike. Accounted at tick
+ * 40 000, it was supplying **87.4% of all plant production**. It now fires only
+ * on a cell emptied to exactly zero, and `minRegenThreshold` is gone from the
+ * config rather than set small (ADR 0031 §5e).
  *
- * The hash below is correct for the code as it stands and is recorded as
- * measured. It is not evidence that the calibration is right — it is evidence
- * of what needs recalibrating, and the plant capacity tables are where that
- * work goes (the M15 twelve-seed sweep is the harness for it).
+ * This soak finishes 100 000 ticks with **910 alive**, one species and 3
+ * timeline events in 806 s. Standing plant biomass is flat across the last
+ * 30 000 ticks while population oscillates between 449 and 1004 — a
+ * consumer-resource equilibrium rather than a ceiling, peaking at 12% of the
+ * cap. The undivided world still refuses to split, which is the point of it.
  */
-export const GOLDEN_SOAK_HASH = "60db1363d4ce97ab";
+export const GOLDEN_SOAK_HASH = "c8caf1b4cfd46024";
 
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {

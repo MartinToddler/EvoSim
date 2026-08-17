@@ -174,9 +174,29 @@ export function recomputeAllPlantCapacities(
  * clock. A clock would be a time-varying environment, which is M18's milestone
  * and not this one's to pre-empt.
  *
- * Roots invert the seed bank instead of the rate: a high regeneration floor and
- * a slow rate make them the channel that is *always* there in small amounts,
- * which is what "persistent" has to mean mechanically.
+ * Roots are the channel that is *always* there in small amounts, and that comes
+ * from the capacity side rather than the growth side: a near-zero fertility
+ * weight and a growth rate that barely varies by biome mean roots hold ground
+ * that nothing else will grow on. It used to come from the seed bank instead —
+ * see the invariant below for why that was a mistake.
+ *
+ * ## The seed bank must never be reachable by a cell that still has biomass
+ *
+ * The seed bank adds a flat number of units, so it is independent of capacity,
+ * of growth rate and of how hard the cell is being grazed. That is harmless for
+ * a term that fires on empty ground and nowhere else, and ruinous for one that
+ * fires below a threshold: grazing pins the cell just under the threshold and
+ * the flat term becomes a permanent food source that no amount of capacity
+ * tuning can turn down.
+ *
+ * It was written with a per-channel `minRegenThreshold` and the measurement was
+ * unambiguous. With five channels each carrying their own floor, a fully grazed
+ * 144x144 soak world could draw 247 797 energy per tick from the seed banks
+ * against 65 343 from the logistic term of an *ungrazed* world — the floor was
+ * nearly four times the real production, it set the population ceiling by
+ * itself, and it is why population scaled as only K^0.6 when capacity was cut.
+ * Firing on empty cells alone restores capacity as the thing that decides how
+ * much a place can feed.
  */
 export function growPlants(
   environment: EnvironmentStore,
@@ -190,7 +210,7 @@ export function growPlants(
     if (profile === undefined) {
       continue;
     }
-    const { growthRateQByBiome, seedBankRegenUnits, minRegenThreshold } = profile;
+    const { growthRateQByBiome, seedBankRegenUnits } = profile;
     const offset = resource * cellCount;
 
     for (let i = 0; i < cellCount; i += 1) {
@@ -227,8 +247,10 @@ export function growPlants(
       }
 
       // Seed bank: a deterministic trickle that lifts a cell off exactly zero,
-      // where the logistic term is identically zero (docs/03 §20).
-      if (next < minRegenThreshold) {
+      // where the logistic term is identically zero (docs/03 §20). Exactly zero
+      // and not "near zero" — a flat term that a grazed cell can keep reaching
+      // is a food source, not a recovery mechanism.
+      if (next === 0) {
         next += seedBankRegenUnits;
       }
 

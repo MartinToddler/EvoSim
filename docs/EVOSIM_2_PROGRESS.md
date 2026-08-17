@@ -390,29 +390,54 @@ Three of these made a channel behave as though it had no cost, and every one cam
 whose units were asserted in a comment rather than derived from the mechanism it feeds
 (ADR 0031 §5c).
 
-**Two findings recorded rather than tuned away.** Fruit never wins any world, including its own,
-because the worlds scale capacity and fruit is capacity- and flow-poor. Defended growth wins 8
-of 15 as the fallback for anything bad at plants, and at tick 10 000 of the golden fixture 3164
-of 4733 deaths are toxin against 1538 starvation — poisoning is the leading cause of death in
-the shipped world, with the population stable through it.
+**Two findings recorded rather than tuned away — one of which the corrective pass overturned.**
+Fruit never wins any world including its own, and that survives re-measurement: in the rebuilt
+fruit-patchy world fruit is the largest channel by capacity (34.1% against foliage's 32.2%) and
+foliage still takes all three seeds, because capacity is standing stock and what feeds a
+population is production. The second finding did not survive. Defended growth winning 8 of 15
+"as the fallback for anything bad at plants", and toxin killing 3164 of 4733 at tick 10 000 of
+the golden fixture against 1538 starvation, were substantially artifacts of the seed-bank defect
+below: a flat per-cell subsidy is worth most to whatever has the highest `energyPerUnit`, so the
+world had been paying organisms to eat the poisonous channel. Re-measured on 0.12.1, foliage
+takes 8 of 15 and defended 4, and the fixture records 886 toxin deaths against 896 starvation.
 
-**Release-gate failure carried out of this milestone: the soak world is pinned at the population
-cap.** The 100 000-tick soak finishes with **8192 alive, exactly `limits.maxOrganisms`**, against
-572 for M16. M17 added four plant channels on top of an unchanged foliage field, so the world
-carries several times the food it did and the population went where the food went — until the
-cap, not the ecology, stopped it. docs/01 §12 names exactly this as a gate failure, and ADR 0006
-§7 described the same shape in Milestone 4: the cap filters by storage order rather than by
-biology.
+**Release-gate failure found and fixed in a corrective pass (engine 0.12.1).** The 100 000-tick
+soak finished with **8192 alive, exactly `limits.maxOrganisms`**, against 572 for M16. docs/01
+§12 names this as a gate failure and §11 says why it is not cosmetic: a cap refuses births, so it
+selects by storage order rather than by biology — the same shape ADR 0006 §7 recorded in
+Milestone 4.
 
-The soak hash is recorded as measured and is correct for the code as it stands. It is not
-evidence that the calibration is right; it is the evidence of what needs recalibrating. The plant
-capacity tables are where that work goes, and the twelve-seed sweep is the harness — **this must
-be done before M18 builds climate stress on top of it**, or M18 will be calibrated against a
-world whose carrying capacity is an array bound.
+The first diagnosis was wrong, and it was wrong three times. M17 had added four plant channels on
+top of an already-calibrated foliage field, so capacity was the obvious suspect; rebalancing the
+five channels to partition rather than stack still ended at 8192, and so did capacity scaled to
+0.55, 0.40 and 0.30. Fitting those four points gives `population ∝ capacity^0.6`, which says the
+world would need cutting to ~7% of its capacity to come in under the cap — a lever that weak is
+not a calibration problem.
 
-**Deferred, and now overtaken:** the twelve-seed ecology sweep has not been re-run since M15
-recorded 2 of 12 seeds at the cap. That finding is no longer merely stale — M17 has made the cap
-problem materially worse, and the sweep is now the tool for fixing it rather than a check on it.
+What found it was accounting for where the energy actually came from. `growPlants` added a flat
+`seedBankRegenUnits` to any cell below a per-channel threshold, a term independent of capacity,
+growth rate and grazing, so a grazed cell sat there being topped up forever. At tick 40 000 of
+the shipped world, **87.4% of all plant production came from that term** and 12.6% from the
+logistic term capacity governs. One channel had become five, each with its own floor, and roots'
+threshold of 120 against a median realised capacity of 792 opened at 15% depletion — roots alone
+supplied 42% of the world's food.
+
+The term now fires only on a cell emptied to exactly zero, and `minRegenThreshold` is gone from
+the config rather than set small. The soak ends at 910 with standing biomass flat across the last
+30 000 ticks and population oscillating between 449 and 1004 — a consumer-resource equilibrium,
+peaking at 12% of the cap. ADR 0031 §5e.
+
+**Two gaps the fix exposed, both closed here.** M17's acceptance criterion existed only as a
+table in the ADR produced by an ad-hoc script, with nothing in the suite keeping it true; it went
+stale the moment the ecology changed, and no test said so. It is now `nicheSelection.test.ts`.
+And the niche worlds themselves were built by scaling one channel to 160% and the rest to 25%,
+which varied each world's total richness as well as its mix — invisible while the seed bank
+supplied most of the food, immediately fatal once it did not (fruit-patchy fell to 30 organisms,
+carrion-rich went extinct). They now hold total capacity constant. ADR 0031 §5f.
+
+**Still deferred:** the twelve-seed ecology sweep has not been re-run since M15 recorded 2 of 12
+seeds at the cap. The cap problem it was going to be used on turned out to have a different
+cause, so it reverts to what it was — a stale check rather than the tool for a known failure.
 
 ---
 

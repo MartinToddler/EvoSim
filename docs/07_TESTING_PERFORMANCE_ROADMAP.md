@@ -40,6 +40,7 @@ Do not assert brittle spontaneous evolutionary stories at fixed ticks.
 - growth below capacity;
 - no invalid overflow;
 - zero seed-bank recovery;
+- no seed-bank top-up for a cell that still has biomass, however little;
 - proportional claim conservation/remainder.
 
 ### Genome

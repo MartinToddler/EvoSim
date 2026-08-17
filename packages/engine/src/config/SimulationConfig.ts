@@ -147,10 +147,16 @@ export interface ResourceProfile {
   baseCapacityByBiome: readonly number[];
   /** Logistic growth rate (Q per environment step) per biome, indexed 0..5. */
   growthRateQByBiome: readonly number[];
-  /** Seed-bank regeneration units below {@link minRegenThreshold}. */
+  /**
+   * Units returned to a cell that has been emptied to exactly zero, where the
+   * logistic term is identically zero and the channel could never come back.
+   *
+   * There is deliberately no threshold to go with this. A flat term that fires
+   * anywhere above zero is a capacity-independent food source that grazing can
+   * pin open, and it will set the population ceiling on its own — see
+   * `growPlants`.
+   */
   seedBankRegenUnits: number;
-  /** Biomass threshold below which seed-bank regeneration applies. */
-  minRegenThreshold: number;
   /** Energy per consumed biomass unit, before the eater's own efficiency. */
   energyPerUnit: number;
   /** Temperature at which this channel's capacity peaks. */

@@ -824,6 +824,20 @@ environment tested until movement cost started reading the propulsive apparatus.
       five worlds unanimous across seeds. Recorded as measured: fruit never wins (the worlds scale
       capacity, and fruit is capacity- and flow-poor) and defended wins 8 of 15 as the fallback
       for anything bad at plants. ADR 0031 §5d.
+- [x] M17-06 (corrective, engine 0.12.1) plant regrowth has no flat production floor. The
+      seed bank fired below a per-channel `minRegenThreshold`, a term independent of capacity,
+      growth rate and grazing, and it supplied 87.4% of all plant production in the shipped world
+      at tick 40 000 — which is why the soak sat at exactly `limits.maxOrganisms` and why three
+      rounds of capacity cuts did not move it. Fires only on an empty cell now;
+      `minRegenThreshold` removed from `ResourceProfile` rather than set small, because the
+      threshold is the shape of the mistake. Soak 8192 -> 910. ADR 0031 §5e.
+- [x] M17-07 (corrective) M17-05's acceptance criterion is a test, not a table an ad-hoc script
+      once produced. The unenforced version went stale the moment the ecology changed and nothing
+      in the suite noticed. `nicheSelection.test.ts`.
+- [x] M17-08 (corrective) the niche worlds hold TOTAL capacity constant and vary only the mix,
+      which is what the fixture always claimed to do. The 160%/25% construction varied richness
+      too; with the seed-bank floor closed that took fruit-patchy to 30 organisms and killed
+      carrion-rich outright. ADR 0031 §5f.
 
 ### M18 Climate and natural events
 - [ ] M18-01 deterministic seasons, regional variation, longer drift cycles.
