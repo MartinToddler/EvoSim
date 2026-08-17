@@ -107,7 +107,10 @@ const ORGANISM_FIELDS: Readonly<Record<string, FieldSpec>> = {
 
   genes: typed("u16"),
   morphGenes: typed("u16"),
+  topology: typed("u16"),
   brainWeights: typed("i16"),
+  hiddenPrevQ: typed("i16"),
+  memoryQ: typed("i16"),
 };
 
 const CARCASS_FIELDS: Readonly<Record<string, FieldSpec>> = {

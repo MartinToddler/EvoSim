@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFounderTopology } from "./brain/founderTopology";
 import { SimulationEngine } from "./SimulationEngine";
 import { BrainOutput, BrainInput, BRAIN_WEIGHT_COUNT, ioWeightIndex } from "./brain/BrainLayout";
 import { cloneConfig } from "./config/cloneConfig";
@@ -135,6 +136,7 @@ function place(engine: SimulationEngine, options: PlacedOrganism): number {
     angle: options.angle ?? 0,
     genes,
     morphGenes: createFounderMorphGenes(ctx.config.organism.morphology),
+    topology: createFounderTopology(),
     brainWeights: options.brainWeights ?? PREY_BRAIN,
     generation: 0,
     parentEntityId: 0,

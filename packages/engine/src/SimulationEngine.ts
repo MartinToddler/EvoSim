@@ -35,6 +35,7 @@ import { finalizeDeaths } from "./organisms/death";
 import { applyMetabolismGrowthThermalAging } from "./organisms/metabolism";
 import { integrateMovement, resolveTerrainAndSoftCollisions } from "./organisms/movement";
 import { captureOrganisms, restoreOrganisms } from "./organisms/organismSnapshot";
+import { NeuralStateStore } from "./brain/NeuralStateStore";
 import { MorphologyStore } from "./morphology/morphDevelopment";
 import { PhysicalPhenotypeStore, createMorphologyReference } from "./morphology/physicalPhenotype";
 import { PhenotypeStore } from "./organisms/phenotype";
@@ -218,6 +219,7 @@ export class SimulationEngine {
       organisms: this.organisms,
       genomes: this.genomes,
       phenotypes: new PhenotypeStore(capacity),
+      neural: new NeuralStateStore(capacity),
       morphology: new MorphologyStore(capacity),
       physical: new PhysicalPhenotypeStore(capacity),
       // Derived from the config alone, and needed before the first founder is
@@ -369,6 +371,7 @@ export class SimulationEngine {
       engine.#context.phenotypes,
       engine.#context.morphology,
       engine.#context.physical,
+      engine.#context.neural,
       engine.#context.morphologyReference,
       engine.config,
     );
@@ -633,7 +636,7 @@ export class SimulationEngine {
       rngState: this.getRngState(),
       config: cloneConfig(this.config),
       environment: captureEnvironment(this.environment, this.founderRegion),
-      organisms: captureOrganisms(this.organisms, this.genomes),
+      organisms: captureOrganisms(this.organisms, this.genomes, this.#context.neural),
       carcasses: captureCarcasses(this.carcasses),
       species: this.species.capture(),
       history: {

@@ -1,3 +1,4 @@
+import { engineInternals } from "./internal";
 import { StateHash } from "./math/hash";
 import type { SimulationEngine } from "./SimulationEngine";
 
@@ -22,6 +23,8 @@ import type { SimulationEngine } from "./SimulationEngine";
  *      states differing only here must hash differently)
  *   8. organism slot state and per-slot arrays (OrganismStore.hashInto)
  *   9. ecological genes, morphological genes and brain weights for the used
+ *   9a. authoritative neural state: memory registers and carried hidden
+ *      activations (NeuralStateStore.hashInto), added by M16
  *      slot prefix (GenomeStore.hashInto). The morphological block joined the
  *      stream in engine 0.9.0 (M14) and moved every hash.
  *  10. carcass slot state and per-slot arrays (CarcassStore.hashInto)
@@ -80,6 +83,9 @@ export function computeStateHash(engine: SimulationEngine): string {
 
   engine.organisms.hashInto(hasher);
   engine.genomes.hashInto(hasher, engine.organisms.slotHighWater);
+  // M16: memory and carried hidden activations are authoritative history, not a
+  // derived cache, so they are hashed with the genome that produced them.
+  engineInternals(engine).context.neural.hashInto(hasher, engine.organisms.slotHighWater);
   engine.carcasses.hashInto(hasher);
   engine.species.hashInto(hasher);
   engine.events.hashInto(hasher);

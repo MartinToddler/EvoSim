@@ -5,6 +5,7 @@ import { Q, clamp, qmul } from "../math/fixed";
 import type { GenomeStore } from "../organisms/GenomeStore";
 import type { Xoshiro128 } from "../random/Xoshiro128";
 import { mutateMorphologyGenes } from "../morphology/morphMutation";
+import { mutateTopology } from "../brain/topologyMutation";
 import { GENE_COUNT, GENE_RAW_MAX } from "./genes";
 
 /**
@@ -188,8 +189,8 @@ export function mutateBrainWeights(
 }
 
 /**
- * Mutate one slot's inherited state: ecological genes, then the morphological
- * genome (M14), then brain weights.
+ * Mutate one slot's inherited state: ecological genes, the morphological genome
+ * (M14), the neural topology (M16), then brain weights.
  *
  * The caller has already copied the parent's genome onto this slot. The order of
  * the three blocks fixes the PRNG stream and is part of the engine version, and
@@ -205,5 +206,6 @@ export function mutateGenome(
 ): void {
   mutateEcologicalGenes(genomes.genes, genomes.geneOffset(slot), rng, config);
   mutateMorphologyGenes(genomes.morphGenes, genomes.morphOffset(slot), rng, config);
+  mutateTopology(genomes.topology, genomes.topologyOffset(slot), rng, config);
   mutateBrainWeights(genomes.brainWeights, genomes.weightOffset(slot), rng, config);
 }

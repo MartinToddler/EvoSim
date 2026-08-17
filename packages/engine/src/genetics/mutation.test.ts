@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFounderTopology } from "../brain/founderTopology";
 import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { cloneConfig } from "../config/cloneConfig";
@@ -167,8 +168,20 @@ describe("mutateEcologicalGenes", () => {
     const genomes = new GenomeStore(4);
     const genes = createFounderGenes();
     const morphGenes = createFounderMorphGenes(DEFAULT_CONFIG.organism.morphology);
-    genomes.writeGenome(1, genes, morphGenes, createFounderBrainWeights(4096, -8192, 8192));
-    genomes.writeGenome(2, genes, morphGenes, createFounderBrainWeights(4096, -8192, 8192));
+    genomes.writeGenome(
+      1,
+      genes,
+      morphGenes,
+      createFounderTopology(),
+      createFounderBrainWeights(4096, -8192, 8192),
+    );
+    genomes.writeGenome(
+      2,
+      genes,
+      morphGenes,
+      createFounderTopology(),
+      createFounderBrainWeights(4096, -8192, 8192),
+    );
     const neighbourBefore = Uint16Array.from(
       genomes.genes.subarray(genomes.geneOffset(2), genomes.geneOffset(2) + GENE_COUNT),
     );
@@ -273,6 +286,7 @@ describe("mutation golden fixture", () => {
       0,
       createFounderGenes(),
       createFounderMorphGenes(DEFAULT_CONFIG.organism.morphology),
+      createFounderTopology(),
       createFounderBrainWeights(
         DEFAULT_CONFIG.brain.weightScale,
         DEFAULT_CONFIG.brain.weightMin,
@@ -304,6 +318,7 @@ describe("mutation golden fixture", () => {
       0,
       createFounderGenes(),
       createFounderMorphGenes(DEFAULT_CONFIG.organism.morphology),
+      createFounderTopology(),
       createFounderBrainWeights(
         DEFAULT_CONFIG.brain.weightScale,
         DEFAULT_CONFIG.brain.weightMin,

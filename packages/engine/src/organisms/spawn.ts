@@ -2,6 +2,7 @@ import { ANGLE_STEPS, POS_SCALE, Q, clamp, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
 import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { createFounderBrainWeights } from "../brain/founderBrain";
+import { createFounderTopology } from "../brain/founderTopology";
 import { createFounderGenes } from "../genetics/founderGenome";
 import { Gene, geneToQ, hueDegrees } from "../genetics/genes";
 import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
@@ -53,6 +54,8 @@ export interface SpawnRequest {
   angle: number;
   genes: ArrayLike<number>;
   morphGenes: ArrayLike<number>;
+  /** Packed neural topology masks (M16). */
+  topology: ArrayLike<number>;
   brainWeights: ArrayLike<number>;
   generation: number;
   parentEntityId: number;
@@ -70,7 +73,7 @@ export interface SpawnRequest {
  * (docs/04 §4).
  */
 export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number {
-  const { organisms, genomes, phenotypes, morphology, physical, scratch, config } = ctx;
+  const { organisms, genomes, phenotypes, morphology, physical, neural, scratch, config } = ctx;
 
   const slot = organisms.allocateSlot();
   if (slot < 0) {
@@ -97,7 +100,15 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   scratch.accelFractionQ[slot] = 0;
   scratch.inWater[slot] = 0;
 
-  genomes.writeGenome(slot, request.genes, request.morphGenes, request.brainWeights);
+  genomes.writeGenome(
+    slot,
+    request.genes,
+    request.morphGenes,
+    request.topology,
+    request.brainWeights,
+  );
+  // A newborn inherits its parent's genome, not its parent's thoughts (M16).
+  neural.clearSlot(slot);
   // genome -> body -> physics -> the numbers the tick reads (M14, M15). The
   // order is the pipeline: development needs the genome, the physical phenotype
   // needs the developed body, and the ecological phenotype needs both because
@@ -179,6 +190,7 @@ export function spawnFounderPopulation(ctx: EngineContext, region: FounderRegion
   const { environment, config, rng } = ctx;
   const genes = createFounderGenes();
   const morphGenes = createFounderMorphGenes(config.organism.morphology);
+  const topology = createFounderTopology();
   const brainWeights = createFounderBrainWeights(
     config.brain.weightScale,
     config.brain.weightMin,
@@ -218,6 +230,7 @@ export function spawnFounderPopulation(ctx: EngineContext, region: FounderRegion
       angle: rng.nextInt(ANGLE_STEPS),
       genes,
       morphGenes,
+      topology,
       brainWeights,
       generation: 0,
       parentEntityId: 0,

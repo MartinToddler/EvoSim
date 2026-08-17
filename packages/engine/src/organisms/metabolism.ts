@@ -1,3 +1,4 @@
+import { neuralUpkeep } from "../brain/neuralComplexity";
 import { Q, clamp, qmul } from "../math/fixed";
 import { smoothstepQ } from "../math/noise";
 import type { EngineContext } from "../EngineContext";
@@ -51,11 +52,20 @@ export function growthTargetQ(
   return birthSizeFractionQ + qmul(Q - birthSizeFractionQ, smoothstepQ(ageFractionQ));
 }
 
-/** Basal upkeep for one organism before the thermal multiplier (docs/08 §9). */
+/**
+ * Basal upkeep for one organism before the thermal multiplier (docs/08 §9).
+ *
+ * Three terms: what the body costs per unit of mass, what its eyes cost, and
+ * what its brain costs (M16). The brain term is the only one that does not
+ * scale with mass — nervous tissue is billed by what it is, not by how big the
+ * animal carrying it happens to be — and it is zero for the founder's topology
+ * by construction.
+ */
 export function basalCost(ctx: EngineContext, slot: number, mass: number): number {
   return (
     qmul(mass, ctx.phenotypes.basalMassCoeffQ[slot] as number) +
-    (ctx.phenotypes.basalVisionCost[slot] as number)
+    (ctx.phenotypes.basalVisionCost[slot] as number) +
+    neuralUpkeep(ctx.genomes, slot, ctx.config)
   );
 }
 

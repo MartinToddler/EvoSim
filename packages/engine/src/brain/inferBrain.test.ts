@@ -17,13 +17,57 @@ import {
 } from "./BrainLayout";
 import { createFounderBrainWeights } from "./founderBrain";
 import { inferBrain, positiveOutputQ } from "./inferBrain";
+import {
+  BRAIN_MEMORY_COUNT,
+  TOPOLOGY_CONNECTION_WORD,
+  TOPOLOGY_HIDDEN_WORD,
+  TOPOLOGY_INPUT_WORD,
+  TOPOLOGY_WORD_COUNT,
+  setMaskBit,
+} from "./NeuralTopology";
+
+/**
+ * A topology that switches on exactly the pre-M16 network: every input, every
+ * hidden unit and the original 400 connections, with no recurrence and no
+ * memory. These tests are about the arithmetic of the fixed topology, so they
+ * run against the fixed topology; the mask-aware behaviour has its own suite.
+ */
+function fullTopology(): Uint16Array {
+  const words = new Uint16Array(TOPOLOGY_WORD_COUNT);
+  for (let i = 0; i < BRAIN_INPUT_COUNT; i += 1) {
+    setMaskBit(words, 0, TOPOLOGY_INPUT_WORD, i, true);
+  }
+  for (let h = 0; h < BRAIN_HIDDEN_COUNT; h += 1) {
+    setMaskBit(words, 0, TOPOLOGY_HIDDEN_WORD, h, true);
+  }
+  for (let w = 0; w < BRAIN_WEIGHT_COUNT; w += 1) {
+    setMaskBit(words, 0, TOPOLOGY_CONNECTION_WORD, w, true);
+  }
+  return words;
+}
 
 const { weightScale, weightMin, weightMax } = DEFAULT_CONFIG.brain;
 
 function run(sensors: Int16Array, weights: Int16Array): Int16Array {
   const hidden = new Int16Array(BRAIN_HIDDEN_COUNT);
   const outputs = new Int16Array(BRAIN_OUTPUT_COUNT);
-  inferBrain(sensors, 0, weights, 0, hidden, 0, outputs, 0, weightScale);
+  inferBrain(
+    sensors,
+    0,
+    weights,
+    0,
+    hidden,
+    0,
+    outputs,
+    0,
+    weightScale,
+    fullTopology(),
+    0,
+    new Int16Array(BRAIN_HIDDEN_COUNT),
+    0,
+    new Int16Array(BRAIN_MEMORY_COUNT),
+    0,
+  );
   return outputs;
 }
 
@@ -93,7 +137,23 @@ describe("quantized inference", () => {
 
     const hidden = new Int16Array(BRAIN_HIDDEN_COUNT);
     const outputs = new Int16Array(BRAIN_OUTPUT_COUNT);
-    inferBrain(sensors, 0, weights, 0, hidden, 0, outputs, 0, weightScale);
+    inferBrain(
+      sensors,
+      0,
+      weights,
+      0,
+      hidden,
+      0,
+      outputs,
+      0,
+      weightScale,
+      fullTopology(),
+      0,
+      new Int16Array(BRAIN_HIDDEN_COUNT),
+      0,
+      new Int16Array(BRAIN_MEMORY_COUNT),
+      0,
+    );
 
     expect(hidden[0]).toBe(2048);
     expect(Array.from(outputs)).toEqual([3072, 4096, 0, 0, 0]);
@@ -109,7 +169,23 @@ describe("quantized inference", () => {
     }
     const hidden = new Int16Array(BRAIN_HIDDEN_COUNT);
     const outputs = new Int16Array(BRAIN_OUTPUT_COUNT);
-    inferBrain(sensors, 0, weights, 0, hidden, 0, outputs, 0, weightScale);
+    inferBrain(
+      sensors,
+      0,
+      weights,
+      0,
+      hidden,
+      0,
+      outputs,
+      0,
+      weightScale,
+      fullTopology(),
+      0,
+      new Int16Array(BRAIN_HIDDEN_COUNT),
+      0,
+      new Int16Array(BRAIN_MEMORY_COUNT),
+      0,
+    );
 
     expect(hidden[0]).toBe(Q);
     expect(outputs[0]).toBe(Q);
@@ -135,7 +211,23 @@ describe("quantized inference", () => {
 
     const hidden = new Int16Array(BRAIN_HIDDEN_COUNT);
     const outputs = new Int16Array(BRAIN_OUTPUT_COUNT * 2);
-    inferBrain(sensors, 0, weights, 0, hidden, 0, outputs, 0, weightScale);
+    inferBrain(
+      sensors,
+      0,
+      weights,
+      0,
+      hidden,
+      0,
+      outputs,
+      0,
+      weightScale,
+      fullTopology(),
+      0,
+      new Int16Array(BRAIN_HIDDEN_COUNT),
+      0,
+      new Int16Array(BRAIN_MEMORY_COUNT),
+      0,
+    );
     inferBrain(
       sensors,
       BRAIN_INPUT_COUNT,
@@ -146,6 +238,12 @@ describe("quantized inference", () => {
       outputs,
       BRAIN_OUTPUT_COUNT,
       weightScale,
+      fullTopology(),
+      0,
+      new Int16Array(BRAIN_HIDDEN_COUNT),
+      0,
+      new Int16Array(BRAIN_MEMORY_COUNT),
+      0,
     );
     expect(outputs[0]).toBe(0);
     expect(outputs[BRAIN_OUTPUT_COUNT]).toBe(Q);

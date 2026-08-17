@@ -595,9 +595,46 @@ export interface BrainConfig {
   weightScale: number;
   weightMin: number;
   weightMax: number;
+  /** Per-tick upkeep of neural complexity beyond the founder's (M16). */
+  complexity: NeuralComplexityConfig;
 }
 
 /** Mutation constants (docs/08 §17). Probabilities are Q fractions. */
+/**
+ * Structural mutation of the neural topology (M16, docs/11 §M16).
+ *
+ * Deliberately blunt: a probability gate, then a uniform count of bit flips.
+ * The PRNG cost is `1 + 2 x flips` and is independent of network size, which is
+ * what keeps one lineage's structural history out of every other organism's
+ * random stream.
+ */
+export interface TopologyMutationConfig {
+  /** Chance that a birth changes the network's shape at all. */
+  structuralProbabilityQ: number;
+  /** Most bits one birth may flip; bounds the PRNG cost as well as the change. */
+  maxFlipsPerBirth: number;
+}
+
+/**
+ * What a brain costs to keep alive, per tick, per unit of excess complexity
+ * over the founder's (M16).
+ *
+ * Absolute energy units rather than Q fractions, because this is billed
+ * alongside `basal.minimumBasalPerTick` and reads in the same currency.
+ */
+export interface NeuralComplexityConfig {
+  /** Per sensory channel active beyond the founder's twenty. */
+  perSensoryChannel: number;
+  /** Per hidden unit switched on. */
+  perHiddenUnit: number;
+  /** Per recurrent link switched on. */
+  perRecurrentLink: number;
+  /** Per memory register retained. */
+  perMemoryRegister: number;
+  /** Per connection active beyond the founder's hundred. */
+  perConnection: number;
+}
+
 export interface MutationConfig {
   /**
    * Ecological gene mutation. Sigmas are Q fractions of the NORMALIZED gene
@@ -647,6 +684,8 @@ export interface MutationConfig {
     resetProbabilityQ: number;
     structuralProbabilityQ: number;
   };
+  /** Neural topology structural mutation (M16). */
+  topology: TopologyMutationConfig;
 }
 
 /** Combat constants (docs/04 §21, docs/08 §14). */

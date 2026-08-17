@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFounderTopology } from "./brain/founderTopology";
 import { BRAIN_WEIGHT_COUNT } from "./brain/BrainLayout";
 import { cloneConfig, type ReadonlySimulationConfig } from "./config/cloneConfig";
 import { DEFAULT_CONFIG } from "./config/defaultConfig";
@@ -114,6 +115,7 @@ function plantCloud(
       angle: 0,
       genes,
       morphGenes: createFounderMorphGenes(config.organism.morphology),
+      topology: createFounderTopology(),
       brainWeights: silentBrain,
       generation: 0,
       parentEntityId: 0,

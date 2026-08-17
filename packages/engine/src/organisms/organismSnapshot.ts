@@ -1,8 +1,14 @@
 import type { DeepReadonly } from "@eon/shared";
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { BRAIN_HIDDEN_COUNT } from "../brain/BrainLayout";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { GENE_COUNT, Gene, geneToQ, hueDegrees } from "../genetics/genes";
 import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
+import type { NeuralStateStore } from "../brain/NeuralStateStore";
+import {
+  BRAIN_MEMORY_COUNT,
+  NEURAL_WEIGHT_COUNT,
+  TOPOLOGY_WORD_COUNT,
+} from "../brain/NeuralTopology";
 import { type MorphologyStore, deriveMorphology } from "../morphology/morphDevelopment";
 import {
   type MorphologyReference,
@@ -64,7 +70,20 @@ export interface OrganismSnapshot {
 
   genes: Uint16Array;
   morphGenes: Uint16Array;
+  /** Packed neural topology masks (M16). */
+  topology: Uint16Array;
   brainWeights: Int16Array;
+  /**
+   * Authoritative neural state (M16): carried hidden activations and memory
+   * registers.
+   *
+   * Stored rather than rebuilt, unlike every derived cache beside it. Memory is
+   * the history a network has accumulated, not a function of its genome — a
+   * restore that recomputed it would hand every organism amnesia, and two
+   * branches from one save would diverge for no reason a player could see.
+   */
+  hiddenPrevQ: Int16Array;
+  memoryQ: Int16Array;
 }
 
 /** Error thrown when an organism snapshot cannot be restored. */
@@ -75,7 +94,11 @@ export class OrganismSnapshotError extends Error {
   }
 }
 
-export function captureOrganisms(organisms: OrganismStore, genomes: GenomeStore): OrganismSnapshot {
+export function captureOrganisms(
+  organisms: OrganismStore,
+  genomes: GenomeStore,
+  neural: NeuralStateStore,
+): OrganismSnapshot {
   const used = organisms.slotHighWater;
   return {
     capacity: organisms.capacity,
@@ -114,7 +137,10 @@ export function captureOrganisms(organisms: OrganismStore, genomes: GenomeStore)
 
     genes: new Uint16Array(genomes.genes.subarray(0, used * GENE_COUNT)),
     morphGenes: new Uint16Array(genomes.morphGenes.subarray(0, used * MORPH_GENE_COUNT)),
-    brainWeights: new Int16Array(genomes.brainWeights.subarray(0, used * BRAIN_WEIGHT_COUNT)),
+    topology: new Uint16Array(genomes.topology.subarray(0, used * TOPOLOGY_WORD_COUNT)),
+    brainWeights: new Int16Array(genomes.brainWeights.subarray(0, used * NEURAL_WEIGHT_COUNT)),
+    hiddenPrevQ: new Int16Array(neural.hiddenPrevQ.subarray(0, used * BRAIN_HIDDEN_COUNT)),
+    memoryQ: new Int16Array(neural.memoryQ.subarray(0, used * BRAIN_MEMORY_COUNT)),
   };
 }
 
@@ -137,6 +163,7 @@ export function restoreOrganisms(
   phenotypes: PhenotypeStore,
   morphology: MorphologyStore,
   physical: PhysicalPhenotypeStore,
+  neural: NeuralStateStore,
   reference: MorphologyReference,
   config: DeepReadonly<SimulationConfig>,
 ): void {
@@ -152,7 +179,10 @@ export function restoreOrganisms(
   checkLength(snapshot.deathsByCause.length, DEATH_CAUSE_COUNT, "deathsByCause");
   checkLength(snapshot.genes.length, used * GENE_COUNT, "genes");
   checkLength(snapshot.morphGenes.length, used * MORPH_GENE_COUNT, "morphGenes");
-  checkLength(snapshot.brainWeights.length, used * BRAIN_WEIGHT_COUNT, "brainWeights");
+  checkLength(snapshot.topology.length, used * TOPOLOGY_WORD_COUNT, "topology");
+  checkLength(snapshot.brainWeights.length, used * NEURAL_WEIGHT_COUNT, "brainWeights");
+  checkLength(snapshot.hiddenPrevQ.length, used * BRAIN_HIDDEN_COUNT, "hiddenPrevQ");
+  checkLength(snapshot.memoryQ.length, used * BRAIN_MEMORY_COUNT, "memoryQ");
 
   organisms.reset();
 
@@ -188,7 +218,10 @@ export function restoreOrganisms(
 
   genomes.genes.set(snapshot.genes);
   genomes.morphGenes.set(snapshot.morphGenes);
+  genomes.topology.set(snapshot.topology);
   genomes.brainWeights.set(snapshot.brainWeights);
+  neural.hiddenPrevQ.set(snapshot.hiddenPrevQ);
+  neural.memoryQ.set(snapshot.memoryQ);
   organisms.deathsByCause.set(snapshot.deathsByCause);
   organisms.totalBirths = snapshot.totalBirths;
   organisms.totalDeaths = snapshot.totalDeaths;

@@ -118,10 +118,10 @@ export function memoryValueWeightIndex(memory: number, hidden: number): number {
  *   word 2      hidden  0..11   active
  *   word 3      hidden  0..11   recurrent
  *   word 4      memory  0..3    active
- *   words 5..29 connections 0..399 active   (one bit per weight, 25 words)
+ *   words 5..40 connections 0..575 active   (one bit per weight, 36 words)
  * ```
  *
- * Thirty Uint16 words — 60 bytes — per organism, whatever the topology.
+ * Forty-one Uint16 words — 82 bytes — per organism, whatever the topology.
  */
 export const TOPOLOGY_INPUT_WORD = 0;
 export const TOPOLOGY_INPUT_WORDS = Math.ceil(BRAIN_INPUT_COUNT / 16);

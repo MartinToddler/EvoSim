@@ -6,6 +6,7 @@ import type { TraitRanges } from "./evolution/traitVector";
 import type { EventStore } from "./history/EventStore";
 import type { EventDetectors } from "./history/eventDetection";
 import type { StatisticsStore } from "./history/StatisticsStore";
+import type { NeuralStateStore } from "./brain/NeuralStateStore";
 import type { GenomeStore } from "./organisms/GenomeStore";
 import type { MorphologyStore } from "./morphology/morphDevelopment";
 import type { MorphologyReference, PhysicalPhenotypeStore } from "./morphology/physicalPhenotype";
@@ -36,6 +37,13 @@ export interface EngineContext {
   readonly organisms: OrganismStore;
   readonly genomes: GenomeStore;
   readonly phenotypes: PhenotypeStore;
+  /**
+   * Authoritative neural state (M16): memory registers and the hidden
+   * activations carried between ticks. Hashed and serialized, unlike the
+   * derived phenotype caches beside it — memory is history, not a function of
+   * the genome.
+   */
+  readonly neural: NeuralStateStore;
   /** Derived morphological phenotype cache (M14). Not hashed, not serialized. */
   readonly morphology: MorphologyStore;
   /** Derived physical phenotype cache (M15). Not hashed, not serialized. */

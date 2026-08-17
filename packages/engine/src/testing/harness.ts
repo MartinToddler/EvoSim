@@ -1,5 +1,6 @@
 import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
 import { createFounderBrainWeights } from "../brain/founderBrain";
+import { createFounderTopology } from "../brain/founderTopology";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
@@ -16,6 +17,7 @@ import { EventDetectors } from "../history/eventDetection";
 import { StatisticsStore } from "../history/StatisticsStore";
 import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
+import { NeuralStateStore } from "../brain/NeuralStateStore";
 import { MorphologyStore } from "../morphology/morphDevelopment";
 import { PhysicalPhenotypeStore, createMorphologyReference } from "../morphology/physicalPhenotype";
 import { MORPH_GENE_COUNT, morphGeneFromQ } from "../morphology/morphGenes";
@@ -125,6 +127,7 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     organisms,
     genomes: new GenomeStore(config.limits.maxOrganisms),
     phenotypes: new PhenotypeStore(config.limits.maxOrganisms),
+    neural: new NeuralStateStore(config.limits.maxOrganisms),
     morphology: new MorphologyStore(config.limits.maxOrganisms),
     physical: new PhysicalPhenotypeStore(config.limits.maxOrganisms),
     morphologyReference: createMorphologyReference(config),
@@ -260,6 +263,7 @@ export function spawnTestOrganism(world: TestWorld, options: TestOrganismOptions
     angle: options.angle ?? 0,
     genes,
     morphGenes,
+    topology: createFounderTopology(),
     brainWeights: weights,
     generation: 0,
     parentEntityId: 0,

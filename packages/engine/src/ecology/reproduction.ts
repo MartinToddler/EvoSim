@@ -7,6 +7,8 @@ import { cosLut, sinLut } from "../math/trigLut";
 import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
 import { mutateMorphologyGenes } from "../morphology/morphMutation";
+import { mutateTopology } from "../brain/topologyMutation";
+import { TOPOLOGY_WORD_COUNT } from "../brain/NeuralTopology";
 import { spawnOrganism } from "../organisms/spawn";
 
 /**
@@ -241,10 +243,16 @@ export function resolveReproduction(ctx: EngineContext): void {
     scratch.childMorphGenes.set(
       genomes.morphGenes.subarray(morphBase, morphBase + MORPH_GENE_COUNT),
     );
-    // Ecology, then body, then brain. The order fixes the PRNG stream and is
-    // part of ENGINE_VERSION (M14 inserted the middle block).
+    const topologyBase = genomes.topologyOffset(parentSlot);
+    scratch.childTopology.set(
+      genomes.topology.subarray(topologyBase, topologyBase + TOPOLOGY_WORD_COUNT),
+    );
+    // Ecology, then body, then network shape, then weights. The order fixes the
+    // PRNG stream and is part of ENGINE_VERSION (M14 inserted the body block,
+    // M16 the topology block).
     mutateEcologicalGenes(scratch.childGenes, 0, rng, config);
     mutateMorphologyGenes(scratch.childMorphGenes, 0, rng, config);
+    mutateTopology(scratch.childTopology, 0, rng, config);
     mutateBrainWeights(scratch.childBrainWeights, 0, rng, config);
 
     const childSlot = spawnOrganism(ctx, {
@@ -253,6 +261,7 @@ export function resolveReproduction(ctx: EngineContext): void {
       angle: placement.angle,
       genes: scratch.childGenes,
       morphGenes: scratch.childMorphGenes,
+      topology: scratch.childTopology,
       brainWeights: scratch.childBrainWeights,
       generation: (organisms.generation[parentSlot] as number) + 1,
       parentEntityId: organisms.entityId[parentSlot] as number,

@@ -99,6 +99,10 @@ export function finalizeDeaths(ctx: EngineContext, tick: number): void {
 
     createCarcass(ctx, slot);
     genomes.clearSlot(slot);
+    // Memory dies with the organism (M16). Leaving it behind would let a
+    // recycled slot hand the dead occupant's registers to whoever lands there
+    // next, which is storage order leaking into biology.
+    ctx.neural.clearSlot(slot);
     organisms.releaseSlot(slot);
   }
 }

@@ -1,5 +1,6 @@
 import { clamp } from "../math/fixed";
-import { BRAIN_WEIGHT_COUNT, BrainInput, BrainOutput, ioWeightIndex } from "./BrainLayout";
+import { BrainInput, BrainOutput, ioWeightIndex } from "./BrainLayout";
+import { NEURAL_WEIGHT_COUNT } from "./NeuralTopology";
 
 /**
  * Founder neural controller (docs/08 §20, docs/04 §17, task D07).
@@ -102,7 +103,9 @@ export function createFounderBrainWeights(
   weightMin: number,
   weightMax: number,
 ): Int16Array {
-  const weights = new Int16Array(BRAIN_WEIGHT_COUNT);
+  // NEURAL_WEIGHT_COUNT, not the M14 count: M16 appended the recurrent and
+  // memory blocks, and they start at zero like the hidden layer always did.
+  const weights = new Int16Array(NEURAL_WEIGHT_COUNT);
   for (const entry of FOUNDER_SKIP_WEIGHTS) {
     weights[ioWeightIndex(entry.output, entry.input)] = clamp(
       encodeWeight(entry.hundredths, weightScale),

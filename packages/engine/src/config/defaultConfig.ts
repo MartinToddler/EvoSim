@@ -376,6 +376,20 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     weightScale: 4096,
     weightMin: -8192,
     weightMax: 8192,
+    // M16. Calibrated against the founder's own basal cost rather than picked:
+    // a founder pays roughly 30 energy/tick in basal upkeep, so a hidden unit at
+    // 3 and a memory register at 5 make a substantially rewired brain a
+    // noticeable fraction of an organism's running cost without being lethal on
+    // its own. Connections are the cheapest because a brain needs many of them;
+    // memory is the dearest because a register is the only thing here that
+    // persists between ticks.
+    complexity: {
+      perSensoryChannel: 1,
+      perHiddenUnit: 3,
+      perRecurrentLink: 2,
+      perMemoryRegister: 5,
+      perConnection: 1,
+    },
   },
 
   mutation: {
@@ -416,6 +430,15 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       // appendage pair by exactly one. Rare enough that a body plan is a
       // lineage property, common enough to be reachable.
       structuralProbabilityQ: 41, // 0.01
+    },
+    // M16. One birth in twenty changes the network's shape, and when it does it
+    // moves at most four bits out of 624. Rare enough that a topology is a
+    // lineage property rather than per-organism noise; common enough that a
+    // hidden unit or a memory register is reachable inside a few hundred
+    // generations, which M15 measured as the timescale selection works on.
+    topology: {
+      structuralProbabilityQ: 205, // 0.05
+      maxFlipsPerBirth: 4,
     },
   },
 

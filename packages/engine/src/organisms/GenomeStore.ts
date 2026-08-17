@@ -1,12 +1,13 @@
 import { assert } from "@eon/shared";
 import { HASH_TAG, type StateHash } from "../math/hash";
-import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT, TOPOLOGY_WORD_COUNT } from "../brain/NeuralTopology";
 import { GENE_COUNT } from "../genetics/genes";
 import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
 
 /**
- * Inherited state per slot: 16 ecological genes, 27 morphological genes and
- * 400 brain weights (docs/10 §7, task D02; M14 added the morphological block).
+ * Inherited state per slot: 16 ecological genes, 27 morphological genes, a
+ * 41-word neural topology genome and 576 brain weights (docs/10 §7, task D02;
+ * M14 added the morphological block, M16 the topology and the memory weights).
  *
  * Both are packed into one flat TypedArray each, indexed by
  * `slot * stride + field`, so copying a parent's genome to a child is a single
@@ -20,7 +21,13 @@ export class GenomeStore {
   readonly genes: Uint16Array;
   /** `capacity * MORPH_GENE_COUNT` quantized morphological genes (M14). */
   readonly morphGenes: Uint16Array;
-  /** `capacity * BRAIN_WEIGHT_COUNT` Int16 network weights. */
+  /**
+   * `capacity * TOPOLOGY_WORD_COUNT` Uint16 words of packed topology masks
+   * (M16): which sensory inputs, hidden units, recurrent links, memory
+   * registers and individual connections this organism's network uses.
+   */
+  readonly topology: Uint16Array;
+  /** `capacity * NEURAL_WEIGHT_COUNT` Int16 network weights. */
   readonly brainWeights: Int16Array;
 
   constructor(capacity: number) {
@@ -31,7 +38,8 @@ export class GenomeStore {
     this.capacity = capacity;
     this.genes = new Uint16Array(capacity * GENE_COUNT);
     this.morphGenes = new Uint16Array(capacity * MORPH_GENE_COUNT);
-    this.brainWeights = new Int16Array(capacity * BRAIN_WEIGHT_COUNT);
+    this.topology = new Uint16Array(capacity * TOPOLOGY_WORD_COUNT);
+    this.brainWeights = new Int16Array(capacity * NEURAL_WEIGHT_COUNT);
   }
 
   /** Offset of a slot's gene block. */
@@ -44,9 +52,14 @@ export class GenomeStore {
     return slot * MORPH_GENE_COUNT;
   }
 
+  /** Offset of a slot's topology mask block (M16). */
+  topologyOffset(slot: number): number {
+    return slot * TOPOLOGY_WORD_COUNT;
+  }
+
   /** Offset of a slot's weight block. */
   weightOffset(slot: number): number {
-    return slot * BRAIN_WEIGHT_COUNT;
+    return slot * NEURAL_WEIGHT_COUNT;
   }
 
   /** Read one gene. */
@@ -59,6 +72,7 @@ export class GenomeStore {
     slot: number,
     genes: ArrayLike<number>,
     morphGenes: ArrayLike<number>,
+    topology: ArrayLike<number>,
     weights: ArrayLike<number>,
   ): void {
     assert(genes.length === GENE_COUNT, `expected ${GENE_COUNT} genes, got ${genes.length}`);
@@ -67,11 +81,16 @@ export class GenomeStore {
       `expected ${MORPH_GENE_COUNT} morphological genes, got ${morphGenes.length}`,
     );
     assert(
-      weights.length === BRAIN_WEIGHT_COUNT,
-      `expected ${BRAIN_WEIGHT_COUNT} weights, got ${weights.length}`,
+      topology.length === TOPOLOGY_WORD_COUNT,
+      `expected ${TOPOLOGY_WORD_COUNT} topology words, got ${topology.length}`,
+    );
+    assert(
+      weights.length === NEURAL_WEIGHT_COUNT,
+      `expected ${NEURAL_WEIGHT_COUNT} weights, got ${weights.length}`,
     );
     this.genes.set(genes, this.geneOffset(slot));
     this.morphGenes.set(morphGenes, this.morphOffset(slot));
+    this.topology.set(topology, this.topologyOffset(slot));
     this.brainWeights.set(weights, this.weightOffset(slot));
   }
 
@@ -84,9 +103,14 @@ export class GenomeStore {
       this.morphGenes.subarray(morphFrom, morphFrom + MORPH_GENE_COUNT),
       this.morphOffset(toSlot),
     );
+    const topologyFrom = this.topologyOffset(fromSlot);
+    this.topology.set(
+      this.topology.subarray(topologyFrom, topologyFrom + TOPOLOGY_WORD_COUNT),
+      this.topologyOffset(toSlot),
+    );
     const weightFrom = this.weightOffset(fromSlot);
     this.brainWeights.set(
-      this.brainWeights.subarray(weightFrom, weightFrom + BRAIN_WEIGHT_COUNT),
+      this.brainWeights.subarray(weightFrom, weightFrom + NEURAL_WEIGHT_COUNT),
       this.weightOffset(toSlot),
     );
   }
@@ -95,10 +119,15 @@ export class GenomeStore {
   clearSlot(slot: number): void {
     this.genes.fill(0, this.geneOffset(slot), this.geneOffset(slot) + GENE_COUNT);
     this.morphGenes.fill(0, this.morphOffset(slot), this.morphOffset(slot) + MORPH_GENE_COUNT);
+    this.topology.fill(
+      0,
+      this.topologyOffset(slot),
+      this.topologyOffset(slot) + TOPOLOGY_WORD_COUNT,
+    );
     this.brainWeights.fill(
       0,
       this.weightOffset(slot),
-      this.weightOffset(slot) + BRAIN_WEIGHT_COUNT,
+      this.weightOffset(slot) + NEURAL_WEIGHT_COUNT,
     );
   }
 
@@ -110,6 +139,7 @@ export class GenomeStore {
   hashInto(hasher: StateHash, usedSlots: number): void {
     hasher.array(HASH_TAG.u16, this.genes.subarray(0, usedSlots * GENE_COUNT));
     hasher.array(HASH_TAG.u16, this.morphGenes.subarray(0, usedSlots * MORPH_GENE_COUNT));
-    hasher.array(HASH_TAG.i16, this.brainWeights.subarray(0, usedSlots * BRAIN_WEIGHT_COUNT));
+    hasher.array(HASH_TAG.u16, this.topology.subarray(0, usedSlots * TOPOLOGY_WORD_COUNT));
+    hasher.array(HASH_TAG.i16, this.brainWeights.subarray(0, usedSlots * NEURAL_WEIGHT_COUNT));
   }
 }

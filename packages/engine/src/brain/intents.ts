@@ -1,5 +1,5 @@
 import type { EngineContext } from "../EngineContext";
-import { BRAIN_INPUT_COUNT, BRAIN_WEIGHT_COUNT, BrainOutput } from "./BrainLayout";
+import { BRAIN_INPUT_COUNT, BrainOutput } from "./BrainLayout";
 import { inferBrain, positiveOutputQ } from "./inferBrain";
 
 /**
@@ -13,12 +13,16 @@ import { inferBrain, positiveOutputQ } from "./inferBrain";
  * (food is allocated proportionally, damage is applied simultaneously).
  *
  * Runs over live slots in ascending order. The order cannot matter — each
- * organism reads only its own sensors and writes only its own intents — but it
- * is fixed anyway, because "cannot matter today" is not a property that
- * survives refactoring.
+ * organism reads only its own sensors, its own memory and its own previous
+ * activations, and writes only its own — but it is fixed anyway, because
+ * "cannot matter today" is not a property that survives refactoring.
+ *
+ * M16 made this phase the only writer of authoritative neural state: the
+ * network's memory registers and its carried-over hidden activations are
+ * updated here, inside `inferBrain`, and nowhere else.
  */
 export function runBrainsAndBuildIntents(ctx: EngineContext): void {
-  const { organisms, genomes, scratch, config } = ctx;
+  const { organisms, genomes, neural, scratch, config } = ctx;
   const weightScale = config.brain.weightScale;
   const outputs = scratch.outputValues;
 
@@ -31,12 +35,18 @@ export function runBrainsAndBuildIntents(ctx: EngineContext): void {
       scratch.sensorValues,
       slot * BRAIN_INPUT_COUNT,
       genomes.brainWeights,
-      slot * BRAIN_WEIGHT_COUNT,
+      genomes.weightOffset(slot),
       scratch.hiddenValues,
       0,
       outputs,
       0,
       weightScale,
+      genomes.topology,
+      genomes.topologyOffset(slot),
+      neural.hiddenPrevQ,
+      neural.hiddenOffset(slot),
+      neural.memoryQ,
+      neural.memoryOffset(slot),
     );
 
     scratch.throttleQ[slot] = positiveOutputQ(outputs[BrainOutput.Throttle] as number);

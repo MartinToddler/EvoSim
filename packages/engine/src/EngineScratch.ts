@@ -1,9 +1,5 @@
-import {
-  BRAIN_HIDDEN_COUNT,
-  BRAIN_INPUT_COUNT,
-  BRAIN_OUTPUT_COUNT,
-  BRAIN_WEIGHT_COUNT,
-} from "./brain/BrainLayout";
+import { BRAIN_HIDDEN_COUNT, BRAIN_INPUT_COUNT, BRAIN_OUTPUT_COUNT } from "./brain/BrainLayout";
+import { NEURAL_WEIGHT_COUNT, TOPOLOGY_WORD_COUNT } from "./brain/NeuralTopology";
 import { TRAIT_DIMENSIONS } from "./evolution/traitVector";
 import { GENE_COUNT } from "./genetics/genes";
 import { MORPH_GENE_COUNT } from "./morphology/morphGenes";
@@ -138,6 +134,8 @@ export class EngineScratch {
   readonly childGenes: Uint16Array;
   /** One child's morphological genome, mutated before the spawn (M14). */
   readonly childMorphGenes: Uint16Array;
+  /** Packed neural topology masks for the child under construction (M16). */
+  readonly childTopology: Uint16Array;
   readonly childBrainWeights: Int16Array;
 
   // --- Species analysis (docs/05 §7, phase 16) --------------------------------
@@ -218,7 +216,8 @@ export class EngineScratch {
     this.reproducers = new Int32Array(capacity);
     this.childGenes = new Uint16Array(GENE_COUNT);
     this.childMorphGenes = new Uint16Array(MORPH_GENE_COUNT);
-    this.childBrainWeights = new Int16Array(BRAIN_WEIGHT_COUNT);
+    this.childTopology = new Uint16Array(TOPOLOGY_WORD_COUNT);
+    this.childBrainWeights = new Int16Array(NEURAL_WEIGHT_COUNT);
 
     this.speciesMemberSlots = new Int32Array(capacity);
     this.speciesMemberTraits = new Int32Array(capacity * TRAIT_DIMENSIONS);
