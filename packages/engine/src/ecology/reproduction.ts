@@ -160,6 +160,10 @@ export interface ReproductionCost {
 export function reproductionEnergyCost(ctx: EngineContext, slot: number): ReproductionCost {
   const maxEnergy = parentMaxEnergy(ctx, slot);
   const investment = qmul(maxEnergy, ctx.phenotypes.offspringInvestmentQ[slot] as number);
+  // `offspringCostFactorQ` is floored at Q by construction, so `paid` can never
+  // fall below `investment` and a birth can never create energy. Asserted by
+  // `birthNeverCreatesEnergy` in functionalMorphology.test.ts rather than left
+  // to the reader of two files.
   const paid = qmul(investment, ctx.physical.offspringCostFactorQ[slot] as number);
   const reserve = qmul(maxEnergy, ctx.config.reproduction.minParentReserveFractionQ);
   return { investment, paid, reserve, required: paid + reserve };

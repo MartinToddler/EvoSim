@@ -340,6 +340,49 @@ describe("a body costs what it is (M15)", () => {
       plainCost.paid / plainCost.investment,
     );
   });
+
+  it("a birth never creates energy, whatever body plan the parent has", () => {
+    // The invariant that caught a real defect: `offspringCostFactorQ` is an
+    // overhead multiplier applied to what the PARENT pays while the child
+    // receives the unmultiplied investment, so a factor below 1 would hand the
+    // child more than the parent gave up. The twelve-seed sweep found it as a
+    // negative `birthEnergyDiscarded`; this pins it at the source.
+    const world = flatWorld();
+    const plans: Partial<Record<MorphGene, number>>[] = [
+      {},
+      { [MorphGene.BodyLength]: 0, [MorphGene.BodyWidth]: 0 },
+      { [MorphGene.BodyLength]: Q, [MorphGene.BodyWidth]: Q },
+      { [MorphGene.ArmorCoverage]: 0, [MorphGene.PlateExpression]: 0 },
+      { [MorphGene.ArmorCoverage]: Q, [MorphGene.PlateExpression]: Q },
+      { [MorphGene.AppendageLength]: 0, [MorphGene.TailLength]: 0 },
+    ];
+    plans.forEach((morphGenesQ, index) => {
+      const slot = spawnTestOrganism(world, {
+        xPos: (300 + index * 40) * POS_SCALE,
+        yPos: 300 * POS_SCALE,
+        silentBrain: true,
+        developmentQ: Q,
+        ageTicks: 5_000,
+        morphGenesQ,
+      });
+      const cost = reproductionEnergyCost(world.ctx, slot);
+      expect(world.ctx.physical.offspringCostFactorQ[slot] as number).toBeGreaterThanOrEqual(Q);
+      expect(cost.paid).toBeGreaterThanOrEqual(cost.investment);
+    });
+  });
+
+  it("an evolved world never runs its discarded-energy counter backwards", () => {
+    // The end-to-end form of the same invariant, through real births.
+    const engine = new SimulationEngine({ seed: FIXTURE_SEED, config: smallWorldConfig() });
+    let previous = 0;
+    for (let step = 0; step < 12; step += 1) {
+      engine.stepMany(250);
+      const discarded = engine.organisms.birthEnergyDiscarded;
+      expect(discarded).toBeGreaterThanOrEqual(previous);
+      previous = discarded;
+    }
+    expect(engine.organisms.totalBirths).toBeGreaterThan(0);
+  });
 });
 
 describe("the picture and the physics are the same thing (M15)", () => {

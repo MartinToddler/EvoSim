@@ -565,9 +565,19 @@ export function derivePhysical(
 
   physical.collisionFactorQ[slot] = clamp(Q + qmul(p.collisionSilhouetteGainQ, dSpan), lo, hi);
 
+  // Construction OVERHEAD, and overhead cannot be negative. The parent pays
+  // `investment x this factor` while the child receives `investment`, so a
+  // factor below 1 would have the parent pay out less than the child receives —
+  // a birth that creates energy, which is the one thing reproduction must never
+  // do. The floor is Q rather than `lo` for that reason and no other: a body
+  // plan simpler than the founder's builds without waste, not at a profit.
+  //
+  // Found by the twelve-seed sweep, which crashed on a negative
+  // `birthEnergyDiscarded` (ADR 0029 §3f). The golden fixture's own seed never
+  // produced a parent light enough to trip it.
   physical.offspringCostFactorQ[slot] = clamp(
     Q + qmul(p.offspringBulkGainQ, dMass) + qmul(p.offspringArmorGainQ, dArmor),
-    lo,
+    Q,
     hi,
   );
 }
