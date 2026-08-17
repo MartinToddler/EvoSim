@@ -131,8 +131,16 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * refuse a split remains the detector's negative control; the ecological
  * POSITIVE control is the fixtures/speciationScenario.ts world, whose
  * channel-fragmented run splits at ~tick 45 000.
+ *
+ * Engine 0.11.0 moved it again (M16, ADR 0030): the topology genome and the
+ * authoritative neural state join the canonical stream, the weight block grows
+ * 400 -> 576, structural mutation adds draws at every birth, and brain upkeep
+ * bills any lineage that grows a network. The soak world inherits all of it
+ * through DEFAULT_CONFIG, deliberately, and finishes 100 000 ticks with 572
+ * alive, one species and 3 timeline events in 1137 s. The undivided world
+ * still refuses to split, which is the point of it.
  */
-export const GOLDEN_SOAK_HASH = "6e30cfc3e0119d13";
+export const GOLDEN_SOAK_HASH = "a134ed2ffa600843";
 
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {

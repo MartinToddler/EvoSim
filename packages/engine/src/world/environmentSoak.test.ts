@@ -53,7 +53,7 @@ describe("100k tick environment soak", () => {
   // a lifeless world has no feeder for the expected-gain rule to steer and no
   // carcasses to rot, but every cell's capacity is 0.6x what it was and the
   // config digest in the hash stream carries the new decay value.
-  const GOLDEN_SOAK_HASH = "686153da08dbb272";
+  const GOLDEN_SOAK_HASH = "1049774f50276cdf";
 
   const LIFELESS_CONFIG = (() => {
     const config = cloneConfig(DEFAULT_CONFIG);
