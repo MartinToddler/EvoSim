@@ -61,7 +61,58 @@ The network's shape is inherited, and an organism has somewhere to keep a though
   evolutionary history. Registers are shown **unlabelled**, as four numbers; a column headed
   "home X" would be ADR 0027's forbidden direction of causation arriving through the UI.
 
+- **A reachability gate, because representability is not accessibility.** CLAUDE.md's
+  evolutionary accessibility rule names memory use explicitly, so the capability fixtures are
+  joined by a controlled selection experiment on the ordinary engine, with realized survival and
+  reproduction as the only fitness. Share of the population still carrying a live memory register
+  after 8 000 ticks, from an identical 50/50 start:
+
+  | world     | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 | mean      |
+  | --------- | ---------- | ---------- | ---------- | --------- |
+  | turf      | 0.133      | 0.297      | 0.266      | **0.232** |
+  | patchwork | 0.387      | 0.995      | 0.940      | **0.774** |
+
+  Two claims that pull against each other, so the result is a contrast rather than a number.
+  Where the right action is always derivable from the current senses, a retained register buys
+  nothing and is selected against — the trade-off rule demonstrated by measurement rather than
+  asserted. Where rich patches are separated by ground the senses report nothing useful about,
+  the same registers at the same cost approach fixation on two of three seeds, and the survivors
+  keep a mean of 3.98 and 3.76 of their four rather than trimming to one. Neither world config
+  mentions brains, no fitness is assigned, and no topology bit is touched after tick 0.
+
+- **Structural exploration, measured separately on unseeded worlds.** One founder topology
+  becomes 54, 78 and 121 distinct topologies over 10 000 ticks, spanning the founder's hundred
+  connections in **both** directions — so structural mutation is not a ratchet — and on two of
+  three seeds a memory register arises by ordinary mutation and is still present at the end.
+
 ### Fixed
+
+- **Thinking was priced out of existence.** A usable hidden unit is not bought on its own: it
+  arrives wired to twenty inputs, five outputs and itself, so twenty-six connections. At one
+  whole energy per connection that unit cost 31/tick against a measured basal cost of 10 for a
+  newborn founder and a 30 adult mean — one neuron for an adult's entire basal bill, and 545/tick
+  for the most complex expressible brain. Measured over 10 000 ticks of an ordinary world, mean
+  hidden units per organism was **0.002**: mutation switched them on and selection removed them
+  within a generation, every time.
+
+  The ADR's original figure hid this by counting units and forgetting the wires they need in
+  order to do anything. A cost per item is not a cost per capability when the items only come in
+  bundles, and a cost that forbids a trait is the "always minimize" failure the trade-off rule
+  warns about — the same defect as M15's free locomotion, approached from the other side.
+
+  The coefficients are Q-scaled now. A usable hidden unit costs 1.93/tick and the maximal brain
+  32/tick, roughly doubling an adult's upkeep — a decision a lineage can actually make. Any
+  non-zero excess is billed at least one whole energy per tick, so a fractional scale cannot
+  become a free one at the bottom, and the total stays monotone in every count.
+
+- **The first reachability experiment was confounded**, and is recorded rather than quietly
+  replaced. It compared a memory-capable brain against the pristine founder, and the complex
+  group was gone inside 1000 ticks — less than one generation, so not selection at all, just a
+  randomly wired controller behaving worse than a tuned reflex one. Both groups now get an
+  identical hidden layer with identical weights and differ only in whether the registers exist.
+  The added weights are also drawn small rather than uniformly over the legal range, which is
+  both faithful (a wire evolution has just switched on carries accumulated drift, not a
+  full-scale value) and necessary: the first draw saturated every hidden unit.
 
 - **Widening the weight block left the inheritance copy at 400.** `resolveReproduction` assembles
   the child genome in a **scratch buffer reused by every birth in the phase**, so a 400-wide copy
@@ -91,8 +142,13 @@ authoritative change on four counts: the topology genome is inherited state and 
 canonical stream; authoritative neural state joins it as its own section; the weight block grew
 400 → 576; and structural mutation adds draws at every birth. Tick 0 moves through the config
 digest, the wider genome and the founder's topology; the trajectory diverges from the first
-birth. By tick 10 000 the fixture world holds population 1377 (M15: 1841) with 4650 births and
-3273 deaths — brain upkeep is a real drain on any lineage that grows one.
+birth. By tick 10 000 the fixture world holds population 1262 (M15: 1841) with 4401 births and
+3139 deaths — brain upkeep is a real drain on any lineage that grows one.
+
+The hashes moved twice inside 0.11.0 before it shipped, both times for a defect caught by this
+milestone's own gates: first the partial inheritance copy, which moved the tick-10 000 checkpoint
+alone because nothing diverges until the second birth; then the complexity recalibration, which
+moves every checkpoint including tick 0 because the coefficients are part of the config digest.
 
 ## M15 — Functional morphology (engine 0.10.0, protocol 11, snapshot 10, config 9)
 

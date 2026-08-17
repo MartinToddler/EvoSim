@@ -259,4 +259,77 @@ did not, and is no longer written that way.
 
 ---
 
+### M16 — Evolvable brain topology and generic memory
+
+| Field            | Value                                            |
+| ---------------- | ------------------------------------------------ |
+| Status           | complete                                         |
+| Branch           | `claude/evosim-2-0-implementation-7sjovi`        |
+| Commit SHA       | pending merge                                    |
+| Engine version   | 0.10.0 → **0.11.0**                              |
+| Config schema    | 9 → **10**                                       |
+| Snapshot schema  | 10 → **11**                                      |
+| Protocol version | 11 → **12**                                      |
+| ADR              | 0030                                             |
+| `pnpm verify`    | pending                                          |
+| Deployment       | pending                                          |
+| Deployment URL   | https://martintoddler.github.io/EvoSim/          |
+
+**Delivered.** The network's shape is inherited and an organism has somewhere to keep a thought.
+Five bitmasks over a compile-time ceiling — 20 inputs, 12 hidden, 12 recurrent, 4 memory, 576
+connections — in 41 Uint16 words per organism whatever the network, so there is no growth
+anywhere and nothing allocates per tick. Masks rather than zeroed weights, because a mask makes
+complexity countable (and therefore chargeable) and lets a lineage switch a wire off without
+losing what it learned. Four registers written through a gate/value pair so they can latch or
+hold loosely, written *after* the outputs are read so every register is exactly one tick old.
+Neural state is authoritative — hashed, snapshotted, restored verbatim — because memory is
+history rather than a function of the genome.
+
+**Important tests.** 18 topology tests, 9 capability fixtures, 4 structural-exploration tests
+and the 4-test selection gate, inside a 56-file / 842-test engine suite that is green.
+
+**Evolutionary reachability.** Share of the living population still carrying a live memory
+register after 8 000 ticks, from an identical 50/50 start, judged by realized survival and
+reproduction only:
+
+| world     | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 | mean      |
+| --------- | ---------- | ---------- | ---------- | --------- |
+| turf      | 0.133      | 0.297      | 0.266      | **0.232** |
+| patchwork | 0.387      | 0.995      | 0.940      | **0.774** |
+
+Structural exploration, measured separately on unseeded ordinary worlds over 10 000 ticks: one
+founder topology becomes 54, 78 and 121 distinct topologies, spanning the founder's hundred
+connections in both directions, with a memory register arising by ordinary mutation and
+surviving to the end on two of three seeds.
+
+**Defects found by this milestone's own gates, and fixed.**
+
+1. **The inheritance copy stayed 400 wide** after the weight block grew to 576. The child genome
+   is assembled in a scratch buffer reused by every birth in the phase, so the narrow copy did
+   not leave the tail zeroed — it left the *previous child's* recurrent and memory weights there
+   and handed them to this one. It surfaced as a save/restore divergence, which is the signature
+   of authoritative state that is neither hashed nor serialized; a scratch buffer is exactly
+   that by design, provided every use overwrites all of it.
+2. **Thinking was priced out of existence.** A usable hidden unit arrives wired to 26
+   connections, so at one whole energy each it cost 31/tick against a newborn's whole basal bill
+   of 10. Measured mean hidden units after 10 000 ticks: 0.002 — switched on by mutation,
+   removed by selection, every time. The ADR's own figure hid it by counting units and forgetting
+   wires. Coefficients are Q-scaled now, with a one-energy floor so the fractional scale cannot
+   become a free one.
+3. **Two further 400-width call sites**, both harmless but wrong, and two reproduction tests
+   still asserting the child's energy ceiling through the pre-M15 mass-only helper.
+
+**One experiment design failed before the second worked**, and is recorded rather than replaced
+(ADR 0030 §9b): comparing a memory-capable brain against the pristine founder measured "a
+randomly wired controller is worse than a tuned reflex one" — the complex group was gone inside
+1000 ticks, less than one generation, so not selection at all. Both groups now share an
+identical hidden layer with identical weights and differ only in whether the registers exist.
+
+**Deferred:** the twelve-seed ecology sweep has not been re-run since M15 recorded 2 of 12 seeds
+reaching the population cap. M16's brain upkeep pulls populations down (fixture tick-10 000
+population 1262 against M15's 1841), so the finding is re-measured once, after M16 rather than
+during it.
+
+---
+
 _Stages M16 through the final audit are appended below as they complete._

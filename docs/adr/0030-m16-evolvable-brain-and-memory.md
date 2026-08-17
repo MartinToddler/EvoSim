@@ -123,7 +123,7 @@ an output. Those are behavioural benefits, which is where the benefit of simplic
 Measured with the shipped coefficients: the founder pays 0 and the most complex expressible
 brain — every unit, every register, every wire — pays 32 energy/tick, against a measured basal
 cost of 10 for a newborn founder and a 30 adult mean. A maximal brain roughly doubles an adult's
-upkeep: a decision, not a rounding error, and not a prohibition either. §10 is about the first
+upkeep: a decision, not a rounding error, and not a prohibition either. §9 is about the first
 calibration, which was the third of those.
 
 The coefficients are Q-scaled, and any non-zero excess is billed at least one whole energy per
