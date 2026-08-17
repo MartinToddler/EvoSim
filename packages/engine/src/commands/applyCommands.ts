@@ -6,6 +6,7 @@ import { isqrt } from "../math/isqrt";
 import { DeathCause, markDeath } from "../organisms/death";
 import { recomputeDerivedRegion } from "../world/recomputeRegion";
 import type { CommandLog } from "./CommandLog";
+import { PLANT_RESOURCE_COUNT } from "../world/resources";
 import {
   BrushFalloff,
   InterventionKind,
@@ -241,21 +242,32 @@ function applyBrushDelta(
       // capacity is allowed up to the configured multiple (docs/03 §27) and
       // decays back at the next scheduled environment update. Water and other
       // zero-capacity cells accept nothing.
-      const capacity = environment.plantCapacity[cell] as number;
-      const ceiling = Math.min(
-        65535,
-        Math.trunc((capacity * config.interventions.biomassOverfillLimitQ) / Q),
-      );
-      const current = environment.plantBiomass[cell] as number;
-      environment.plantBiomass[cell] = Math.min(current + delta, ceiling);
+      // M17: every channel, each against its own capacity, and each getting
+      // the full `delta` rather than a fifth of it. The brush means "make this
+      // ground richer", and a channel that cannot grow here has capacity 0 and
+      // so takes nothing — the split is done by the ecology, not by the brush.
+      // A per-channel brush is a Life Laboratory instrument and belongs to M25.
+      for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+        const flat = resource * environment.cellCount + cell;
+        const capacity = environment.resourceCapacity[flat] as number;
+        const ceiling = Math.min(
+          65535,
+          Math.trunc((capacity * config.interventions.biomassOverfillLimitQ) / Q),
+        );
+        const current = environment.resourceBiomass[flat] as number;
+        environment.resourceBiomass[flat] = Math.min(current + delta, ceiling);
+      }
       return;
     }
     case InterventionKind.RemoveBiomass: {
-      const current = environment.plantBiomass[cell] as number;
-      const next = current - delta;
-      environment.plantBiomass[cell] = next > 0 ? next : 0;
-      if (next <= 0) {
-        environment.plantGrowthRemainderQ[cell] = 0;
+      for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+        const flat = resource * environment.cellCount + cell;
+        const current = environment.resourceBiomass[flat] as number;
+        const next = current - delta;
+        environment.resourceBiomass[flat] = next > 0 ? next : 0;
+        if (next <= 0) {
+          environment.plantGrowthRemainderQ[flat] = 0;
+        }
       }
       return;
     }
@@ -308,10 +320,13 @@ function applyMeteor(ctx: EngineContext, command: MeteorCommand): void {
 
       // Biomass loss: a fraction of what stands there, strongest at the centre.
       const lossQ = Math.trunc((meteor.biomassLossQ * factor) / Q);
-      const biomass = environment.plantBiomass[i] as number;
-      const loss = Math.trunc((biomass * lossQ) / Q);
-      if (loss > 0) {
-        environment.plantBiomass[i] = biomass - loss;
+      for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+        const flat = resource * environment.cellCount + i;
+        const biomass = environment.resourceBiomass[flat] as number;
+        const loss = Math.trunc((biomass * lossQ) / Q);
+        if (loss > 0) {
+          environment.resourceBiomass[flat] = biomass - loss;
+        }
       }
 
       // Terrain depression.

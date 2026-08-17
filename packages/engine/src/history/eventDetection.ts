@@ -323,7 +323,7 @@ export function collectStatisticsAndDetectEvents(ctx: EngineContext, tick: numbe
   // --- World totals -----------------------------------------------------------
   let plantBiomass = 0;
   for (let cell = 0; cell < environment.cellCount; cell += 1) {
-    plantBiomass += environment.plantBiomass[cell] as number;
+    plantBiomass += environment.resourceBiomass[cell] as number;
   }
   const carcassMeat =
     carcasses.totalMeatCreated - carcasses.totalMeatEaten - carcasses.totalMeatDecayed;

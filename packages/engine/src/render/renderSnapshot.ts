@@ -363,12 +363,12 @@ export function writeVegetationField(engine: SimulationEngine, out: Uint8Array):
   const environment = engine.environment;
   const count = Math.min(out.length, environment.cellCount);
   for (let cell = 0; cell < count; cell += 1) {
-    const capacity = environment.plantCapacity[cell] as number;
+    const capacity = environment.totalPlantCapacity(cell);
     if (capacity <= 0) {
       out[cell] = 0;
       continue;
     }
-    const biomass = environment.plantBiomass[cell] as number;
+    const biomass = environment.totalPlantBiomass(cell);
     out[cell] = clamp(Math.round((biomass * 255) / capacity), 0, 255);
   }
 }
@@ -388,18 +388,33 @@ export const TEMPERATURE_DISPLAY_MIN_CENTI_C = -2500;
 export const TEMPERATURE_DISPLAY_MAX_CENTI_C = 3500;
 
 /**
- * Plant units that byte 255 of the capacity plane represents: the richest
- * biome's base capacity. Real cells sit at `base × fertility × suitability`,
- * so every value fits under this reference by construction (docs/03 §20).
+ * Plant units that byte 255 of the capacity plane represents.
+ *
+ * The renderer draws total standing biomass across every channel, so the
+ * reference has to be the largest total a cell could reach: the sum over
+ * channels of each channel's richest biome base. Taking the largest single
+ * channel instead would let a cell that is rich in three of them saturate the
+ * plane and read as flat, which is the one thing a density map must not do.
+ *
+ * Real cells sit well under this by construction — no biome is the richest for
+ * every channel at once, and each factor is at most 1 (docs/03 §20).
  */
 export function capacityDisplayReference(config: {
-  plants: { baseCapacityByBiome: readonly number[] };
+  plants: { resources: readonly { baseCapacityByBiome: readonly number[] }[] };
 }): number {
   let reference = 1;
-  for (const base of config.plants.baseCapacityByBiome) {
-    if (base > reference) {
-      reference = base;
+  let total = 0;
+  for (const profile of config.plants.resources) {
+    let best = 0;
+    for (const base of profile.baseCapacityByBiome) {
+      if (base > best) {
+        best = base;
+      }
     }
+    total += best;
+  }
+  if (total > reference) {
+    reference = total;
   }
   return reference;
 }
@@ -462,7 +477,7 @@ export function writeTerrainFields(engine: SimulationEngine, out: StaticWorldFie
     out.moisture[cell] = byteFromQ(environment.getMoistureQ(cell));
     out.fertility[cell] = byteFromQ(environment.fertilityQ[cell] as number);
     out.capacity[cell] = clamp(
-      Math.round(((environment.plantCapacity[cell] as number) * 255) / capacityReference),
+      Math.round((environment.totalPlantCapacity(cell) * 255) / capacityReference),
       0,
       255,
     );

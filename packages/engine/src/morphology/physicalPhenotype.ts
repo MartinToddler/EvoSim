@@ -190,6 +190,20 @@ export class PhysicalPhenotypeStore {
   readonly thermalToleranceFactorQ: Uint16Array;
   /** Contact-extent multiplier: the silhouette an organism actually occupies. */
   readonly collisionFactorQ: Uint16Array;
+  /**
+   * How well the body gets at buried food (M17), 1.0 at the founder.
+   *
+   * Limb investment, reused. Roots are the channel whose cost is excavation,
+   * and the apparatus that excavates is the same apparatus M15 already bills
+   * for movement — so a digging lineage pays the limb bill twice over, once to
+   * carry the limbs and once to move them, and gets a channel nothing else can
+   * reach in exchange. That is a trade rather than a bonus.
+   *
+   * It multiplies the bite, never gates it. A limbless body still takes roots,
+   * slowly, because a channel nobody can enter without the right morphology is
+   * a fitness valley with a resource behind it.
+   */
+  readonly digFactorQ: Uint16Array;
   /** Offspring construction overhead the parent pays on top of the investment. */
   readonly offspringCostFactorQ: Uint16Array;
 
@@ -215,6 +229,7 @@ export class PhysicalPhenotypeStore {
     this.visionFovFactorQ = new Uint16Array(capacity);
     this.thermalToleranceFactorQ = new Uint16Array(capacity);
     this.collisionFactorQ = new Uint16Array(capacity);
+    this.digFactorQ = new Uint16Array(capacity);
     this.offspringCostFactorQ = new Uint16Array(capacity);
   }
 }
@@ -564,6 +579,9 @@ export function derivePhysical(
   );
 
   physical.collisionFactorQ[slot] = clamp(Q + qmul(p.collisionSilhouetteGainQ, dSpan), lo, hi);
+  // M17. Driven by limb share against the founder's, like every other factor
+  // here, so the founder digs at exactly 1.0 and neither gains nor loses.
+  physical.digFactorQ[slot] = clamp(Q + qmul(p.digLimbGainQ, dPropulsion), lo, hi);
 
   // Construction OVERHEAD, and overhead cannot be negative. The parent pays
   // `investment x this factor` while the child receives `investment`, so a

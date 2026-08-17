@@ -1,8 +1,9 @@
-import { clamp, qmul } from "../math/fixed";
+import { Q, clamp, clampQ, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
 import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { contactRadiusPos } from "../morphology/physicalPhenotype";
 import { type NearestTarget, findCarcassInMouthRange } from "../spatial/queries";
+import { PLANT_RESOURCE_COUNT, RESOURCE_COUNT, Resource } from "../world/resources";
 
 /**
  * Feeding — phases 8 and 9 of the authoritative tick order (docs/03 §§21, 23–24,
@@ -48,8 +49,8 @@ const mouthCarcass: NearestTarget = { slot: -1, distSq: 0 };
  * `biteBase + mass × biteMassCoeff × pace`, capped by config.
  *
  * Bigger and faster-metabolizing bodies process more per bite, which is the
- * upside that pays for their higher basal cost. Plants and meat share the
- * formula and differ only in their cap.
+ * upside that pays for their higher basal cost. Every channel shares the
+ * formula and differs only in its cap and its access factor.
  */
 function biteUnits(ctx: EngineContext, slot: number, mass: number, maxUnits: number): number {
   const feeding = ctx.config.organism.feeding;
@@ -58,7 +59,7 @@ function biteUnits(ctx: EngineContext, slot: number, mass: number, maxUnits: num
   return clamp(bite, 0, maxUnits);
 }
 
-/** Maximum plant biomass one organism can take in a tick. */
+/** Maximum plant biomass one organism can take in a tick, before access. */
 export function plantBiteUnits(ctx: EngineContext, slot: number, mass: number): number {
   return biteUnits(ctx, slot, mass, ctx.config.organism.feeding.maxPlantBiteUnits);
 }
@@ -69,53 +70,47 @@ export function meatBiteUnits(ctx: EngineContext, slot: number, mass: number): n
 }
 
 /**
- * Phase 8 — every organism whose eat intent clears the threshold states one
- * claim, against one food source.
+ * How much of a bite this body can actually apply to one channel (M17).
  *
- * ## The food-target policy (docs/04 §20, amended by ADR 0025)
+ * Physical access, as docs/11 §M17 requires — and a *multiplier*, never a gate.
+ * Browse is dense material that has to be sheared, so it scales with the mouth
+ * M15 already derives; roots have to be excavated, so they scale with the limb
+ * investment M15 already bills for. The other three channels are physically
+ * easy and their cost lies elsewhere: fruit in travel, defended growth in
+ * damage, foliage in nothing at all.
  *
- * The engine compares the **expected obtainable energy** of the two candidate
- * sources and claims the better one:
- *
- * ```text
- * expectedGain = min(bite, locally available) × sourceEnergyPerUnit × ownDigestionEfficiency
- * ```
- *
- * On an exact tie the plant is chosen — an explicit, documented tie-break that
- * keeps the herbivorous status quo (CLAUDE.md requires ties to be explicit).
- *
- * This replaces the original categorical rule ("carcass only when meat
- * efficiency >= plant efficiency"), which created a measured fitness valley:
- * a herbivore-leaning organism ignored carrion it was standing on even when the
- * cell under it was stripped bare, so twelve calibration seeds ate almost no
- * meat in 10 000 ticks and scavenging intermediates were unreachable
- * (ADR 0021 §5d). Under the expected-gain rule:
- *
- * - there is still one `eat` output, and the *engine* still picks the target,
- *   not the brain. A second output would be a brain format change (docs/04 §10);
- * - a herbivore on a rich cell still grazes: its plant gain dwarfs what its
- *   poor meat digestion could extract from a body. Specialization keeps its
- *   value — meat is a poor fallback for a herbivore, not a free lunch;
- * - a herbivore on a stripped cell beside a carcass now scavenges it,
- *   inefficiently, because a bad meal beats no meal. That is the general rule
- *   that makes scavenging intermediates evolutionarily reachable without
- *   declaring anyone a carnivore;
- * - a carnivore-leaning organism prefers meat exactly when meat is worth more
- *   to it than the grass underfoot, including abandoning a nearly-empty
- *   carcass for a rich cell. Nothing declares it a carnivore: mutation moves
- *   `dietQ`, and `dietQ` moves the two efficiencies.
- *
- * The carcass query is gated by an upper bound: a full meat bite at the eater's
- * own efficiency. When even that ceiling cannot beat the plant gain the spatial
- * query is skipped — a pure optimization that cannot change the chosen target,
- * so a herbivore surrounded by grass costs exactly what it did before.
+ * Returning a factor rather than a boolean is the whole point. A body with no
+ * mouth to speak of still browses, badly, so every intermediate on the way to a
+ * browsing lineage has a positive return — which is precisely what the
+ * categorical carcass gate got wrong before ADR 0025 removed it.
  */
+function accessFactorQ(ctx: EngineContext, slot: number, resource: number): number {
+  const { physical } = ctx;
+  if (resource === Resource.Browse) {
+    return physical.biteFactorQ[slot] as number;
+  }
+  if (resource === Resource.Roots) {
+    return physical.digFactorQ[slot] as number;
+  }
+  return Q;
+}
+
+/**
+ * Processing efficiency of one organism for one channel, `[0, Q]`.
+ *
+ * Every organism has one for every channel, always above zero. There is no
+ * lookup that can fail and no organism that "is" one kind of eater.
+ */
+export function processEfficiencyQ(ctx: EngineContext, slot: number, resource: number): number {
+  return ctx.phenotypes.processEfficiencyQ[slot * RESOURCE_COUNT + resource] as number;
+}
+
 export function buildFeedingClaims(ctx: EngineContext): void {
   const { organisms, phenotypes, physical, environment, carcasses, scratch, config } = ctx;
   const thresholdQ = config.organism.feeding.eatOutputThresholdQ;
   const massScale = config.organism.massScalePerRadiusSquared;
-  const plantEnergyPerUnit = config.plants.plantEnergyPerBiomass;
   const meatEnergyPerUnit = config.plants.meatEnergyPerUnit;
+  const { cellCount } = environment;
 
   scratch.clearPlantDemand();
   scratch.clearCarcassDemand();
@@ -125,6 +120,11 @@ export function buildFeedingClaims(ctx: EngineContext): void {
     scratch.feedingAllocated[slot] = 0;
     scratch.feedingTargetType[slot] = FeedingTarget.None;
     scratch.feedingTargetIndex[slot] = -1;
+    scratch.feedingResource[slot] = Resource.Foliage;
+    // Cleared by the phase that fills it, so a slot recycled by a birth cannot
+    // inherit the previous occupant's poisoning — the same discipline M16's
+    // memory registers needed for the same reason.
+    scratch.toxinDamageQ[slot] = 0;
 
     if (organisms.alive[slot] !== 1 || (scratch.eatQ[slot] as number) < thresholdQ) {
       continue;
@@ -135,35 +135,55 @@ export function buildFeedingClaims(ctx: EngineContext): void {
       organisms.developmentQ[slot] as number,
     );
     const mass = bodyMass(physical, slot, radius, massScale);
-
-    // Expected obtainable energy from the cell underfoot. "Obtainable" is
-    // bounded by what the cell actually holds, which is exactly what the old
-    // categorical rule ignored: a stripped cell promises nothing.
     const cell = environment.cellIndexFromPosition(
       organisms.x[slot] as number,
       organisms.y[slot] as number,
     );
-    const cellBiomass = environment.plantBiomass[cell] as number;
     const plantBite = plantBiteUnits(ctx, slot, mass);
-    const plantUnits = plantBite < cellBiomass ? plantBite : cellBiomass;
-    const plantGain =
-      plantUnits <= 0
-        ? 0
-        : qmul(plantUnits * plantEnergyPerUnit, phenotypes.plantEfficiencyQ[slot] as number);
 
-    // The meat option's ceiling: a full bite at own efficiency. Only when the
-    // ceiling could beat the plant gain is the mouth-range query worth running;
-    // skipping it below the ceiling cannot change the decision.
+    // Rank every channel underfoot by what this body would actually get out of
+    // it. Ascending resource order with a strict `>` makes the tie-break the
+    // lowest channel index — explicit, as CLAUDE.md requires, and stable.
+    let bestResource = -1;
+    let bestGain = 0;
+    let bestUnits = 0;
+    if (plantBite > 0) {
+      for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+        const available = environment.resourceBiomass[resource * cellCount + cell] as number;
+        if (available <= 0) {
+          continue;
+        }
+        const reach = qmul(plantBite, accessFactorQ(ctx, slot, resource));
+        if (reach <= 0) {
+          continue;
+        }
+        const units = reach < available ? reach : available;
+        const profile = config.plants.resources[resource];
+        if (profile === undefined) {
+          continue;
+        }
+        const gain = qmul(units * profile.energyPerUnit, processEfficiencyQ(ctx, slot, resource));
+        if (gain > bestGain) {
+          bestGain = gain;
+          bestResource = resource;
+          bestUnits = reach;
+        }
+      }
+    }
+
+    // Meat, on the same expected-gain footing as the plant channels (ADR 0025).
+    // The gate is an upper bound on what meat could be worth, so skipping the
+    // spatial query below it cannot change the decision.
     const meatBite = meatBiteUnits(ctx, slot, mass);
-    const meatEfficiencyQ = phenotypes.meatEfficiencyQ[slot] as number;
+    const meatEfficiencyQ = processEfficiencyQ(ctx, slot, Resource.Meat);
     let carcassSlot = -1;
-    if (meatBite > 0 && qmul(meatBite * meatEnergyPerUnit, meatEfficiencyQ) > plantGain) {
+    if (meatBite > 0 && qmul(meatBite * meatEnergyPerUnit, meatEfficiencyQ) > bestGain) {
       findCarcassInMouthRange(ctx, slot, contactRadiusPos(physical, slot, radius), mouthCarcass);
       if (mouthCarcass.slot !== -1) {
         const remaining = carcasses.remainingMeat[mouthCarcass.slot] as number;
         const meatUnits = meatBite < remaining ? meatBite : remaining;
         const meatGain = qmul(meatUnits * meatEnergyPerUnit, meatEfficiencyQ);
-        if (meatGain > plantGain) {
+        if (meatGain > bestGain) {
           carcassSlot = mouthCarcass.slot;
         }
       }
@@ -173,6 +193,7 @@ export function buildFeedingClaims(ctx: EngineContext): void {
       scratch.feedingRequest[slot] = meatBite;
       scratch.feedingTargetType[slot] = FeedingTarget.Carcass;
       scratch.feedingTargetIndex[slot] = carcassSlot;
+      scratch.feedingResource[slot] = Resource.Meat;
       const previousDemand = scratch.carcassDemand[carcassSlot] as number;
       if (previousDemand === 0) {
         scratch.noteDemandedCarcass(carcassSlot);
@@ -183,20 +204,25 @@ export function buildFeedingClaims(ctx: EngineContext): void {
       continue;
     }
 
-    if (plantUnits <= 0 || plantBite <= 0) {
+    if (bestResource < 0 || bestUnits <= 0) {
       continue;
     }
 
-    scratch.feedingRequest[slot] = plantBite;
+    // Demand is aggregated per channel per cell: four organisms grazing the
+    // foliage of one cell compete with each other and not with the one digging
+    // its roots, because they are taking from different stores.
+    const demandIndex = bestResource * cellCount + cell;
+    scratch.feedingRequest[slot] = bestUnits;
     scratch.feedingTargetType[slot] = FeedingTarget.Plant;
-    scratch.feedingTargetIndex[slot] = cell;
-    const previousDemand = scratch.plantDemandPerCell[cell] as number;
+    scratch.feedingTargetIndex[slot] = demandIndex;
+    scratch.feedingResource[slot] = bestResource;
+    const previousDemand = scratch.plantDemandPerCell[demandIndex] as number;
     if (previousDemand === 0) {
-      scratch.noteDemandedCell(cell);
+      scratch.noteDemandedCell(demandIndex);
     }
-    scratch.plantDemandPerCell[cell] = previousDemand + plantBite;
-    scratch.claimNext[slot] = scratch.plantClaimHead[cell] as number;
-    scratch.plantClaimHead[cell] = slot;
+    scratch.plantDemandPerCell[demandIndex] = previousDemand + bestUnits;
+    scratch.claimNext[slot] = scratch.plantClaimHead[demandIndex] as number;
+    scratch.plantClaimHead[demandIndex] = slot;
   }
 }
 
@@ -210,7 +236,6 @@ export function buildFeedingClaims(ctx: EngineContext): void {
  */
 export function resolveFeedingClaims(ctx: EngineContext): void {
   const { organisms, phenotypes, physical, environment, carcasses, species, scratch, config } = ctx;
-  const plantEnergyPerUnit = config.plants.plantEnergyPerBiomass;
   const meatEnergyPerUnit = config.plants.meatEnergyPerUnit;
   const massScale = config.organism.massScalePerRadiusSquared;
 
@@ -225,7 +250,7 @@ export function resolveFeedingClaims(ctx: EngineContext): void {
     let available: number;
     let demand: number;
     if (target === FeedingTarget.Plant) {
-      available = environment.plantBiomass[index] as number;
+      available = environment.resourceBiomass[index] as number;
       demand = scratch.plantDemandPerCell[index] as number;
     } else if (target === FeedingTarget.Carcass) {
       available = carcasses.remainingMeat[index] as number;
@@ -251,17 +276,40 @@ export function resolveFeedingClaims(ctx: EngineContext): void {
 
     let gained: number;
     if (target === FeedingTarget.Plant) {
-      environment.plantBiomass[index] = (environment.plantBiomass[index] as number) - allocated;
-      gained = qmul(allocated * plantEnergyPerUnit, phenotypes.plantEfficiencyQ[slot] as number);
+      const resource = scratch.feedingResource[slot] as number;
+      const profile = config.plants.resources[resource];
+      if (profile === undefined) {
+        continue;
+      }
+      environment.resourceBiomass[index] =
+        (environment.resourceBiomass[index] as number) - allocated;
+      gained = qmul(allocated * profile.energyPerUnit, processEfficiencyQ(ctx, slot, resource));
       organisms.plantEnergyEaten[slot] = (organisms.plantEnergyEaten[slot] as number) + gained;
+      organisms.resourceEnergyEaten[slot * RESOURCE_COUNT + resource] =
+        (organisms.resourceEnergyEaten[slot * RESOURCE_COUNT + resource] as number) + gained;
       // Species-level intake mirrors the per-organism counter exactly; the
-      // carnivore-lineage detector reads OBSERVED intake, never the diet gene
+      // carnivore-lineage detector reads OBSERVED intake, never a gene
       // (docs/05 §§5, 15).
       species.recordConsumption(organisms.speciesId[slot] as number, gained, 0);
+
+      // Chemically defended growth costs health, reduced by whatever resistance
+      // the body carries and never below zero. Damage rather than a refusal to
+      // eat: an organism with no resistance CAN take defended growth, and will
+      // when nothing better is underfoot — it simply pays for it. That is the
+      // trade the channel exists to offer.
+      if (profile.toxicityQ > 0) {
+        const exposureQ = Q - (phenotypes.toxinResistanceQ[slot] as number);
+        const damageQ = qmul(allocated * profile.toxicityQ, clampQ(exposureQ));
+        if (damageQ > 0) {
+          scratch.toxinDamageQ[slot] = (scratch.toxinDamageQ[slot] as number) + damageQ;
+        }
+      }
     } else {
       carcasses.consume(index, allocated);
-      gained = qmul(allocated * meatEnergyPerUnit, phenotypes.meatEfficiencyQ[slot] as number);
+      gained = qmul(allocated * meatEnergyPerUnit, processEfficiencyQ(ctx, slot, Resource.Meat));
       organisms.meatEnergyEaten[slot] = (organisms.meatEnergyEaten[slot] as number) + gained;
+      organisms.resourceEnergyEaten[slot * RESOURCE_COUNT + Resource.Meat] =
+        (organisms.resourceEnergyEaten[slot * RESOURCE_COUNT + Resource.Meat] as number) + gained;
       species.recordConsumption(organisms.speciesId[slot] as number, 0, gained);
     }
 
@@ -340,7 +388,7 @@ function distributePlantRemainders(ctx: EngineContext): void {
   const { environment, scratch } = ctx;
   for (let i = 0; i < scratch.demandedCellCount; i += 1) {
     const cell = scratch.demandedCells[i] as number;
-    const biomass = environment.plantBiomass[cell] as number;
+    const biomass = environment.resourceBiomass[cell] as number;
     if ((scratch.plantDemandPerCell[cell] as number) <= biomass) {
       continue;
     }

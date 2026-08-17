@@ -8,15 +8,12 @@ import {
   Gene,
   accelerationVel,
   adultRadiusPos,
-  carnivoreAffinityQ,
   digestionEfficiencyQ,
-  dietSignedQ,
   effectiveMaxSpeedVel,
   effectiveMaxTurnSteps,
   geneMaxSpeedVel,
   geneMaxTurnSteps,
   geneToQ,
-  herbivoreAffinityQ,
   hueDegrees,
   maturityAgeTicks,
   maxAgeTicks,
@@ -27,7 +24,9 @@ import {
   visionFovSteps,
   visionRangePos,
 } from "../genetics/genes";
+import { FOUNDER_PROCESS_TOTAL_Q } from "../genetics/founderGenome";
 import type { GenomeStore } from "./GenomeStore";
+import { RESOURCE_COUNT } from "../world/resources";
 
 /**
  * Derived phenotype cache (docs/10 §8, task D02/D03).
@@ -71,9 +70,19 @@ export class PhenotypeStore {
   /** Signed diet in [-Q, Q]; -Q herbivore specialist, +Q carnivore specialist. */
   readonly dietQ: Int16Array;
   /** Digestion efficiency for plant matter, Q-scaled. */
-  readonly plantEfficiencyQ: Uint16Array;
+  /**
+   * Processing efficiency for every channel, `capacity * RESOURCE_COUNT` in
+   * resource-major-per-slot order: `slot * RESOURCE_COUNT + resource` (M17).
+   *
+   * Slot-major here, unlike the environment's resource-major fields, because
+   * every read is "all six channels for one organism" — the feeding phase ranks
+   * a single eater's options — where the environment's reads are "one channel
+   * across every cell".
+   */
+  readonly processEfficiencyQ: Uint16Array;
+  /** How much of defended growth's toxicity this body shrugs off, `[0, Q]`. */
+  readonly toxinResistanceQ: Uint16Array;
   /** Digestion efficiency for meat, Q-scaled. */
-  readonly meatEfficiencyQ: Uint16Array;
 
   readonly attackQ: Uint16Array;
   readonly armorQ: Uint16Array;
@@ -111,8 +120,9 @@ export class PhenotypeStore {
     this.visionHalfFovSteps = new Uint16Array(capacity);
     this.visionCosHalfFov = new Int16Array(capacity);
     this.dietQ = new Int16Array(capacity);
-    this.plantEfficiencyQ = new Uint16Array(capacity);
-    this.meatEfficiencyQ = new Uint16Array(capacity);
+    this.processEfficiencyQ = new Uint16Array(capacity * RESOURCE_COUNT);
+    this.toxinResistanceQ = new Uint16Array(capacity);
+
     this.attackQ = new Uint16Array(capacity);
     this.armorQ = new Uint16Array(capacity);
     this.metabolicPaceQ = new Uint16Array(capacity);
@@ -215,19 +225,25 @@ export function derivePhenotype(
     (cosLut(halfFovSteps) * FOV_COS_SCALE) / TRIG_SCALE,
   );
 
-  const dietQ = dietSignedQ(raw[base + Gene.Diet] as number);
+  // M17 processing. One efficiency per channel, each from its own locus, each
+  // floored well above zero so no channel is ever inedible — a categorical
+  // "you cannot process this" is the fitness-valley defect ADR 0025 removed
+  // from carcass feeding, and five more of them would be five times the defect.
   const { digestionEfficiencyFloorQ, digestionEfficiencySpanQ } = config.organism.feeding;
-  phenotypes.dietQ[slot] = dietQ;
-  phenotypes.plantEfficiencyQ[slot] = digestionEfficiencyQ(
-    herbivoreAffinityQ(dietQ),
-    digestionEfficiencyFloorQ,
-    digestionEfficiencySpanQ,
-  );
-  phenotypes.meatEfficiencyQ[slot] = digestionEfficiencyQ(
-    carnivoreAffinityQ(dietQ),
-    digestionEfficiencyFloorQ,
-    digestionEfficiencySpanQ,
-  );
+  const efficiencyBase = slot * RESOURCE_COUNT;
+  let processTotalQ = 0;
+  for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+    const processQ = geneToQ(raw[base + Gene.Process + resource] as number);
+    processTotalQ += processQ;
+    phenotypes.processEfficiencyQ[efficiencyBase + resource] = digestionEfficiencyQ(
+      processQ,
+      digestionEfficiencyFloorQ,
+      digestionEfficiencySpanQ,
+    );
+  }
+
+  const toxinResistanceQ = geneToQ(raw[base + Gene.ToxinResistance] as number);
+  phenotypes.toxinResistanceQ[slot] = toxinResistanceQ;
 
   // Effective attack and armor: what the mouth can bite with and what the
   // plating actually stops. The genetic value is the investment, the
@@ -265,6 +281,29 @@ export function derivePhenotype(
   massCoeffQ += qmul(qmul(effectiveArmorQ, effectiveArmorQ), basal.armorMaintCoeffQ);
   massCoeffQ += qmul(toleranceGeneQ, basal.toleranceMaintCoeffQ);
   massCoeffQ += qmul(maxAgeQ, basal.longevityMaintCoeffQ);
+  // M17: digestive tissue. Every channel a lineage can process well is gut it
+  // has to keep alive, so the bill is the SUM of the six processing loci above
+  // the founder's total — which is what stops a universal digester evolving.
+  //
+  // Measured against the founder and floored at zero, exactly as M16's neural
+  // upkeep is, and for the same two reasons: the founder must pay nothing so
+  // the calibrated ecology is not moved by the mechanism merely existing, and a
+  // cost that can go negative is an energy source (ADR 0029 §3f, ADR 0030 §3a).
+  //
+  // Note what is NOT constrained: the genome can hold any six values it likes.
+  // A normalized allocation would have made specialization a zero-sum identity
+  // enforced by the representation, which is a rule about what evolution may
+  // express. This is a price instead, so a generalist is possible and merely
+  // expensive — and whether the expense is worth paying is the environment's
+  // answer to give, not the config's.
+  massCoeffQ += qmul(
+    Math.max(0, processTotalQ - FOUNDER_PROCESS_TOTAL_Q),
+    basal.digestiveMaintCoeffQ,
+  );
+  // Toxin resistance is chemistry a body runs whether or not it eats anything
+  // defended, so it is billed the same way. Without this, resistance is free
+  // and fixates, and defended growth stops being a trade at all.
+  massCoeffQ += qmul(qmul(toxinResistanceQ, toxinResistanceQ), basal.toxinResistMaintCoeffQ);
   // M15: limbs and plating are maintained tissue, so they are billed per unit of
   // body mass alongside the genetic capabilities.
   phenotypes.basalMassCoeffQ[slot] = clamp(

@@ -134,40 +134,68 @@ export interface TimeConfig {
   speciesAnalysisInterval: number;
 }
 
-export interface PlantConfig {
-  /** Base plant capacity per biome, indexed by Biome enum value 0..5. */
+/**
+ * One plant channel's ecology (M17, docs/11 §M17).
+ *
+ * Every field here is a *place* or *timing* property. What it costs an organism
+ * to process the channel is not here — that is genetic and morphological, and
+ * putting it in the environment config would make the channel a diet rather
+ * than a resource.
+ */
+export interface ResourceProfile {
+  /** Base capacity per biome, indexed by Biome value 0..5. */
   baseCapacityByBiome: readonly number[];
   /** Logistic growth rate (Q per environment step) per biome, indexed 0..5. */
   growthRateQByBiome: readonly number[];
-  /** Seed-bank regeneration units below the regen threshold (docs/03 §20). */
-  plantSeedBankRegenUnits: number;
+  /** Seed-bank regeneration units below {@link minRegenThreshold}. */
+  seedBankRegenUnits: number;
   /** Biomass threshold below which seed-bank regeneration applies. */
-  plantMinRegenThreshold: number;
-  /** Energy per consumed plant biomass unit before digestion efficiency. */
-  plantEnergyPerBiomass: number;
+  minRegenThreshold: number;
+  /** Energy per consumed biomass unit, before the eater's own efficiency. */
+  energyPerUnit: number;
+  /** Temperature at which this channel's capacity peaks. */
+  optimumTemperatureCentiC: number;
+  /** Half-width of the temperature window; capacity is 0 outside it. */
+  temperatureToleranceCentiC: number;
+  /** At or below this moisture, capacity is 0. */
+  minMoistureQ: number;
+  /** At or above this moisture, moisture no longer limits capacity. */
+  fullMoistureQ: number;
+  /**
+   * How much the cell's fertility matters, in `[0, Q]`.
+   *
+   * 0 ignores fertility entirely, Q is as fertility-hungry as the single
+   * Milestone 0–16 field. Low weights are what let a channel hold ground that
+   * nothing else will grow on.
+   */
+  fertilityWeightQ: number;
+  /** Elevation at which capacity peaks, in `[0, Q]`. */
+  optimumElevationQ: number;
+  /** Half-width of the elevation window; Q or more is indifferent to terrain. */
+  elevationToleranceQ: number;
+  /**
+   * Health lost per unit eaten, before the eater's toxin resistance.
+   *
+   * Non-zero on exactly one channel as shipped. It is a per-channel field
+   * rather than a special case in the feeding phase because "which channel
+   * fights back" is an ecology parameter, and a hard-coded `if (resource ===
+   * Defended)` would be a category deciding behaviour.
+   */
+  toxicityQ: number;
+}
+
+export interface PlantConfig {
+  /** The five plant channels, indexed by Resource value 0..4 (M17). */
+  resources: readonly ResourceProfile[];
   /** Energy per consumed carcass meat unit before digestion efficiency. */
   meatEnergyPerUnit: number;
 
   /**
-   * Biomass present at world creation, as a fraction of each cell's capacity.
-   * Below Q so a new world is still visibly growing when the founders arrive.
+   * Biomass present at world creation, as a fraction of each channel's
+   * capacity. Below Q so a new world is still visibly growing when the founders
+   * arrive.
    */
   initialBiomassFractionQ: number;
-
-  /**
-   * Capacity suitability (docs/03 §20: capacity = biome base × fertility ×
-   * broad moisture/temperature suitability).
-   */
-  capacitySuitability: {
-    /** Temperature at which plant capacity suitability peaks. */
-    optimumTemperatureCentiC: number;
-    /** Half-width of the capacity temperature window; suitability is 0 outside. */
-    temperatureToleranceCentiC: number;
-    /** At or below this moisture, capacity suitability is 0. */
-    minMoistureQ: number;
-    /** At or above this moisture, moisture no longer limits capacity. */
-    fullMoistureQ: number;
-  };
 }
 
 /**
@@ -412,6 +440,8 @@ export interface PhysicalMorphologyConfig {
   thermalSlendernessGainQ: number;
   /** Fore/aft silhouette → contact extent. */
   collisionSilhouetteGainQ: number;
+  /** Dig ability gained per unit of limb share above the founder's (M17). */
+  digLimbGainQ: number;
 
   /** Realized mass → offspring construction overhead. */
   offspringBulkGainQ: number;
@@ -465,6 +495,16 @@ export interface OrganismConfig {
     toleranceMaintCoeffQ: number;
     /** longevity maintenance = mass * maxAgeNorm * coeff; 12/Q ~ 0.003. */
     longevityMaintCoeffQ: number;
+    /**
+     * Upkeep per unit of processing investment above the founder's total (M17).
+     *
+     * The price of a broad gut. It is what keeps six independent processing
+     * loci from all evolving to their maximum: each one is capability the body
+     * maintains whether or not the channel is in front of it.
+     */
+    digestiveMaintCoeffQ: number;
+    /** Upkeep per unit of toxin resistance, squared as the other defences are. */
+    toxinResistMaintCoeffQ: number;
     /** Living organisms always pay at least this basal energy per tick. */
     minimumBasalPerTick: number;
   };

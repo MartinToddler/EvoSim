@@ -116,6 +116,17 @@ export class EngineScratch {
    * lie if the later phase simply overwrote what the earlier one did.
    */
   readonly combatDamageQ: Uint16Array;
+  /**
+   * Health lost this tick to chemically defended growth (M17).
+   *
+   * Separate from `combatDamageQ` rather than added into it, because the
+   * physiology phase attributes death causes and "poisoned by its own dinner"
+   * is not "killed by another organism". Merging them would make the timeline
+   * report predation that never happened.
+   */
+  readonly toxinDamageQ: Uint16Array;
+  /** Which channel each organism claimed this tick, for the resolution pass. */
+  readonly feedingResource: Uint8Array;
 
   // --- Deaths ----------------------------------------------------------------
   readonly pendingDeath: Uint8Array;
@@ -209,6 +220,8 @@ export class EngineScratch {
     this.bestAttackerId = new Uint32Array(capacity);
     this.bestAttackerSlot = new Int32Array(capacity).fill(-1);
     this.combatDamageQ = new Uint16Array(capacity);
+    this.toxinDamageQ = new Uint16Array(capacity);
+    this.feedingResource = new Uint8Array(capacity);
 
     this.pendingDeath = new Uint8Array(capacity);
     this.deathCause = new Uint8Array(capacity);

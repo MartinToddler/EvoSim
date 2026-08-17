@@ -1,6 +1,7 @@
 import { assert } from "@eon/shared";
 import { HASH_TAG, type StateHash } from "../math/hash";
 import { DEATH_CAUSE_COUNT } from "./death";
+import { RESOURCE_COUNT } from "../world/resources";
 
 /**
  * Live organism state as Structure-of-Arrays (docs/03 §§5-6, docs/10 §6,
@@ -89,6 +90,17 @@ export class OrganismStore {
   // --- Lifetime counters ----------------------------------------------------
   readonly plantEnergyEaten: Uint32Array;
   readonly meatEnergyEaten: Uint32Array;
+  /**
+   * Lifetime energy taken from each channel, `capacity * RESOURCE_COUNT` in
+   * `slot * RESOURCE_COUNT + resource` order (M17).
+   *
+   * A **record of what happened**, and nothing reads it back into a decision.
+   * That is the line ADR 0027 draws: an observer may say a lineage lives on
+   * roots because this counter says so, and the engine may never consult it to
+   * decide what an organism does next. The feeding phase reads the genome and
+   * the cell; it never reads this.
+   */
+  readonly resourceEnergyEaten: Uint32Array;
   readonly kills: Uint16Array;
 
   // --- Population counters --------------------------------------------------
@@ -170,6 +182,7 @@ export class OrganismStore {
 
     this.plantEnergyEaten = new Uint32Array(capacity);
     this.meatEnergyEaten = new Uint32Array(capacity);
+    this.resourceEnergyEaten = new Uint32Array(capacity * RESOURCE_COUNT);
     this.kills = new Uint16Array(capacity);
 
     this.freeSlots = new Int32Array(capacity);
@@ -296,6 +309,7 @@ export class OrganismStore {
     this.reproductionCooldown[slot] = 0;
     this.plantEnergyEaten[slot] = 0;
     this.meatEnergyEaten[slot] = 0;
+    this.resourceEnergyEaten.fill(0, slot * RESOURCE_COUNT, (slot + 1) * RESOURCE_COUNT);
     this.kills[slot] = 0;
   }
 

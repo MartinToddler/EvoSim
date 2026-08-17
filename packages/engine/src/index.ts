@@ -74,12 +74,14 @@ export {
   type FounderRegion,
 } from "./world/validateWorld";
 export { createWorld, WorldGenerationError, type GeneratedWorld } from "./world/createWorld";
+export { PLANT_RESOURCE_COUNT, RESOURCE_COUNT, RESOURCE_NAMES, Resource } from "./world/resources";
+
 export {
-  computePlantCapacity,
+  computeResourceCapacity,
   recomputeAllPlantCapacities,
   growPlants,
-  plantGradientXQAt,
-  plantGradientYQAt,
+  resourceGradientXQAt,
+  resourceGradientYQAt,
   totalPlantBiomass,
   totalPlantCapacity,
   temperatureSuitabilityQ,
@@ -102,10 +104,7 @@ export {
   HUE_DEGREES,
   geneToQ,
   geneFromQ,
-  dietSignedQ,
   digestionEfficiencyQ,
-  herbivoreAffinityQ,
-  carnivoreAffinityQ,
   adultRadiusPos,
   geneMaxSpeedVel,
   accelerationVel,

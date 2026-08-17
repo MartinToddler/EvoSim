@@ -1,8 +1,25 @@
+import { assert } from "@eon/shared";
 import { BrushFalloff } from "../commands/SimulationCommand";
 import { InterventionKind } from "../commands/SimulationCommand";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
+import type { ResourceProfile, SimulationConfig } from "../config/SimulationConfig";
+import { Resource } from "../world/resources";
 import type { SimulationEngine } from "../SimulationEngine";
+
+/**
+ * The foliage channel of a scenario config, non-optional.
+ *
+ * M17 made `plants.resources` an array, and these scenarios were written when
+ * there was one plant field. They still contest exactly that field — the
+ * milestone that owns them calibrated their numbers against it — so they reach
+ * for channel 0 by name rather than silently spreading across five.
+ */
+function foliage(config: SimulationConfig): ResourceProfile {
+  const profile = config.plants.resources[Resource.Foliage];
+  assert(profile !== undefined, "scenario config is missing the foliage channel");
+  return profile;
+}
 
 /**
  * The ecological speciation scenario (ADR 0025 §3; docs/07 §16 third bullet;
@@ -87,7 +104,7 @@ export const SCENARIO_CONFIG: ReadonlySimulationConfig = (() => {
   );
   // Pinned to the values the scenario was calibrated against (see above);
   // deliberately NOT DEFAULT_CONFIG's retuned capacities or carcass decay.
-  config.plants.baseCapacityByBiome = [0, 36000, 52000, 7000, 10000, 4000];
+  foliage(config).baseCapacityByBiome = [0, 36000, 52000, 7000, 10000, 4000];
   config.organism.carcass.baseCarcassDecayFractionQPerDecayStep = 20;
   // The calibrated detector for this scenario's population sizes (see above).
   config.species.splitDistanceThresholdQ = 480;

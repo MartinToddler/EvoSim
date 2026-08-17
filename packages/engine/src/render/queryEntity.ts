@@ -323,7 +323,7 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
     biome: environment.biome[cell] as number,
     biomeName: BIOME_NAMES[environment.biome[cell] as number] ?? "Unknown",
     cellTemperatureC: environment.getTemperatureCentiC(cell) / 100,
-    cellPlantBiomass: environment.getPlantBiomass(cell),
+    cellPlantBiomass: environment.totalPlantBiomass(cell),
   };
 }
 
@@ -409,8 +409,8 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
   let plantCapacity = 0;
   const cellCount = environment.cellCount;
   for (let cell = 0; cell < cellCount; cell += 1) {
-    plantBiomass += environment.plantBiomass[cell] as number;
-    plantCapacity += environment.plantCapacity[cell] as number;
+    plantBiomass += environment.totalPlantBiomass(cell);
+    plantCapacity += environment.totalPlantCapacity(cell);
   }
 
   const traitMeans: TraitMeans =

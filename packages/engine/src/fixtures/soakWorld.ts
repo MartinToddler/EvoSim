@@ -372,8 +372,8 @@ function countEnvironmentViolations(engine: SimulationEngine): number {
   const { environment } = engine;
   let violations = 0;
   for (let i = 0; i < environment.cellCount; i += 1) {
-    const biomass = environment.plantBiomass[i] as number;
-    if (biomass > (environment.plantCapacity[i] as number)) violations += 1;
+    const biomass = environment.resourceBiomass[i] as number;
+    if (biomass > (environment.resourceCapacity[i] as number)) violations += 1;
     if (biomass < 0) violations += 1;
     if ((environment.plantGrowthRemainderQ[i] as number) >= Q) violations += 1;
     if (environment.biome[i] === Biome.Water && biomass !== 0) violations += 1;

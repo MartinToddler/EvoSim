@@ -1,6 +1,7 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { Q } from "../math/fixed";
+import { PLANT_RESOURCE_COUNT } from "./resources";
 import { BIOME_COUNT } from "./biomes";
 import { EnvironmentStore } from "./EnvironmentStore";
 import type { FounderRegion } from "./validateWorld";
@@ -28,8 +29,8 @@ export interface EnvironmentSnapshot {
   baseTemperatureCentiC: Int16Array;
   temperatureOffsetCentiC: Int16Array;
   biome: Uint8Array;
-  plantBiomass: Uint16Array;
-  plantCapacity: Uint16Array;
+  resourceBiomass: Uint16Array;
+  resourceCapacity: Uint16Array;
   plantGrowthRemainderQ: Uint16Array;
   founderRegion: FounderRegion;
 }
@@ -50,8 +51,8 @@ export function captureEnvironment(
     baseTemperatureCentiC: new Int16Array(environment.baseTemperatureCentiC),
     temperatureOffsetCentiC: new Int16Array(environment.temperatureOffsetCentiC),
     biome: new Uint8Array(environment.biome),
-    plantBiomass: new Uint16Array(environment.plantBiomass),
-    plantCapacity: new Uint16Array(environment.plantCapacity),
+    resourceBiomass: new Uint16Array(environment.resourceBiomass),
+    resourceCapacity: new Uint16Array(environment.resourceCapacity),
     plantGrowthRemainderQ: new Uint16Array(environment.plantGrowthRemainderQ),
     founderRegion: { ...founderRegion },
   };
@@ -113,9 +114,10 @@ export function restoreEnvironment(
   checkLength(snapshot.baseTemperatureCentiC.length, cells, "baseTemperatureCentiC");
   checkLength(snapshot.temperatureOffsetCentiC.length, cells, "temperatureOffsetCentiC");
   checkLength(snapshot.biome.length, cells, "biome");
-  checkLength(snapshot.plantBiomass.length, cells, "plantBiomass");
-  checkLength(snapshot.plantCapacity.length, cells, "plantCapacity");
-  checkLength(snapshot.plantGrowthRemainderQ.length, cells, "plantGrowthRemainderQ");
+  const resourceCells = cells * PLANT_RESOURCE_COUNT;
+  checkLength(snapshot.resourceBiomass.length, resourceCells, "resourceBiomass");
+  checkLength(snapshot.resourceCapacity.length, resourceCells, "resourceCapacity");
+  checkLength(snapshot.plantGrowthRemainderQ.length, resourceCells, "plantGrowthRemainderQ");
 
   // Value validation (docs/06 §27, docs/03 §27; foundation-gate ADR §5): a
   // payload with correct lengths and impossible contents must fail here, not
@@ -139,13 +141,13 @@ export function restoreEnvironment(
   // overfill allowance (docs/03 §27, interventions.biomassOverfillLimitQ) —
   // a snapshot saved right after an ADD_BIOMASS stroke is a legitimate world.
   const overfillLimitQ = config.interventions.biomassOverfillLimitQ;
-  for (let i = 0; i < snapshot.plantBiomass.length; i += 1) {
-    const biomass = snapshot.plantBiomass[i] as number;
-    const capacity = snapshot.plantCapacity[i] as number;
+  for (let i = 0; i < snapshot.resourceBiomass.length; i += 1) {
+    const biomass = snapshot.resourceBiomass[i] as number;
+    const capacity = snapshot.resourceCapacity[i] as number;
     const ceiling = Math.trunc((capacity * overfillLimitQ) / Q);
     if (biomass > ceiling) {
       throw new EnvironmentSnapshotError(
-        `environment snapshot plantBiomass[${i}] is ${biomass}, above the overfill ceiling ` +
+        `environment snapshot resourceBiomass[${i}] is ${biomass}, above the overfill ceiling ` +
           `${ceiling} for capacity ${capacity}`,
       );
     }
@@ -198,8 +200,8 @@ export function restoreEnvironment(
   environment.baseTemperatureCentiC.set(snapshot.baseTemperatureCentiC);
   environment.temperatureOffsetCentiC.set(snapshot.temperatureOffsetCentiC);
   environment.biome.set(snapshot.biome);
-  environment.plantBiomass.set(snapshot.plantBiomass);
-  environment.plantCapacity.set(snapshot.plantCapacity);
+  environment.resourceBiomass.set(snapshot.resourceBiomass);
+  environment.resourceCapacity.set(snapshot.resourceCapacity);
   environment.plantGrowthRemainderQ.set(snapshot.plantGrowthRemainderQ);
   environment.setGlobalTemperatureOffsetCentiC(snapshot.globalTemperatureOffsetCentiC);
 

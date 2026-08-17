@@ -78,7 +78,7 @@ export function labelLandComponents(environment: EnvironmentStore): {
   const stack = new Int32Array(cellCount);
 
   const isLand = (index: number): boolean =>
-    environment.biome[index] !== Biome.Water && (environment.plantCapacity[index] as number) > 0;
+    environment.biome[index] !== Biome.Water && environment.totalPlantCapacity(index) > 0;
 
   let nextLabel = 1;
   for (let start = 0; start < cellCount; start += 1) {
@@ -140,7 +140,7 @@ export function labelLandComponents(environment: EnvironmentStore): {
  * have the highest capacity, which can be a one-cell islet.
  */
 function blurCapacity(environment: EnvironmentStore, radiusCells: number): Int32Array {
-  const { size, cellCount, plantCapacity } = environment;
+  const { size, cellCount } = environment;
   const horizontal = new Int32Array(cellCount);
   const blurred = new Int32Array(cellCount);
 
@@ -148,7 +148,9 @@ function blurCapacity(environment: EnvironmentStore, radiusCells: number): Int32
     for (let gx = 0; gx < size; gx += 1) {
       let sum = 0;
       for (let dx = -radiusCells; dx <= radiusCells; dx += 1) {
-        sum += plantCapacity[environment.cellIndex(gx + dx, gy)] as number;
+        // Total across channels: the founder region is the richest ground for
+        // making a living, and a living can be made from any channel (M17).
+        sum += environment.totalPlantCapacity(environment.cellIndex(gx + dx, gy));
       }
       horizontal[gy * size + gx] = sum;
     }

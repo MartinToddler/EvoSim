@@ -1,30 +1,32 @@
 /**
- * Fixed v0.1 neural topology (docs/04 §10, docs/08 §18, docs/10 §10-11).
+ * Feed-forward neural layout (docs/04 §10, docs/08 §18, docs/10 §10-11).
  *
- * 20 inputs → 12 hidden → 5 outputs, plus 20 → 5 skip connections:
+ * 32 inputs → 12 hidden → 5 outputs, plus 32 → 5 skip connections:
  *
- *   input→hidden   20 × 12 = 240 weights at IH_OFFSET
+ *   input→hidden   32 × 12 = 384 weights at IH_OFFSET
  *   hidden→output  12 ×  5 =  60 weights at HO_OFFSET
- *   input→output   20 ×  5 = 100 weights at IO_OFFSET
- *   total                    400 Int16 weights per organism
+ *   input→output   32 ×  5 = 160 weights at IO_OFFSET
+ *   total                    604 Int16 weights per organism
  *
- * The topology is fixed for MVP; evolving topology (NEAT) is explicitly out of
- * scope. The skip connections are what make a viable founder reflex network
- * expressible without any hidden units, so hidden weights can start at zero and
- * be discovered by mutation later (docs/04 §17).
+ * M16 makes which of these are *active* inherited; this file still fixes the
+ * ceiling, and the ceiling is a compile-time constant. M17 raised the input
+ * count from 20 to 32: the single "plant" reading became five per-channel
+ * readings and the single gradient pair became five pairs, because a world with
+ * five plant channels that an organism can only perceive as one number is a
+ * world where the channels cannot be told apart by anything that has to act.
  *
  * These constants are a storage and hashing contract: changing a count, an
  * offset or the meaning of an input index changes every brain in every save.
  */
 
-export const BRAIN_INPUT_COUNT = 20;
+export const BRAIN_INPUT_COUNT = 32;
 export const BRAIN_HIDDEN_COUNT = 12;
 export const BRAIN_OUTPUT_COUNT = 5;
 
 export const IH_OFFSET = 0;
-export const HO_OFFSET = IH_OFFSET + BRAIN_INPUT_COUNT * BRAIN_HIDDEN_COUNT; // 240
-export const IO_OFFSET = HO_OFFSET + BRAIN_HIDDEN_COUNT * BRAIN_OUTPUT_COUNT; // 300
-export const BRAIN_WEIGHT_COUNT = IO_OFFSET + BRAIN_INPUT_COUNT * BRAIN_OUTPUT_COUNT; // 400
+export const HO_OFFSET = IH_OFFSET + BRAIN_INPUT_COUNT * BRAIN_HIDDEN_COUNT; // 384
+export const IO_OFFSET = HO_OFFSET + BRAIN_HIDDEN_COUNT * BRAIN_OUTPUT_COUNT; // 444
+export const BRAIN_WEIGHT_COUNT = IO_OFFSET + BRAIN_INPUT_COUNT * BRAIN_OUTPUT_COUNT; // 604
 
 /**
  * Sensor input indices (docs/08 §18).
@@ -43,38 +45,52 @@ export const BrainInput = {
   Health: 2,
   /** -Q newborn, +Q fully developed. */
   Development: 3,
-  /** Plant biomass in the current cell relative to its capacity. */
-  LocalPlant: 4,
-  /** Plant gradient projected onto the heading. */
-  PlantGradientForward: 5,
-  /** Plant gradient projected onto the right-hand basis; positive = food to the right. */
-  PlantGradientLateral: 6,
+  /**
+   * Standing biomass of each channel in the current cell, against that
+   * channel's own local capacity (M17). Five consecutive inputs in `Resource`
+   * order, so `LocalResource + resource` is the channel's input.
+   *
+   * Five plain readings, deliberately. There is no "best food here" input and
+   * no ranking of any kind: the engine reports what is present and the network
+   * decides what that is worth to it, which is the whole of docs/11 §M17's
+   * sensor rule. A ranked input would put the engine's opinion of an organism's
+   * diet inside the organism's own perception, which is ADR 0027's forbidden
+   * direction of causation wearing a sensor's clothes.
+   */
+  LocalResource: 4,
+  /**
+   * Each channel's gradient projected onto the heading, in `Resource` order
+   * (M17). `ResourceGradientForward + resource`.
+   */
+  ResourceGradientForward: 9,
+  /** Each channel's gradient projected to the right; positive = food to the right. */
+  ResourceGradientLateral: 14,
   /** -Q no carcass in range, +Q carcass at contact. */
-  CarcassProximity: 7,
+  CarcassProximity: 19,
   /** Carcass direction projected onto the heading; 0 when absent. */
-  CarcassForward: 8,
+  CarcassForward: 20,
   /** Carcass direction projected to the right; 0 when absent. */
-  CarcassLateral: 9,
+  CarcassLateral: 21,
   /** -Q no visible creature, +Q creature at contact. */
-  CreatureProximity: 10,
+  CreatureProximity: 22,
   /** Visible creature direction projected onto the heading; 0 when absent. */
-  CreatureForward: 11,
+  CreatureForward: 23,
   /** Visible creature direction projected to the right; 0 when absent. */
-  CreatureLateral: 12,
+  CreatureLateral: 24,
   /** -Q much smaller than me, +Q at least twice my radius. */
-  CreatureRelativeSize: 13,
+  CreatureRelativeSize: 25,
   /** Signed circular hue difference to the visible creature. */
-  CreatureHueDifference: 14,
+  CreatureHueDifference: 26,
   /** +Q inside thermal tolerance, -Q under maximum thermal stress. */
-  ThermalComfort: 15,
+  ThermalComfort: 27,
   /** -Q isolated, +Q crowded. */
-  Crowding: 16,
+  Crowding: 28,
   /** 0 safe, +Q water or world edge directly ahead. */
-  TerrainDangerForward: 17,
+  TerrainDangerForward: 29,
   /** Positive = more danger on the LEFT, negative = more on the right. */
-  TerrainDangerLateral: 18,
+  TerrainDangerLateral: 30,
   /** Deterministic oscillator plus stateless hash noise. */
-  InternalSignal: 19,
+  InternalSignal: 31,
 } as const;
 
 export type BrainInput = (typeof BrainInput)[keyof typeof BrainInput];
@@ -101,9 +117,21 @@ export const BRAIN_INPUT_NAMES: readonly string[] = [
   "energy",
   "health",
   "development",
-  "localPlant",
-  "plantGradientForward",
-  "plantGradientLateral",
+  "localFoliage",
+  "localBrowse",
+  "localFruit",
+  "localRoots",
+  "localDefended",
+  "foliageGradientForward",
+  "browseGradientForward",
+  "fruitGradientForward",
+  "rootsGradientForward",
+  "defendedGradientForward",
+  "foliageGradientLateral",
+  "browseGradientLateral",
+  "fruitGradientLateral",
+  "rootsGradientLateral",
+  "defendedGradientLateral",
   "carcassProximity",
   "carcassForward",
   "carcassLateral",

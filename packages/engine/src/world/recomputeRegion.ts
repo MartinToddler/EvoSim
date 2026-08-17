@@ -1,9 +1,10 @@
 import type { DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
 import { clamp } from "../math/fixed";
+import { PLANT_RESOURCE_COUNT } from "./resources";
 import { Biome, classifyBiome } from "./biomes";
 import type { EnvironmentStore } from "./EnvironmentStore";
-import { computePlantCapacity } from "./plants";
+import { computeResourceCapacity } from "./plants";
 
 /**
  * Recompute the derived environment fields of a cell region after a persistent
@@ -60,19 +61,27 @@ export function recomputeDerivedRegion(
       );
       environment.biome[i] = biome;
 
-      const capacity = computePlantCapacity(
-        config,
-        biome,
-        environment.fertilityQ[i] as number,
-        environment.getMoistureQ(i),
-        environment.getTemperatureCentiC(i),
-      );
-      environment.plantCapacity[i] = capacity;
-      if ((environment.plantBiomass[i] as number) > capacity) {
-        environment.plantBiomass[i] = capacity;
-        // A cell clamped to (or below) capacity has no growth fraction to carry.
-        if (capacity === 0) {
-          environment.plantGrowthRemainderQ[i] = 0;
+      // Every channel, not just one: a terrain edit that turns forest into
+      // desert has to move all five capacities, or the channels the edit should
+      // have destroyed keep standing on ground that no longer supports them.
+      for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+        const flat = resource * environment.cellCount + i;
+        const capacity = computeResourceCapacity(
+          config,
+          resource,
+          biome,
+          environment.fertilityQ[i] as number,
+          environment.getMoistureQ(i),
+          environment.getTemperatureCentiC(i),
+          environment.elevationQ[i] as number,
+        );
+        environment.resourceCapacity[flat] = capacity;
+        if ((environment.resourceBiomass[flat] as number) > capacity) {
+          environment.resourceBiomass[flat] = capacity;
+          // A cell clamped to (or below) capacity has no growth fraction to carry.
+          if (capacity === 0) {
+            environment.plantGrowthRemainderQ[flat] = 0;
+          }
         }
       }
       environment.passable[i] = biome === Biome.Water ? 0 : 1;

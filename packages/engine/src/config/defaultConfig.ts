@@ -111,19 +111,119 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     // cap with headroom while keeping 12/12 survival and universal
     // scavenging. docs/08 §24: tuned through named experiments, recorded
     // here and in the changelog.
-    baseCapacityByBiome: [0, 21600, 31200, 4200, 6000, 2400],
-    growthRateQByBiome: [0, 49, 37, 12, 12, 6], // ~.012 .009 .003 .003 .0015
-    plantSeedBankRegenUnits: 4,
-    plantMinRegenThreshold: 16,
-    plantEnergyPerBiomass: 30,
+    // M17 (docs/11 §M17, ADR 0031). Five channels. Foliage IS the Milestone
+    // 0-16 field, unchanged in every number, so the ecology those milestones
+    // calibrated survives the split intact and the four new channels are
+    // additions on top of it rather than a redistribution of it.
+    //
+    // Each of the other four is placed where foliage is weak, which is what
+    // makes them niches rather than decoration: browse in the wet forest
+    // foliage already likes but at twice the standing mass and a sixth of the
+    // regrowth, fruit in a narrow warm/wet band, roots in the dry and infertile
+    // ground where foliage capacity collapses, and defended growth in the
+    // hot/dry margin where almost nothing else stands.
+    resources: [
+      {
+        // Foliage — the Milestone 0-16 field, number for number. Its capacity
+        // table was tuned through the named twelve-seed experiments recorded in
+        // docs/08 §24 and the changelog; changing it here would silently retune
+        // the whole project, so it is copied rather than reconsidered.
+        baseCapacityByBiome: [0, 21600, 31200, 4200, 6000, 2400],
+        growthRateQByBiome: [0, 49, 37, 12, 12, 6], // ~.012 .009 .003 .003 .0015
+        seedBankRegenUnits: 4,
+        minRegenThreshold: 16,
+        energyPerUnit: 30,
+        optimumTemperatureCentiC: 1800, // 18 °C
+        temperatureToleranceCentiC: 2200, // roughly -4 °C … 40 °C
+        minMoistureQ: 205, // 0.05
+        fullMoistureQ: 2458, // 0.60
+        fertilityWeightQ: 4096, // 1.00 — exactly as fertility-hungry as before
+        optimumElevationQ: 2048,
+        elevationToleranceQ: 4096, // indifferent to terrain
+        toxicityQ: 0,
+      },
+      {
+        // Browse — tough vegetation. Where it grows it out-masses foliage two
+        // to one, and it comes back roughly six times slower, so a browsed
+        // stand is a standing store rather than a renewing one. Forest and
+        // grassland only: this is woody growth.
+        baseCapacityByBiome: [0, 18000, 46000, 1200, 3000, 1800],
+        growthRateQByBiome: [0, 8, 7, 2, 2, 1],
+        seedBankRegenUnits: 2,
+        minRegenThreshold: 24,
+        energyPerUnit: 34,
+        optimumTemperatureCentiC: 1600,
+        temperatureToleranceCentiC: 2600, // tolerates cold better than foliage
+        minMoistureQ: 820, // 0.20 — needs real moisture
+        fullMoistureQ: 2867, // 0.70
+        fertilityWeightQ: 2867, // 0.70
+        optimumElevationQ: 2048,
+        elevationToleranceQ: 4096,
+        toxicityQ: 0,
+      },
+      {
+        // Fruit — concentrated and slow. The highest energy per unit of any
+        // plant channel against the smallest capacity and the slowest regrowth,
+        // and a narrow warm/wet window that puts it in a few places rather than
+        // everywhere. "Intermittent" is the consequence: a stripped patch is
+        // gone for thousands of ticks, so the living is made by finding the
+        // next one rather than by waiting at this one.
+        baseCapacityByBiome: [0, 5200, 9000, 700, 500, 400],
+        growthRateQByBiome: [0, 3, 3, 1, 1, 1],
+        seedBankRegenUnits: 1,
+        minRegenThreshold: 8,
+        energyPerUnit: 96,
+        optimumTemperatureCentiC: 2300, // 23 °C — warmer than foliage likes
+        temperatureToleranceCentiC: 900, // and much fussier about it
+        minMoistureQ: 1638, // 0.40
+        fullMoistureQ: 3277, // 0.80
+        fertilityWeightQ: 4096,
+        optimumElevationQ: 1843, // lowland
+        elevationToleranceQ: 1638,
+        toxicityQ: 0,
+      },
+      {
+        // Roots — persistent. A high regeneration floor against a slow rate is
+        // what "always there in small amounts" has to mean mechanically: this
+        // is the channel that is never quite absent, including where every
+        // other channel has been grazed flat. Nearly indifferent to fertility
+        // and happy in dry ground, so it holds the desert.
+        baseCapacityByBiome: [0, 9000, 8000, 7200, 8400, 4200],
+        growthRateQByBiome: [0, 6, 5, 5, 5, 3],
+        seedBankRegenUnits: 12, // the persistence, in one number
+        minRegenThreshold: 260,
+        energyPerUnit: 42,
+        optimumTemperatureCentiC: 1500,
+        temperatureToleranceCentiC: 3200, // very wide: underground is buffered
+        minMoistureQ: 0, // no moisture floor at all
+        fullMoistureQ: 1229, // 0.30 — satisfied by very little
+        fertilityWeightQ: 1229, // 0.30 — grows in poor ground
+        optimumElevationQ: 2048,
+        elevationToleranceQ: 4096,
+        toxicityQ: 0,
+      },
+      {
+        // Defended — the richest plant channel, and the only one that costs
+        // health to eat. Placed in the hot dry margin where the others are
+        // weakest, so the trade it offers is real: the ground nobody else can
+        // use, in exchange for damage that only a resistant lineage can absorb.
+        baseCapacityByBiome: [0, 7000, 6000, 11000, 4000, 5200],
+        growthRateQByBiome: [0, 10, 9, 12, 6, 7],
+        seedBankRegenUnits: 3,
+        minRegenThreshold: 20,
+        energyPerUnit: 78,
+        optimumTemperatureCentiC: 2600, // 26 °C — the hot end
+        temperatureToleranceCentiC: 2000,
+        minMoistureQ: 0,
+        fullMoistureQ: 1024, // 0.25 — thrives dry
+        fertilityWeightQ: 819, // 0.20
+        optimumElevationQ: 2048,
+        elevationToleranceQ: 4096,
+        toxicityQ: 246, // 0.06 health per unit at zero resistance
+      },
+    ],
     meatEnergyPerUnit: 45,
     initialBiomassFractionQ: 2048, // 0.50
-    capacitySuitability: {
-      optimumTemperatureCentiC: 1800, // 18 °C
-      temperatureToleranceCentiC: 2200, // plants grow roughly -4 °C … 40 °C
-      minMoistureQ: 205, // 0.05
-      fullMoistureQ: 2458, // 0.60
-    },
   },
 
   organism: {
@@ -231,6 +331,10 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
 
       thermalSlendernessGainQ: 1229, // 0.30
       collisionSilhouetteGainQ: 1229, // 0.30
+      // M17. The strongest single-locus factor in the block, deliberately: a
+      // fully limbed body digs about 2.4x as well as the founder, which has to
+      // be enough to make the roots channel worth the limb bill it is paid for.
+      digLimbGainQ: 5734, // 1.40
 
       offspringBulkGainQ: 819, // 0.20
       offspringArmorGainQ: 1229, // 0.30
@@ -301,6 +405,16 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       armorMaintCoeffQ: 61, // 0.015
       toleranceMaintCoeffQ: 20, // 0.005
       longevityMaintCoeffQ: 12, // 0.003
+      // M17. Calibrated against the founder's own basal coefficient rather
+      // than picked: the founder's mass coefficient is ~0.09, so raising every
+      // one of the five non-foliage loci from the founder's 0.50 to the maximum
+      // adds 5 x 0.50 = 2.5 of investment and costs 2.5 x 0.020 = 0.05 — a bit
+      // over half the founder's whole basal coefficient again, for a body that
+      // can eat anything well. Real, and payable where the breadth is worth it.
+      digestiveMaintCoeffQ: 82, // 0.020
+      // Squared, like attack and armor, so partial resistance is cheap and full
+      // resistance is not. At maximum it adds 0.030 against a 0.09 baseline.
+      toxinResistMaintCoeffQ: 123, // 0.030
       minimumBasalPerTick: 1,
     },
 

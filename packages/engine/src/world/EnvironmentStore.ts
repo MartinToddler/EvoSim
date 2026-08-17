@@ -2,6 +2,7 @@ import { assert } from "@eon/shared";
 import { HASH_TAG, type StateHash } from "../math/hash";
 import { POS_SCALE, Q, clamp } from "../math/fixed";
 import { Biome } from "./biomes";
+import { PLANT_RESOURCE_COUNT } from "./resources";
 
 /**
  * Environment state as Structure-of-Arrays (docs/03 §14, docs/10 §5).
@@ -30,8 +31,19 @@ export class EnvironmentStore {
   readonly baseTemperatureCentiC: Int16Array;
   readonly temperatureOffsetCentiC: Int16Array;
   readonly biome: Uint8Array;
-  readonly plantBiomass: Uint16Array;
-  readonly plantCapacity: Uint16Array;
+  /**
+   * Standing biomass of every plant channel, `PLANT_RESOURCE_COUNT * cellCount`
+   * in resource-major order (M17). Index with {@link resourceCell}.
+   *
+   * One field held one channel through Milestone 16 and the name `plantBiomass`
+   * described it exactly. It is gone rather than kept as an alias for channel
+   * 0: an alias would let a caller mean "the plants" and silently get one
+   * fifth of them, which is the kind of quiet wrong answer a rename makes
+   * impossible. Callers that want the whole cell ask {@link totalPlantBiomass}.
+   */
+  readonly resourceBiomass: Uint16Array;
+  /** Carrying capacity of every plant channel, same layout as the biomass. */
+  readonly resourceCapacity: Uint16Array;
   /**
    * Carried fractional growth per cell, in Q units (always < Q).
    *
@@ -79,9 +91,9 @@ export class EnvironmentStore {
     this.baseTemperatureCentiC = new Int16Array(this.cellCount);
     this.temperatureOffsetCentiC = new Int16Array(this.cellCount);
     this.biome = new Uint8Array(this.cellCount);
-    this.plantBiomass = new Uint16Array(this.cellCount);
-    this.plantCapacity = new Uint16Array(this.cellCount);
-    this.plantGrowthRemainderQ = new Uint16Array(this.cellCount);
+    this.resourceBiomass = new Uint16Array(PLANT_RESOURCE_COUNT * this.cellCount);
+    this.resourceCapacity = new Uint16Array(PLANT_RESOURCE_COUNT * this.cellCount);
+    this.plantGrowthRemainderQ = new Uint16Array(PLANT_RESOURCE_COUNT * this.cellCount);
 
     this.passable = new Uint8Array(this.cellCount);
 
@@ -153,8 +165,44 @@ export class EnvironmentStore {
     return clamp(value, 0, Q);
   }
 
-  getPlantBiomass(index: number): number {
-    return this.plantBiomass[index] as number;
+  /** Flat index of one channel in one cell, for the resource-major arrays. */
+  resourceCell(resource: number, index: number): number {
+    return resource * this.cellCount + index;
+  }
+
+  /** Standing biomass of one channel in one cell. */
+  getResourceBiomass(resource: number, index: number): number {
+    return this.resourceBiomass[resource * this.cellCount + index] as number;
+  }
+
+  /** Carrying capacity of one channel in one cell. */
+  getResourceCapacity(resource: number, index: number): number {
+    return this.resourceCapacity[resource * this.cellCount + index] as number;
+  }
+
+  /**
+   * Standing biomass summed over every plant channel in one cell.
+   *
+   * For statistics, the renderer and the resource-agnostic sensors. It sums
+   * rather than ranking, which is the whole point: a total treats every channel
+   * alike, where anything that weighted them would be the engine deciding which
+   * food matters (docs/11 §M17, "the brain does the ranking").
+   */
+  totalPlantBiomass(index: number): number {
+    let total = 0;
+    for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+      total += this.resourceBiomass[resource * this.cellCount + index] as number;
+    }
+    return total;
+  }
+
+  /** Carrying capacity summed over every plant channel in one cell. */
+  totalPlantCapacity(index: number): number {
+    let total = 0;
+    for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+      total += this.resourceCapacity[resource * this.cellCount + index] as number;
+    }
+    return total;
   }
 
   /**
@@ -187,8 +235,8 @@ export class EnvironmentStore {
     hasher.array(HASH_TAG.i16, this.baseTemperatureCentiC);
     hasher.array(HASH_TAG.i16, this.temperatureOffsetCentiC);
     hasher.array(HASH_TAG.u8, this.biome);
-    hasher.array(HASH_TAG.u16, this.plantBiomass);
-    hasher.array(HASH_TAG.u16, this.plantCapacity);
+    hasher.array(HASH_TAG.u16, this.resourceBiomass);
+    hasher.array(HASH_TAG.u16, this.resourceCapacity);
     hasher.array(HASH_TAG.u16, this.plantGrowthRemainderQ);
   }
 }

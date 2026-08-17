@@ -6,7 +6,8 @@ import type { EngineContext } from "../EngineContext";
 import { HUE_DEGREES } from "../genetics/genes";
 import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { thermalStressQ } from "../organisms/thermal";
-import { plantGradientXQAt, plantGradientYQAt } from "../world/plants";
+import { resourceGradientXQAt, resourceGradientYQAt } from "../world/plants";
+import { PLANT_RESOURCE_COUNT } from "../world/resources";
 import {
   type NearestCreature,
   type NearestTarget,
@@ -168,19 +169,25 @@ export function senseAll(ctx: EngineContext, tick: number): void {
 
     // --- Plants (a field, never individual objects — docs/03 §22) ----------
     const cell = environment.cellIndexFromPosition(xPos, yPos);
-    const capacity = environment.plantCapacity[cell] as number;
-    sensors[base + BrainInput.LocalPlant] = toSignedRange(
-      environment.plantBiomass[cell] as number,
-      capacity,
-    );
-    const gradX = plantGradientXQAt(environment, cell);
-    const gradY = plantGradientYQAt(environment, cell);
-    sensors[base + BrainInput.PlantGradientForward] = clampSignedQ(
-      Math.trunc((gradX * forwardX + gradY * forwardY) / TRIG_SCALE),
-    );
-    sensors[base + BrainInput.PlantGradientLateral] = clampSignedQ(
-      Math.trunc((gradX * rightX + gradY * rightY) / TRIG_SCALE),
-    );
+    // One reading and one gradient pair per channel (M17). Each is normalized
+    // against ITS OWN local capacity, so "this cell is full of roots" means the
+    // same thing in root country as in forest — an organism comparing channels
+    // is comparing like with like, and the comparison is the network's to make.
+    for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+      const flat = resource * environment.cellCount + cell;
+      sensors[base + BrainInput.LocalResource + resource] = toSignedRange(
+        environment.resourceBiomass[flat] as number,
+        environment.resourceCapacity[flat] as number,
+      );
+      const gradX = resourceGradientXQAt(environment, resource, cell);
+      const gradY = resourceGradientYQAt(environment, resource, cell);
+      sensors[base + BrainInput.ResourceGradientForward + resource] = clampSignedQ(
+        Math.trunc((gradX * forwardX + gradY * forwardY) / TRIG_SCALE),
+      );
+      sensors[base + BrainInput.ResourceGradientLateral + resource] = clampSignedQ(
+        Math.trunc((gradX * rightX + gradY * rightY) / TRIG_SCALE),
+      );
+    }
 
     // --- Carcasses (docs/04 §13, docs/08 §18, task F02) --------------------
     // Absence reads -Q, the same as a creature out of sight, and NOT 0: an

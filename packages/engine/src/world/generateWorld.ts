@@ -299,7 +299,7 @@ function seedInitialBiomass(
   config: DeepReadonly<SimulationConfig>,
 ): void {
   const fractionQ = config.plants.initialBiomassFractionQ;
-  for (let i = 0; i < environment.cellCount; i += 1) {
-    environment.plantBiomass[i] = qmul(environment.plantCapacity[i] as number, fractionQ);
+  for (let i = 0; i < environment.resourceCapacity.length; i += 1) {
+    environment.resourceBiomass[i] = qmul(environment.resourceCapacity[i] as number, fractionQ);
   }
 }

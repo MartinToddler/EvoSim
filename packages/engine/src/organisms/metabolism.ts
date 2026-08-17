@@ -99,7 +99,12 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
     // zero: `lastDamageQ` means "damage taken this tick", and an organism can be
     // bitten and starve on the same tick. Overwriting here would make the field
     // silently report only whichever source happened to run last.
-    let damageThisTick = scratch.combatDamageQ[slot] as number;
+    // M17 adds a second source on the same footing: an organism can be bitten,
+    // poisoned by what it ate, and starve, all on one tick, and the health
+    // arithmetic has to see the sum. The two are kept separate in scratch so
+    // the death cause stays truthful (a toxin death is not a predation death).
+    let damageThisTick =
+      (scratch.combatDamageQ[slot] as number) + (scratch.toxinDamageQ[slot] as number);
 
     const cell = environment.cellIndexFromPosition(
       organisms.x[slot] as number,

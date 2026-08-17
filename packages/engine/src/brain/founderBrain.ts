@@ -1,4 +1,5 @@
 import { clamp } from "../math/fixed";
+import { Resource } from "../world/resources";
 import { BrainInput, BrainOutput, ioWeightIndex } from "./BrainLayout";
 import { NEURAL_WEIGHT_COUNT } from "./NeuralTopology";
 
@@ -29,12 +30,24 @@ interface FounderSkipWeight {
   hundredths: number;
 }
 
+/**
+ * M17 note: the founder wires only the FOLIAGE channel, because foliage is the
+ * field it has always eaten and wiring the other four would be handing it four
+ * evolved competencies it never earned. Every other channel's inputs exist and
+ * read correctly; their weights are zero, so the founder is blind to them in
+ * the only sense that matters — it does not act on them — and one mutation on
+ * an ordinary weight is all it takes to start.
+ */
 export const FOUNDER_SKIP_WEIGHTS: readonly FounderSkipWeight[] = [
   // Throttle: keep moving, move more when hungry, drift toward food ahead,
   // slow down in front of danger.
   { output: BrainOutput.Throttle, input: BrainInput.Bias, hundredths: 30 },
   { output: BrainOutput.Throttle, input: BrainInput.Energy, hundredths: -40 },
-  { output: BrainOutput.Throttle, input: BrainInput.PlantGradientForward, hundredths: 20 },
+  {
+    output: BrainOutput.Throttle,
+    input: BrainInput.ResourceGradientForward + Resource.Foliage,
+    hundredths: 20,
+  },
   { output: BrainOutput.Throttle, input: BrainInput.TerrainDangerForward, hundredths: -50 },
 
   // Turn: follow the lateral food gradient, steer away from the more dangerous
@@ -42,7 +55,11 @@ export const FOUNDER_SKIP_WEIGHTS: readonly FounderSkipWeight[] = [
   // both lateral inputs are positive when the useful direction is right
   // (food) or when danger is on the left, so a positive weight is correct for
   // both (docs/08 §18).
-  { output: BrainOutput.Turn, input: BrainInput.PlantGradientLateral, hundredths: 150 },
+  {
+    output: BrainOutput.Turn,
+    input: BrainInput.ResourceGradientLateral + Resource.Foliage,
+    hundredths: 150,
+  },
   { output: BrainOutput.Turn, input: BrainInput.TerrainDangerLateral, hundredths: 180 },
   { output: BrainOutput.Turn, input: BrainInput.InternalSignal, hundredths: 25 },
 
@@ -72,7 +89,7 @@ export const FOUNDER_SKIP_WEIGHTS: readonly FounderSkipWeight[] = [
   // move it in either direction, and every descendant is bound by the same
   // engine feeding rules.
   { output: BrainOutput.Eat, input: BrainInput.Bias, hundredths: 110 },
-  { output: BrainOutput.Eat, input: BrainInput.LocalPlant, hundredths: 120 },
+  { output: BrainOutput.Eat, input: BrainInput.LocalResource + Resource.Foliage, hundredths: 120 },
   { output: BrainOutput.Eat, input: BrainInput.CarcassProximity, hundredths: 40 },
 
   // Attack: a negative bias only, so attacking is rare until mutation finds a

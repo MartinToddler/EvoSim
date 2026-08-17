@@ -1,5 +1,8 @@
+import { assert } from "@eon/shared";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
+import type { ResourceProfile, SimulationConfig } from "../config/SimulationConfig";
+import { Resource } from "../world/resources";
 import { Gene, geneToQ, hueDegrees } from "../genetics/genes";
 import { engineInternals } from "../internal";
 import { Q, qmul } from "../math/fixed";
@@ -82,6 +85,20 @@ import type { SimulationEngine } from "../SimulationEngine";
  * the experiment silently becomes a different experiment.
  */
 
+/**
+ * The foliage channel of a scenario config, non-optional.
+ *
+ * M17 made `plants.resources` an array, and these scenarios were written when
+ * there was one plant field. They still contest exactly that field — the
+ * milestone that owns them calibrated their numbers against it — so they reach
+ * for channel 0 by name rather than silently spreading across five.
+ */
+function foliage(config: SimulationConfig): ResourceProfile {
+  const profile = config.plants.resources[Resource.Foliage];
+  assert(profile !== undefined, "scenario config is missing the foliage channel");
+  return profile;
+}
+
 export const SELECTION_GRID_SIZE = 128;
 
 /**
@@ -127,7 +144,7 @@ function scenarioBase(): ReturnType<typeof cloneConfig> {
     DEFAULT_CONFIG.world.validity.minTotalPlantCapacity / 16,
   );
   // Pinned so a later capacity retune cannot move these experiments.
-  config.plants.baseCapacityByBiome = [0, 21600, 31200, 4200, 6000, 2400];
+  foliage(config).baseCapacityByBiome = [0, 21600, 31200, 4200, 6000, 2400];
 
   // The life history is deliberately NOT compressed. Shortening maturity and
   // lifespan looks like it only speeds the clock up, and it does not: growth to
@@ -146,11 +163,11 @@ function scenarioBase(): ReturnType<typeof cloneConfig> {
  */
 export const TURF_CONFIG: ReadonlySimulationConfig = (() => {
   const config = scenarioBase();
-  config.plants.baseCapacityByBiome = [0, 5400, 5400, 5400, 5400, 5400];
+  foliage(config).baseCapacityByBiome = [0, 5400, 5400, 5400, 5400, 5400];
   // Thin, but it grows back almost as fast as it is eaten, so a cell an
   // organism has just grazed is worth grazing again. Standing still is a
   // viable living here, and what it costs to stand still is upkeep.
-  config.plants.growthRateQByBiome = [0, 700, 700, 700, 700, 700];
+  foliage(config).growthRateQByBiome = [0, 700, 700, 700, 700, 700];
   return config;
 })();
 
@@ -162,13 +179,13 @@ export const TURF_CONFIG: ReadonlySimulationConfig = (() => {
  */
 export const PATCHWORK_CONFIG: ReadonlySimulationConfig = (() => {
   const config = scenarioBase();
-  config.plants.baseCapacityByBiome = [0, 27000, 27000, 0, 0, 0];
+  foliage(config).baseCapacityByBiome = [0, 27000, 27000, 0, 0, 0];
   // Rich but slow: a grazed patch stays grazed for a long time, so the living
   // is made by reaching the next one.
-  config.plants.growthRateQByBiome = [0, 12, 12, 0, 0, 0];
+  foliage(config).growthRateQByBiome = [0, 12, 12, 0, 0, 0];
   // Barren ground stays barren: without this the seed bank refills every dead
   // cell to the regeneration floor and the gaps stop being gaps.
-  config.plants.plantSeedBankRegenUnits = 0;
+  foliage(config).seedBankRegenUnits = 0;
   return config;
 })();
 

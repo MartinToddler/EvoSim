@@ -3,6 +3,7 @@ import type { SimulationConfig } from "../config/SimulationConfig";
 import { Q, clamp, clampQ, qmul } from "../math/fixed";
 import type { EnvironmentStore } from "./EnvironmentStore";
 import { Biome } from "./biomes";
+import { PLANT_RESOURCE_COUNT } from "./resources";
 
 /**
  * Plants as a biomass field (docs/03 §§20-22, task C06/C07).
@@ -51,69 +52,107 @@ export function moistureSuitabilityQ(moistureQ: number, minQ: number, fullQ: num
 }
 
 /**
- * Carrying capacity of one cell (docs/03 §20):
+ * Carrying capacity of one channel in one cell (docs/03 §20 as amended by M17):
  * biome base × fertility × moisture suitability × temperature suitability.
  *
- * Water always yields 0 while aquatic life is out of MVP scope.
+ * The shape is what it always was. What M17 changes is that every factor is now
+ * read from the **channel's own** profile, so the same cell can be excellent
+ * foliage ground and hopeless for roots, or the reverse. That is the whole
+ * mechanism behind "different places offer different livings" (docs/11 §M17):
+ * no code decides that a place is a niche, it simply happens that the five
+ * suitability curves peak in different parts of the world.
+ *
+ * Fertility enters through a per-channel exponent-free lever instead of being
+ * applied identically: `fertilityWeightQ` mixes the cell's fertility with 1, so
+ * a channel with weight 0 ignores fertility entirely and one with weight Q is
+ * as fertility-hungry as the Milestone 0–16 field was. Roots and defended
+ * growth use low weights, which is what lets them hold the ground that nothing
+ * else will grow on.
+ *
+ * Water always yields 0 in every channel while aquatic life is out of scope.
  */
-export function computePlantCapacity(
+export function computeResourceCapacity(
   config: DeepReadonly<SimulationConfig>,
+  resource: number,
   biome: number,
   fertilityQ: number,
   moistureQ: number,
   temperatureCentiC: number,
+  elevationQ: number,
 ): number {
-  const base = config.plants.baseCapacityByBiome[biome] ?? 0;
+  const profile = config.plants.resources[resource];
+  if (profile === undefined) {
+    return 0;
+  }
+  const base = profile.baseCapacityByBiome[biome] ?? 0;
   if (base === 0) {
     return 0;
   }
-  const suitability = config.plants.capacitySuitability;
   const tempQ = temperatureSuitabilityQ(
     temperatureCentiC,
-    suitability.optimumTemperatureCentiC,
-    suitability.temperatureToleranceCentiC,
+    profile.optimumTemperatureCentiC,
+    profile.temperatureToleranceCentiC,
   );
   if (tempQ === 0) {
     return 0;
   }
-  const moistQ = moistureSuitabilityQ(
-    moistureQ,
-    suitability.minMoistureQ,
-    suitability.fullMoistureQ,
-  );
+  const moistQ = moistureSuitabilityQ(moistureQ, profile.minMoistureQ, profile.fullMoistureQ);
   if (moistQ === 0) {
     return 0;
   }
 
-  let capacity = qmul(base, clampQ(fertilityQ));
+  // Fertility mixed toward 1 by the channel's own weight, so a channel can be
+  // indifferent to it. `Q - weight + weight * fertility` in Q arithmetic.
+  const weightQ = clampQ(profile.fertilityWeightQ);
+  const fertilityMixQ = Q - weightQ + qmul(weightQ, clampQ(fertilityQ));
+
+  // Elevation preference, same triangular shape as temperature: a channel with
+  // full tolerance is flat and pays nothing for terrain.
+  const elevQ = temperatureSuitabilityQ(
+    clampQ(elevationQ),
+    profile.optimumElevationQ,
+    profile.elevationToleranceQ,
+  );
+  if (elevQ === 0) {
+    return 0;
+  }
+
+  let capacity = qmul(base, fertilityMixQ);
   capacity = qmul(capacity, moistQ);
   capacity = qmul(capacity, tempQ);
+  capacity = qmul(capacity, elevQ);
   return clamp(capacity, 0, MAX_BIOMASS);
 }
 
-/** Recompute capacity for every cell. Used after generation and terrain edits. */
+/** Recompute capacity for every channel of every cell. */
 export function recomputeAllPlantCapacities(
   environment: EnvironmentStore,
   config: DeepReadonly<SimulationConfig>,
 ): void {
-  for (let i = 0; i < environment.cellCount; i += 1) {
-    const capacity = computePlantCapacity(
-      config,
-      environment.biome[i] as number,
-      environment.fertilityQ[i] as number,
-      environment.getMoistureQ(i),
-      environment.getTemperatureCentiC(i),
-    );
-    environment.plantCapacity[i] = capacity;
-    // Biomass can never exceed a shrunken capacity (docs/03 §27 invariant).
-    if ((environment.plantBiomass[i] as number) > capacity) {
-      environment.plantBiomass[i] = capacity;
+  const { cellCount } = environment;
+  for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+    const offset = resource * cellCount;
+    for (let i = 0; i < cellCount; i += 1) {
+      const capacity = computeResourceCapacity(
+        config,
+        resource,
+        environment.biome[i] as number,
+        environment.fertilityQ[i] as number,
+        environment.getMoistureQ(i),
+        environment.getTemperatureCentiC(i),
+        environment.elevationQ[i] as number,
+      );
+      environment.resourceCapacity[offset + i] = capacity;
+      // Biomass can never exceed a shrunken capacity (docs/03 §27 invariant).
+      if ((environment.resourceBiomass[offset + i] as number) > capacity) {
+        environment.resourceBiomass[offset + i] = capacity;
+      }
     }
   }
 }
 
 /**
- * One logistic growth step for the whole grid (docs/03 §20):
+ * One logistic growth step for every channel of the whole grid (docs/03 §20):
  *
  *   delta = rate × biomass × (capacity − biomass) / capacity
  *
@@ -123,62 +162,87 @@ export function recomputeAllPlantCapacities(
  *
  * Runs on the scheduled environment update, so `rate` is per environment step,
  * not per tick.
+ *
+ * ## Regrowth rate is what makes a channel's *timing* differ (M17)
+ *
+ * The five channels are told apart as much by how fast they come back as by
+ * where they grow. Foliage regrows almost as fast as it is eaten, so a grazed
+ * cell is worth returning to; fruit regrows two orders of magnitude slower, so
+ * a stripped patch stays stripped for thousands of ticks and the living is made
+ * by finding the next one. That is where "intermittent" comes from — an
+ * emergent property of a slow logistic term against fast consumption, not a
+ * clock. A clock would be a time-varying environment, which is M18's milestone
+ * and not this one's to pre-empt.
+ *
+ * Roots invert the seed bank instead of the rate: a high regeneration floor and
+ * a slow rate make them the channel that is *always* there in small amounts,
+ * which is what "persistent" has to mean mechanically.
  */
 export function growPlants(
   environment: EnvironmentStore,
   config: DeepReadonly<SimulationConfig>,
 ): void {
-  const { growthRateQByBiome, plantSeedBankRegenUnits, plantMinRegenThreshold } = config.plants;
-  const { plantBiomass, plantCapacity, plantGrowthRemainderQ, biome } = environment;
+  const { resourceBiomass, resourceCapacity, plantGrowthRemainderQ, biome, cellCount } =
+    environment;
 
-  for (let i = 0; i < environment.cellCount; i += 1) {
-    const capacity = plantCapacity[i] as number;
-    if (capacity === 0) {
-      plantBiomass[i] = 0;
-      plantGrowthRemainderQ[i] = 0;
+  for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+    const profile = config.plants.resources[resource];
+    if (profile === undefined) {
       continue;
     }
+    const { growthRateQByBiome, seedBankRegenUnits, minRegenThreshold } = profile;
+    const offset = resource * cellCount;
 
-    const biomass = plantBiomass[i] as number;
-    const rateQ = growthRateQByBiome[biome[i] as number] ?? 0;
-
-    let next = biomass;
-    let remainder = plantGrowthRemainderQ[i] as number;
-
-    if (rateQ > 0 && biomass > 0) {
-      const headroom = capacity - biomass;
-      if (headroom > 0) {
-        // Q-scaled logistic delta, computed as one expression so the division
-        // by capacity happens last. The largest possible numerator is
-        // Q × 65535 × 65535 ≈ 1.8e13, comfortably exact as a double.
-        const deltaQ = Math.trunc((rateQ * biomass * headroom) / capacity);
-
-        // Carry the fraction. Without this, any cell whose true growth is below
-        // one unit per step — every sparsely vegetated cell, and every cell at
-        // all in a slow biome — would truncate to zero growth and freeze.
-        const totalQ = deltaQ + remainder;
-        const whole = Math.trunc(totalQ / Q);
-        remainder = totalQ - whole * Q;
-        next += whole;
+    for (let i = 0; i < cellCount; i += 1) {
+      const flat = offset + i;
+      const capacity = resourceCapacity[flat] as number;
+      if (capacity === 0) {
+        resourceBiomass[flat] = 0;
+        plantGrowthRemainderQ[flat] = 0;
+        continue;
       }
-    }
 
-    // Seed bank: a deterministic trickle that lifts a cell off exactly zero,
-    // where the logistic term is identically zero (docs/03 §20).
-    if (next < plantMinRegenThreshold) {
-      next += plantSeedBankRegenUnits;
-    }
+      const biomass = resourceBiomass[flat] as number;
+      const rateQ = growthRateQByBiome[biome[i] as number] ?? 0;
 
-    if (next >= capacity) {
-      next = capacity;
-      // At capacity there is nothing left to carry.
-      remainder = 0;
-    } else if (next < 0) {
-      next = 0;
-    }
+      let next = biomass;
+      let remainder = plantGrowthRemainderQ[flat] as number;
 
-    plantBiomass[i] = next;
-    plantGrowthRemainderQ[i] = remainder;
+      if (rateQ > 0 && biomass > 0) {
+        const headroom = capacity - biomass;
+        if (headroom > 0) {
+          // Q-scaled logistic delta, computed as one expression so the division
+          // by capacity happens last. The largest possible numerator is
+          // Q × 65535 × 65535 ≈ 1.8e13, comfortably exact as a double.
+          const deltaQ = Math.trunc((rateQ * biomass * headroom) / capacity);
+
+          // Carry the fraction. Without this, any cell whose true growth is
+          // below one unit per step — every sparsely vegetated cell, and every
+          // cell at all in a slow channel — would truncate to zero and freeze.
+          const totalQ = deltaQ + remainder;
+          const whole = Math.trunc(totalQ / Q);
+          remainder = totalQ - whole * Q;
+          next += whole;
+        }
+      }
+
+      // Seed bank: a deterministic trickle that lifts a cell off exactly zero,
+      // where the logistic term is identically zero (docs/03 §20).
+      if (next < minRegenThreshold) {
+        next += seedBankRegenUnits;
+      }
+
+      if (next >= capacity) {
+        next = capacity;
+        // At capacity there is nothing left to carry.
+        remainder = 0;
+      } else if (next < 0) {
+        next = 0;
+      }
+
+      resourceBiomass[flat] = next;
+      plantGrowthRemainderQ[flat] = remainder;
+    }
   }
 }
 
@@ -207,21 +271,46 @@ export function growPlants(
  * Sensing runs before feeding in the tick order, so every organism still reads
  * one coherent snapshot of the field (docs/03 §9).
  */
-export function plantGradientXQAt(environment: EnvironmentStore, cell: number): number {
-  const { size, plantBiomass } = environment;
+export function resourceGradientXQAt(
+  environment: EnvironmentStore,
+  resource: number,
+  cell: number,
+): number {
+  const { size, resourceBiomass, cellCount } = environment;
+  const offset = resource * cellCount;
   const gx = cell % size;
-  const left = plantBiomass[gx > 0 ? cell - 1 : cell] as number;
-  const right = plantBiomass[gx < size - 1 ? cell + 1 : cell] as number;
-  return gradientQ(right - left, environment.plantCapacity[cell] as number);
+  const left = resourceBiomass[offset + (gx > 0 ? cell - 1 : cell)] as number;
+  const right = resourceBiomass[offset + (gx < size - 1 ? cell + 1 : cell)] as number;
+  return gradientQ(
+    right - left,
+    resourceBiomass.length === 0 ? 0 : referenceQ(environment, resource, cell),
+  );
 }
 
-/** Vertical counterpart of {@link plantGradientXQAt}; +y is south on screen. */
-export function plantGradientYQAt(environment: EnvironmentStore, cell: number): number {
-  const { size, plantBiomass } = environment;
+/** Vertical counterpart of {@link resourceGradientXQAt}; +y is south on screen. */
+export function resourceGradientYQAt(
+  environment: EnvironmentStore,
+  resource: number,
+  cell: number,
+): number {
+  const { size, resourceBiomass, cellCount } = environment;
+  const offset = resource * cellCount;
   const gy = (cell - (cell % size)) / size;
-  const up = plantBiomass[gy > 0 ? cell - size : cell] as number;
-  const down = plantBiomass[gy < size - 1 ? cell + size : cell] as number;
-  return gradientQ(down - up, environment.plantCapacity[cell] as number);
+  const up = resourceBiomass[offset + (gy > 0 ? cell - size : cell)] as number;
+  const down = resourceBiomass[offset + (gy < size - 1 ? cell + size : cell)] as number;
+  return gradientQ(down - up, referenceQ(environment, resource, cell));
+}
+
+/**
+ * What a channel's gradient is measured against.
+ *
+ * The cell's own capacity in that channel, so "food is that way" means the same
+ * thing in a desert and in a forest — but floored by a configured minimum, or a
+ * channel that is locally absent would divide by ~1 and report a full-scale
+ * gradient for a single stray unit next door.
+ */
+function referenceQ(environment: EnvironmentStore, resource: number, cell: number): number {
+  return environment.resourceCapacity[resource * environment.cellCount + cell] as number;
 }
 
 /** Normalize a central difference against the local capacity, clamped to ±Q. */
@@ -231,27 +320,37 @@ function gradientQ(difference: number, capacity: number): number {
   return clamp(Math.trunc((difference * Q) / (2 * reference)), -Q, Q);
 }
 
-/** Total plant biomass across the world (diagnostics and validity checks). */
+/**
+ * Total standing biomass across every channel and cell (diagnostics, validity).
+ *
+ * Summed across channels without weighting. A weighted total would be the
+ * engine expressing a view about which food counts, and nothing outside an
+ * organism's own genome is allowed one (docs/11 §M17).
+ */
 export function totalPlantBiomass(environment: EnvironmentStore): number {
   let total = 0;
-  for (let i = 0; i < environment.cellCount; i += 1) {
-    total += environment.plantBiomass[i] as number;
+  for (let i = 0; i < environment.resourceBiomass.length; i += 1) {
+    total += environment.resourceBiomass[i] as number;
   }
   return total;
 }
 
-/** Total carrying capacity across the world (world validity, docs/03 §15). */
+/** Total carrying capacity across every channel (world validity, docs/03 §15). */
 export function totalPlantCapacity(environment: EnvironmentStore): number {
   let total = 0;
-  for (let i = 0; i < environment.cellCount; i += 1) {
-    total += environment.plantCapacity[i] as number;
+  for (let i = 0; i < environment.resourceCapacity.length; i += 1) {
+    total += environment.resourceCapacity[i] as number;
   }
   return total;
 }
 
-/** True when the cell is land that can support plants at all. */
+/**
+ * True when the cell is land that can support *any* channel.
+ *
+ * Any rather than all: a cell that grows only roots is still somewhere an
+ * organism can make a living, and world validity has no business preferring
+ * one channel's ground over another's.
+ */
 export function isProductiveLand(environment: EnvironmentStore, index: number): boolean {
-  return (
-    environment.biome[index] !== Biome.Water && (environment.plantCapacity[index] as number) > 0
-  );
+  return environment.biome[index] !== Biome.Water && environment.totalPlantCapacity(index) > 0;
 }

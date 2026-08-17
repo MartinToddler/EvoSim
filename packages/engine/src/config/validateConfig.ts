@@ -12,8 +12,9 @@ import { TOPOLOGY_BIT_COUNT } from "../brain/topologyMutation";
 import { createMorphologyReference } from "../morphology/physicalPhenotype";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
+import { PLANT_RESOURCE_COUNT } from "../world/resources";
 import { DEFAULT_CONFIG } from "./defaultConfig";
-import type { SimulationConfig } from "./SimulationConfig";
+import type { ResourceProfile, SimulationConfig } from "./SimulationConfig";
 
 /** Error thrown when a SimulationConfig violates structural invariants. */
 export class ConfigValidationError extends Error {
@@ -461,46 +462,77 @@ function validateTime(config: DeepReadonly<SimulationConfig>): void {
 
 function validatePlants(config: DeepReadonly<SimulationConfig>): void {
   const { plants } = config;
-  checkNonNegativeIntArray(plants.baseCapacityByBiome, BIOME_COUNT, "plants.baseCapacityByBiome");
-  checkNonNegativeIntArray(plants.growthRateQByBiome, BIOME_COUNT, "plants.growthRateQByBiome");
-  for (let i = 0; i < BIOME_COUNT; i += 1) {
-    checkQFraction(plants.growthRateQByBiome[i] as number, `plants.growthRateQByBiome[${i}]`);
-  }
-  // Water grows nothing: aquatic ecology is explicitly out of MVP scope
-  // (CLAUDE.md scope exclusions), and non-zero water capacity would place food
-  // where terrestrial organisms drown.
   check(
-    plants.baseCapacityByBiome[Biome.Water] === 0 && plants.growthRateQByBiome[Biome.Water] === 0,
-    "plants: water biome capacity and growth rate must be 0 while aquatic life is out of scope",
+    plants.resources.length === PLANT_RESOURCE_COUNT,
+    `plants.resources must hold exactly ${PLANT_RESOURCE_COUNT} channels, got ` +
+      `${plants.resources.length}`,
   );
-  checkNonNegativeInt(plants.plantSeedBankRegenUnits, "plants.plantSeedBankRegenUnits");
-  checkNonNegativeInt(plants.plantMinRegenThreshold, "plants.plantMinRegenThreshold");
-  checkPositiveInt(plants.plantEnergyPerBiomass, "plants.plantEnergyPerBiomass");
-  checkPositiveInt(plants.meatEnergyPerUnit, "plants.meatEnergyPerUnit");
-  checkQFraction(plants.initialBiomassFractionQ, "plants.initialBiomassFractionQ");
 
-  const suitability = plants.capacitySuitability;
-  checkCentiCelsius(
-    suitability.optimumTemperatureCentiC,
-    "plants.capacitySuitability.optimumTemperatureCentiC",
-  );
-  checkPositiveInt(
-    suitability.temperatureToleranceCentiC,
-    "plants.capacitySuitability.temperatureToleranceCentiC",
-  );
-  checkQFraction(suitability.minMoistureQ, "plants.capacitySuitability.minMoistureQ");
-  checkQFraction(suitability.fullMoistureQ, "plants.capacitySuitability.fullMoistureQ");
-  check(
-    suitability.minMoistureQ < suitability.fullMoistureQ,
-    "plants.capacitySuitability: minMoistureQ must be below fullMoistureQ",
-  );
-  // Every biome base capacity must fit the Uint16 biomass arrays.
-  for (let i = 0; i < BIOME_COUNT; i += 1) {
+  for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+    const profile = plants.resources[resource] as ResourceProfile;
+    const name = `plants.resources[${resource}]`;
+    checkNonNegativeIntArray(
+      profile.baseCapacityByBiome,
+      BIOME_COUNT,
+      `${name}.baseCapacityByBiome`,
+    );
+    checkNonNegativeIntArray(profile.growthRateQByBiome, BIOME_COUNT, `${name}.growthRateQByBiome`);
+    for (let i = 0; i < BIOME_COUNT; i += 1) {
+      checkQFraction(profile.growthRateQByBiome[i] as number, `${name}.growthRateQByBiome[${i}]`);
+      // Every biome base capacity must fit the Uint16 biomass arrays.
+      check(
+        (profile.baseCapacityByBiome[i] as number) <= UINT16_MAX,
+        `${name}.baseCapacityByBiome[${i}] must fit the Uint16 biomass array (<= ${UINT16_MAX})`,
+      );
+    }
+    // Water grows nothing, in every channel: aquatic ecology is explicitly out
+    // of scope (CLAUDE.md), and non-zero water capacity would place food where
+    // terrestrial organisms drown.
     check(
-      (plants.baseCapacityByBiome[i] as number) <= UINT16_MAX,
-      `plants.baseCapacityByBiome[${i}] must fit in the Uint16 biomass array (<= ${UINT16_MAX})`,
+      profile.baseCapacityByBiome[Biome.Water] === 0 &&
+        profile.growthRateQByBiome[Biome.Water] === 0,
+      `${name}: water capacity and growth rate must be 0 while aquatic life is out of scope`,
+    );
+    checkNonNegativeInt(profile.seedBankRegenUnits, `${name}.seedBankRegenUnits`);
+    checkNonNegativeInt(profile.minRegenThreshold, `${name}.minRegenThreshold`);
+    checkPositiveInt(profile.energyPerUnit, `${name}.energyPerUnit`);
+    checkCentiCelsius(profile.optimumTemperatureCentiC, `${name}.optimumTemperatureCentiC`);
+    checkPositiveInt(profile.temperatureToleranceCentiC, `${name}.temperatureToleranceCentiC`);
+    checkQFraction(profile.minMoistureQ, `${name}.minMoistureQ`);
+    checkQFraction(profile.fullMoistureQ, `${name}.fullMoistureQ`);
+    check(
+      profile.minMoistureQ < profile.fullMoistureQ,
+      `${name}: minMoistureQ must be below fullMoistureQ`,
+    );
+    checkQFraction(profile.fertilityWeightQ, `${name}.fertilityWeightQ`);
+    checkQFraction(profile.optimumElevationQ, `${name}.optimumElevationQ`);
+    checkPositiveInt(profile.elevationToleranceQ, `${name}.elevationToleranceQ`);
+    checkQFraction(profile.toxicityQ, `${name}.toxicityQ`);
+
+    // The seed bank must not out-run the channel's own ceiling, or a cell whose
+    // capacity is below the regeneration floor would be pinned at capacity
+    // forever and the channel would stop responding to grazing at all.
+    const smallestNonZeroBase = profile.baseCapacityByBiome.reduce(
+      (best, value) => (value > 0 && value < best ? value : best),
+      UINT16_MAX,
+    );
+    check(
+      smallestNonZeroBase === UINT16_MAX || profile.minRegenThreshold < smallestNonZeroBase,
+      `${name}: minRegenThreshold ${profile.minRegenThreshold} must stay below the smallest ` +
+        `non-zero biome capacity ${smallestNonZeroBase}, or grazing cannot deplete the channel`,
     );
   }
+
+  // At least one channel has to be edible somewhere, or there is no ecology.
+  check(
+    plants.resources.some((profile) =>
+      profile.baseCapacityByBiome.some((capacity) => capacity > 0),
+    ),
+    "plants.resources: at least one channel must have non-zero capacity somewhere",
+  );
+
+  checkPositiveInt(plants.meatEnergyPerUnit, "plants.meatEnergyPerUnit");
+  checkQFraction(plants.initialBiomassFractionQ, "plants.initialBiomassFractionQ");
 }
 
 function validateOrganism(config: DeepReadonly<SimulationConfig>): void {

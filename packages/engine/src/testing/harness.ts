@@ -34,6 +34,8 @@ import { Xoshiro128 } from "../random/Xoshiro128";
 import { SpatialGrid } from "../spatial/SpatialGrid";
 import { EnvironmentStore } from "../world/EnvironmentStore";
 import { Biome } from "../world/biomes";
+import { PLANT_RESOURCE_COUNT, Resource } from "../world/resources";
+import type { ResourceProfile } from "../config/SimulationConfig";
 
 /**
  * Synthetic engine context for unit tests.
@@ -96,12 +98,19 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
   validateConfig(config);
 
   const environment = new EnvironmentStore(gridSize, cellSizeLU);
-  const capacity = config.plants.baseCapacityByBiome[Biome.Grassland] as number;
+  const capacity = (config.plants.resources[Resource.Foliage] as ResourceProfile)
+    .baseCapacityByBiome[Biome.Grassland] as number;
   const plantCapacity = options.plantCapacity ?? capacity;
   const plantBiomass = options.plantBiomass ?? plantCapacity >> 1;
   environment.biome.fill(Biome.Grassland);
-  environment.plantCapacity.fill(plantCapacity);
-  environment.plantBiomass.fill(plantBiomass);
+  // The harness world is a FOLIAGE world: the unit tests that use it were
+  // written against a single plant field and still mean that field. The other
+  // four channels stay at zero capacity, which is a legal world (a cell may
+  // support any subset) and keeps each test's subject unchanged.
+  environment.resourceCapacity.fill(0);
+  environment.resourceBiomass.fill(0);
+  environment.resourceCapacity.fill(plantCapacity, 0, environment.cellCount);
+  environment.resourceBiomass.fill(plantBiomass, 0, environment.cellCount);
   environment.baseTemperatureCentiC.fill(options.temperatureCentiC ?? 1800);
   environment.baseMoistureQ.fill(Q >> 1);
   environment.fertilityQ.fill(Q >> 1);
@@ -177,8 +186,10 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     makeWater(gridX: number, gridY: number) {
       const index = environment.cellIndex(gridX, gridY);
       environment.biome[index] = Biome.Water;
-      environment.plantCapacity[index] = 0;
-      environment.plantBiomass[index] = 0;
+      for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
+        environment.resourceCapacity[resource * environment.cellCount + index] = 0;
+        environment.resourceBiomass[resource * environment.cellCount + index] = 0;
+      }
       environment.recomputePassability();
     },
   };

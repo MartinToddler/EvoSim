@@ -22,22 +22,44 @@ export const Gene = {
   TurnRate: 3,
   VisionRange: 4,
   VisionFov: 5,
-  Diet: 6,
-  AttackPower: 7,
-  Armor: 8,
-  MetabolicPace: 9,
-  ThermalOptimum: 10,
-  ThermalTolerance: 11,
-  MaturityAge: 12,
-  MaxAge: 13,
-  OffspringInvestment: 14,
-  Hue: 15,
+  AttackPower: 6,
+  Armor: 7,
+  MetabolicPace: 8,
+  ThermalOptimum: 9,
+  ThermalTolerance: 10,
+  MaturityAge: 11,
+  MaxAge: 12,
+  OffspringInvestment: 13,
+  Hue: 14,
+  /**
+   * Processing ability for each resource channel, **contiguous and in
+   * `Resource` order** (M17). `Gene.Process + resource` is the locus for
+   * channel `resource`, which is what lets the feeding phase loop over channels
+   * without a switch — and a switch on resource identity is exactly the shape
+   * ADR 0027 forbids.
+   *
+   * This replaces the single signed `diet` locus. One axis could only ever
+   * express a trade between two foods; with six loci a lineage can be good at
+   * any subset, and what stops "good at everything" is the digestive upkeep in
+   * `phenotype.ts`, not a constraint on the genome.
+   */
+  Process: 15,
+  /**
+   * Resistance to chemically defended growth (M17).
+   *
+   * Its own locus rather than a seventh processing gene, because it does a
+   * different job: processing decides how much energy a unit yields, resistance
+   * decides how much health it costs. A lineage can evolve to tolerate the
+   * damage without getting better at extracting the energy, or the reverse, and
+   * those are genuinely different strategies.
+   */
+  ToxinResistance: 21,
 } as const;
 
 export type Gene = (typeof Gene)[keyof typeof Gene];
 
 /** Number of ecological genes per organism. */
-export const GENE_COUNT = 16;
+export const GENE_COUNT = 22;
 
 /** Human-readable gene names, indexed by gene value. Diagnostics and DTOs. */
 export const GENE_NAMES: readonly string[] = [
@@ -47,7 +69,6 @@ export const GENE_NAMES: readonly string[] = [
   "turnRate",
   "visionRange",
   "visionFov",
-  "diet",
   "attackPower",
   "armor",
   "metabolicPace",
@@ -57,6 +78,13 @@ export const GENE_NAMES: readonly string[] = [
   "maxAge",
   "offspringInvestment",
   "hue",
+  "processFoliage",
+  "processBrowse",
+  "processFruit",
+  "processRoots",
+  "processDefended",
+  "processMeat",
+  "toxinResistance",
 ];
 
 /** Maximum stored gene value; genes occupy the whole Uint16 range. */
@@ -93,11 +121,6 @@ export function geneFromQ(valueQ: number): number {
   return clamp(raw, 0, GENE_RAW_MAX);
 }
 
-/** Signed diet in `[-Q, +Q]`: -Q herbivore specialist, +Q carnivore specialist. */
-export function dietSignedQ(rawDiet: number): number {
-  return 2 * geneToQ(rawDiet) - Q;
-}
-
 /**
  * Digestion efficiency for a diet affinity (docs/03 §24).
  *
@@ -108,16 +131,6 @@ export function dietSignedQ(rawDiet: number): number {
 export function digestionEfficiencyQ(affinityQ: number, floorQ: number, spanQ: number): number {
   const affinity = clamp(affinityQ, 0, Q);
   return floorQ + qmul(spanQ, qmul(affinity, affinity));
-}
-
-/** Herbivore affinity in `[0, Q]` from signed diet: `(Q - diet) / 2`. */
-export function herbivoreAffinityQ(dietQ: number): number {
-  return (Q - dietQ) >> 1;
-}
-
-/** Carnivore affinity in `[0, Q]` from signed diet: `(Q + diet) / 2`. */
-export function carnivoreAffinityQ(dietQ: number): number {
-  return (Q + dietQ) >> 1;
 }
 
 /**
