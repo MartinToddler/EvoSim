@@ -1,4 +1,4 @@
-import { Resource } from "./world/resources";
+import { PLANT_RESOURCE_COUNT, Resource } from "./world/resources";
 import { describe, expect, it } from "vitest";
 import { createFounderTopology } from "./brain/founderTopology";
 import { SimulationEngine } from "./SimulationEngine";
@@ -76,11 +76,30 @@ const PREY_BRAIN = skipBrain([
   { output: BrainOutput.Reproduce, input: BrainInput.Bias, weight: w(-1) },
 ]);
 
+/**
+ * Plant loci as one block, so a carnivore is a carnivore in every channel.
+ *
+ * M17 gave the world five plant fields, and zeroing only foliage leaves the
+ * other four at their founder value — which made this predator's best plant
+ * option DEFENDED growth (0.36 x 44 beats foliage's 0.20 x 30). It ate the one
+ * thing that damages it, had no resistance, and died of poisoning before it
+ * reached the prey. The fixture was under-specified for a five-channel world,
+ * not wrong about predation.
+ */
+function plantLoci(valueQ: number): Record<number, number> {
+  return Object.fromEntries(
+    Array.from({ length: PLANT_RESOURCE_COUNT }, (_, resource) => [
+      Gene.Process + resource,
+      valueQ,
+    ]),
+  );
+}
+
 const PREDATOR_GENES = {
   [Gene.AttackPower]: Q,
   [Gene.Armor]: 0,
+  ...plantLoci(0),
   [Gene.Process + Resource.Meat]: Q,
-  [Gene.Process + Resource.Foliage]: 0,
   [Gene.AdultSize]: Q,
   [Gene.MaxSpeed]: Q,
   [Gene.Acceleration]: Q,
@@ -91,6 +110,9 @@ const PREDATOR_GENES = {
 const PREY_GENES = {
   [Gene.AttackPower]: 0,
   [Gene.Armor]: 0,
+  // A grazer of FOLIAGE specifically: every other plant channel is left at
+  // zero so the one it eats is the one this fixture is about.
+  ...plantLoci(0),
   [Gene.Process + Resource.Foliage]: Q,
   [Gene.Process + Resource.Meat]: 0,
 } as const;
@@ -183,6 +205,24 @@ function landCentre(engine: SimulationEngine): { xPos: number; yPos: number } {
 function emptyWorldConfig(mutate?: (config: SimulationConfig) => void): SimulationConfig {
   const config = cloneConfig(DEFAULT_CONFIG);
   config.world.initialOrganisms = 0;
+  // No defended growth in a predation fixture (M17).
+  //
+  // Not a workaround — a statement of subject. Expected gain is
+  // `energyPerUnit x efficiency`, and a genome with every plant locus at zero
+  // has the same floor efficiency in all five channels, so energy per unit
+  // alone decides and the richest plant channel wins. For a carnivore with no
+  // carcass in reach that channel is the defended one, which it then grazes
+  // with no resistance: measured, the predator lost ~94 health per tick while
+  // holding 49 000 energy, and died at tick 44 with the prey untouched.
+  //
+  // That is the ecology behaving correctly — being bad at everything drives you
+  // to the dangerous food, and a foliage specialist at 1.0 gets 30/unit and
+  // never looks at defended's 8.8. It is simply not what this fixture is about.
+  // Toxicity has its own tests.
+  const defended = config.plants.resources[Resource.Defended];
+  if (defended !== undefined) {
+    defended.baseCapacityByBiome = defended.baseCapacityByBiome.map(() => 0);
+  }
   mutate?.(config);
   return config;
 }

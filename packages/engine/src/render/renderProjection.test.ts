@@ -1,3 +1,4 @@
+import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { describe, expect, it } from "vitest";
 import { cloneConfig } from "../config/cloneConfig";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
@@ -245,15 +246,16 @@ describe("writeVegetationField and writeTerrainFields", () => {
     writeVegetationField(engine, field);
 
     for (let cell = 0; cell < engine.environment.cellCount; cell += 1) {
-      const capacity = engine.environment.resourceCapacity[cell] as number;
+      // Totals across every channel: the vegetation plane draws the whole
+      // cell, and reading one channel's plane would compare the picture
+      // against a fifth of what it shows (M17).
+      const capacity = engine.environment.totalPlantCapacity(cell);
       if (capacity <= 0) {
         // Water has no capacity; a fraction of zero is zero, not NaN.
         expect(field[cell]).toBe(0);
         continue;
       }
-      const expected = Math.round(
-        ((engine.environment.resourceBiomass[cell] as number) * 255) / capacity,
-      );
+      const expected = Math.round((engine.environment.totalPlantBiomass(cell) * 255) / capacity);
       expect(field[cell]).toBe(Math.min(255, Math.max(0, expected)));
     }
   });
@@ -294,7 +296,7 @@ describe("writeVegetationField and writeTerrainFields", () => {
       expect(writer.capacity[cell]).toBe(
         Math.min(
           255,
-          Math.round(((engine.environment.resourceCapacity[cell] as number) * 255) / reference),
+          Math.round((engine.environment.totalPlantCapacity(cell) * 255) / reference),
         ),
       );
     }
@@ -378,7 +380,7 @@ describe("queryEntity", () => {
     expect(details.reproductionCooldownTicks).toBeGreaterThanOrEqual(0);
 
     // The brain view is one value per input/output, in unit ranges.
-    expect(details.brainInputs).toHaveLength(20);
+    expect(details.brainInputs).toHaveLength(BRAIN_INPUT_COUNT);
     expect(details.brainIntents).toHaveLength(5);
     for (const input of details.brainInputs) {
       expect(input).toBeGreaterThanOrEqual(-1);
@@ -491,8 +493,8 @@ describe("collectTelemetryAggregates", () => {
     let biomass = 0;
     let capacity = 0;
     for (let cell = 0; cell < engine.environment.cellCount; cell += 1) {
-      biomass += engine.environment.resourceBiomass[cell] as number;
-      capacity += engine.environment.resourceCapacity[cell] as number;
+      biomass += engine.environment.totalPlantBiomass(cell);
+      capacity += engine.environment.totalPlantCapacity(cell);
     }
     expect(aggregates.plantBiomass).toBe(biomass);
     expect(aggregates.plantCapacity).toBe(capacity);
