@@ -36,6 +36,7 @@ import { applyMetabolismGrowthThermalAging } from "./organisms/metabolism";
 import { integrateMovement, resolveTerrainAndSoftCollisions } from "./organisms/movement";
 import { captureOrganisms, restoreOrganisms } from "./organisms/organismSnapshot";
 import { MorphologyStore } from "./morphology/morphDevelopment";
+import { PhysicalPhenotypeStore, createMorphologyReference } from "./morphology/physicalPhenotype";
 import { PhenotypeStore } from "./organisms/phenotype";
 import { spawnFounderPopulation } from "./organisms/spawn";
 import { TickPhase, type TickProfiler } from "./profiling/TickProfiler";
@@ -218,6 +219,10 @@ export class SimulationEngine {
       genomes: this.genomes,
       phenotypes: new PhenotypeStore(capacity),
       morphology: new MorphologyStore(capacity),
+      physical: new PhysicalPhenotypeStore(capacity),
+      // Derived from the config alone, and needed before the first founder is
+      // spawned: the founder body defines what "neutral physics" means (M15).
+      morphologyReference: createMorphologyReference(this.config),
       carcasses: this.carcasses,
       species: this.species,
       events: this.events,
@@ -363,6 +368,8 @@ export class SimulationEngine {
       engine.genomes,
       engine.#context.phenotypes,
       engine.#context.morphology,
+      engine.#context.physical,
+      engine.#context.morphologyReference,
       engine.config,
     );
     restoreCarcasses(snapshot.carcasses, engine.carcasses);

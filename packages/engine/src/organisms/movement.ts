@@ -4,6 +4,7 @@ import { cosLut, sinLut } from "../math/trigLut";
 import { isqrt } from "../math/isqrt";
 import { statelessNoiseU32 } from "../random/statelessNoise";
 import type { EngineContext } from "../EngineContext";
+import { contactRadiusPos } from "../morphology/physicalPhenotype";
 import { currentRadiusPos } from "./phenotype";
 
 /**
@@ -44,7 +45,7 @@ const VELOCITY_SHIFT = 8;
  * water a 4× multiplier on a 16× smaller number — a discount for drowning.
  */
 export function integrateMovement(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, scratch, config } = ctx;
+  const { organisms, phenotypes, physical, environment, scratch, config } = ctx;
   const waterSpeedMultiplierQ = config.organism.movement.waterSpeedMultiplierQ;
 
   for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
@@ -94,8 +95,16 @@ export function integrateMovement(ctx: EngineContext): void {
       organisms.y[slot] as number,
     );
     const inWater = environment.isWaterCell(cell);
-    const moveVx = inWater ? qmul(vx, waterSpeedMultiplierQ) : vx;
-    const moveVy = inWater ? qmul(vy, waterSpeedMultiplierQ) : vy;
+    // M15: a streamlined, well-paddled body loses less to water than a broad
+    // one does. The multiplier still cannot exceed 1 — morphology relieves the
+    // terrain penalty, it never makes water faster than land — and the movement
+    // COST is untouched, so swimming stays expensive rather than becoming a
+    // discount for the right shape.
+    const terrainQ = inWater
+      ? Math.min(Q, qmul(waterSpeedMultiplierQ, physical.waterSpeedFactorQ[slot] as number))
+      : Q;
+    const moveVx = inWater ? qmul(vx, terrainQ) : vx;
+    const moveVy = inWater ? qmul(vy, terrainQ) : vy;
 
     // 5. Integrate, carrying the sub-sub-unit remainder. The shift floors and
     // the mask keeps the remainder non-negative, so backwards motion is exact
@@ -127,7 +136,7 @@ export function integrateMovement(ctx: EngineContext): void {
  * exact and commutative, which an in-place resolve would not be.
  */
 export function resolveTerrainAndSoftCollisions(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, scratch, spatialPre, config, seed } = ctx;
+  const { organisms, phenotypes, physical, environment, scratch, spatialPre, config, seed } = ctx;
   const maxPos = config.world.sizeLU * POS_SCALE - 1;
   const strengthQ = config.organism.movement.softSeparationStrengthQ;
   const grid = spatialPre;
@@ -150,15 +159,22 @@ export function resolveTerrainAndSoftCollisions(ctx: EngineContext): void {
       }
       const xPos = organisms.x[slot] as number;
       const yPos = organisms.y[slot] as number;
-      const radius = currentRadiusPos(
-        phenotypes.adultRadiusPos[slot] as number,
-        organisms.developmentQ[slot] as number,
+      // Separation uses the drawn silhouette, so what an organism occupies on
+      // screen is what it occupies in the world (M15).
+      const radius = contactRadiusPos(
+        physical,
+        slot,
+        currentRadiusPos(
+          phenotypes.adultRadiusPos[slot] as number,
+          organisms.developmentQ[slot] as number,
+        ),
       );
 
-      // Bodies are at most 4.5 LU in radius and one spatial cell is 32 LU, so
-      // any overlapping partner is in the 3×3 neighbourhood. The grid still
-      // holds pre-movement buckets; a tick's displacement is a fraction of an
-      // LU, far inside that margin.
+      // Bodies are at most 4.5 LU in radius, and M15's contact factor is bounded
+      // by `validateConfig` to well under 2x that, against a spatial cell of
+      // 32 LU — so any overlapping partner is still in the 3×3 neighbourhood.
+      // The grid holds pre-movement buckets; a tick's displacement is a fraction
+      // of an LU, far inside that margin.
       const cx = grid.cellX(xPos);
       const cy = grid.cellY(yPos);
       const minCellX = cx > 0 ? cx - 1 : 0;
@@ -180,9 +196,13 @@ export function resolveTerrainAndSoftCollisions(ctx: EngineContext): void {
             }
             const dx = (organisms.x[other] as number) - xPos;
             const dy = (organisms.y[other] as number) - yPos;
-            const otherRadius = currentRadiusPos(
-              phenotypes.adultRadiusPos[other] as number,
-              organisms.developmentQ[other] as number,
+            const otherRadius = contactRadiusPos(
+              physical,
+              other,
+              currentRadiusPos(
+                phenotypes.adultRadiusPos[other] as number,
+                organisms.developmentQ[other] as number,
+              ),
             );
             const contact = radius + otherRadius;
             const distSq = dx * dx + dy * dy;

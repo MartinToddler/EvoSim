@@ -66,9 +66,19 @@
  * so `RENDER_SNAPSHOT_LAYOUT_VERSION` moves to 2 as well; no message type
  * changed shape.
  *
+ * Protocol 11 (M15, docs/11 §M15) adds `EntityDetailsDto.physical`: the
+ * developed body expressed as physics, as sixteen multipliers against the
+ * founder body — mass, energy storage, upkeep, growth cost, speed,
+ * acceleration, turn rate, water performance, armor, attack, bite size, vision
+ * range and arc, thermal tolerance, contact extent and offspring construction
+ * cost. It is what makes M15 falsifiable from the UI: a lineage that looks
+ * heavy and armored has to read as heavy and armored. The render snapshot is
+ * unchanged, so `RENDER_SNAPSHOT_LAYOUT_VERSION` stays at 2, and no message
+ * type changed shape.
+ *
  * Note what this number does *not* affect: the authoritative state hash. A
  * world's identity is seed + authoritative config + engine version + commands
  * (see `hashState.ts` in `@eon/engine`); how its pixels reach a canvas is not
  * part of it, and a protocol bump must never change a golden hash.
  */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;

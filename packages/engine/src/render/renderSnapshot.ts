@@ -1,6 +1,6 @@
 import { engineInternals } from "../internal";
 import { Q, POS_SCALE, ANGLE_STEPS, clamp } from "../math/fixed";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { VELOCITY_SCALE } from "../organisms/movement";
 import type { SimulationEngine } from "../SimulationEngine";
 import type { MorphologyStore } from "../morphology/morphDevelopment";
@@ -174,7 +174,7 @@ export function writeRenderSnapshot(
   writer: RenderSnapshotWriter,
 ): RenderSnapshotCounts {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, morphology, carcasses, config } = context;
+  const { organisms, phenotypes, physical, morphology, carcasses, config } = context;
 
   const organismLimit = writer.organismId.length;
   const referenceMaxSpeedVel = config.organism.geneRanges.maxSpeedMaxVel;
@@ -191,7 +191,7 @@ export function writeRenderSnapshot(
 
     const developmentQ = organisms.developmentQ[slot] as number;
     const radiusPos = currentRadiusPos(phenotypes.adultRadiusPos[slot] as number, developmentQ);
-    const mass = massFromRadiusPos(radiusPos, massScale);
+    const mass = bodyMass(physical, slot, radiusPos, massScale);
 
     writer.organismId[out] = organisms.entityId[slot] as number;
     writer.organismX[out] = (organisms.x[slot] as number) / POS_SCALE;
@@ -206,7 +206,7 @@ export function writeRenderSnapshot(
     // Energy is shown as a fraction of what this body can hold, because the
     // absolute number means nothing without the body: a large juvenile and a
     // small adult holding the same energy are in completely different states.
-    const maxEnergy = maxEnergyForMass(mass, config);
+    const maxEnergy = maxEnergyForOrganism(physical, slot, mass, config);
     const energy = organisms.energy[slot] as number;
     writer.organismEnergy[out] =
       maxEnergy > 0 ? clamp(Math.round((energy * 255) / maxEnergy), 0, 255) : 0;

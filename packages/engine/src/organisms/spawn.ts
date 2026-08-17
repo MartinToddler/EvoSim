@@ -3,15 +3,12 @@ import type { EngineContext } from "../EngineContext";
 import { BRAIN_INPUT_COUNT } from "../brain/BrainLayout";
 import { createFounderBrainWeights } from "../brain/founderBrain";
 import { createFounderGenes } from "../genetics/founderGenome";
+import { Gene, geneToQ, hueDegrees } from "../genetics/genes";
 import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
 import { deriveMorphology } from "../morphology/morphDevelopment";
+import { derivePhysical } from "../morphology/physicalPhenotype";
 import type { FounderRegion } from "../world/validateWorld";
-import {
-  currentRadiusPos,
-  derivePhenotype,
-  massFromRadiusPos,
-  maxEnergyForMass,
-} from "./phenotype";
+import { bodyMass, currentRadiusPos, derivePhenotype, maxEnergyForOrganism } from "./phenotype";
 
 /**
  * Spawning organisms (docs/03 §26, docs/04 §5, task D07).
@@ -73,7 +70,7 @@ export interface SpawnRequest {
  * (docs/04 §4).
  */
 export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number {
-  const { organisms, genomes, phenotypes, morphology, scratch, config } = ctx;
+  const { organisms, genomes, phenotypes, morphology, physical, scratch, config } = ctx;
 
   const slot = organisms.allocateSlot();
   if (slot < 0) {
@@ -101,10 +98,21 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   scratch.inWater[slot] = 0;
 
   genomes.writeGenome(slot, request.genes, request.morphGenes, request.brainWeights);
-  derivePhenotype(phenotypes, genomes, slot, config);
-  // The body is developed from the genome it was just given, and from the hue
-  // the ecological phenotype just derived, so the two can never disagree.
-  deriveMorphology(morphology, genomes, slot, phenotypes.hueDegrees[slot] as number, config);
+  // genome -> body -> physics -> the numbers the tick reads (M14, M15). The
+  // order is the pipeline: development needs the genome, the physical phenotype
+  // needs the developed body, and the ecological phenotype needs both because
+  // its speed, armor, vision and upkeep are the genetic mapping times the
+  // morphological multiplier. Hue comes straight from its gene rather than from
+  // the phenotype so the chain has no cycle.
+  deriveMorphology(
+    morphology,
+    genomes,
+    slot,
+    hueDegrees(geneToQ(genomes.gene(slot, Gene.Hue))),
+    config,
+  );
+  derivePhysical(physical, morphology, slot, ctx.morphologyReference, config);
+  derivePhenotype(phenotypes, genomes, physical, slot, config);
 
   const maxPos = config.world.sizeLU * POS_SCALE - 1;
   organisms.x[slot] = clamp(Math.trunc(request.xPos), 0, maxPos);
@@ -141,8 +149,8 @@ export function spawnOrganism(ctx: EngineContext, request: SpawnRequest): number
   // that over-invests loses the surplus (see ecology/reproduction.ts); energy is
   // never created here.
   const radius = currentRadiusPos(phenotypes.adultRadiusPos[slot] as number, developmentQ);
-  const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
-  const maxEnergy = maxEnergyForMass(mass, config);
+  const mass = bodyMass(physical, slot, radius, config.organism.massScalePerRadiusSquared);
+  const maxEnergy = maxEnergyForOrganism(physical, slot, mass, config);
   const requested =
     request.energy.kind === "fractionOfMax"
       ? qmul(maxEnergy, request.energy.fractionQ)

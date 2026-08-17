@@ -17,14 +17,15 @@ import { StatisticsStore } from "../history/StatisticsStore";
 import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { createFounderMorphGenes } from "../morphology/founderMorphGenome";
 import { MorphologyStore } from "../morphology/morphDevelopment";
+import { PhysicalPhenotypeStore, createMorphologyReference } from "../morphology/physicalPhenotype";
 import { MORPH_GENE_COUNT, morphGeneFromQ } from "../morphology/morphGenes";
 import { GenomeStore } from "../organisms/GenomeStore";
 import { OrganismStore } from "../organisms/OrganismStore";
 import {
   PhenotypeStore,
   currentRadiusPos,
-  massFromRadiusPos,
-  maxEnergyForMass,
+  bodyMass,
+  maxEnergyForOrganism,
 } from "../organisms/phenotype";
 import { type SpawnRequest, spawnOrganism } from "../organisms/spawn";
 import { Xoshiro128 } from "../random/Xoshiro128";
@@ -125,6 +126,8 @@ export function createTestWorld(options: TestWorldOptions = {}): TestWorld {
     genomes: new GenomeStore(config.limits.maxOrganisms),
     phenotypes: new PhenotypeStore(config.limits.maxOrganisms),
     morphology: new MorphologyStore(config.limits.maxOrganisms),
+    physical: new PhysicalPhenotypeStore(config.limits.maxOrganisms),
+    morphologyReference: createMorphologyReference(config),
     carcasses,
     species,
     events: new EventStore(config.limits.maxTimelineEventsInMemoryBeforeChunk),
@@ -284,9 +287,9 @@ export function spawnTestOrganism(world: TestWorld, options: TestOrganismOptions
       ctx.phenotypes.adultRadiusPos[slot] as number,
       options.developmentQ,
     );
-    const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
+    const mass = bodyMass(ctx.physical, slot, radius, config.organism.massScalePerRadiusSquared);
     ctx.organisms.energy[slot] = qmul(
-      maxEnergyForMass(mass, config),
+      maxEnergyForOrganism(ctx.physical, slot, mass, config),
       options.energyFractionQ ?? config.organism.initialEnergyFractionQ,
     );
   }

@@ -172,4 +172,4 @@ reachability sweep belongs in the final audit (F-02), not in the per-commit gate
 
 ---
 
-_Stages M15 through the final audit are appended below as they complete._
+_Stages M16 through the final audit are appended below as they complete._

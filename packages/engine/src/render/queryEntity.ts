@@ -3,7 +3,7 @@ import { engineInternals } from "../internal";
 import { ANGLE_STEPS, POS_SCALE, Q, qmul } from "../math/fixed";
 import { basalCost, thermalBasalMultiplierQ } from "../organisms/metabolism";
 import { VELOCITY_SCALE } from "../organisms/movement";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { thermalStressQ } from "../organisms/thermal";
 import type { SimulationEngine } from "../SimulationEngine";
 import { BIOME_NAMES } from "../world/biomes";
@@ -82,6 +82,38 @@ export interface EntityDetails {
   biomeName: string;
   cellTemperatureC: number;
   cellPlantBiomass: number;
+
+  /** Functional morphology (M15): what this body does to this organism. */
+  physical: PhysicalPhenotypeDetails;
+}
+
+/**
+ * The developed body expressed as physics (M15, docs/11 §M15).
+ *
+ * Every value is a multiplier against the founder body, so 1.0 means "the same
+ * as an unevolved organism" and the numbers are directly comparable between two
+ * lineages. This is the panel that makes morphology falsifiable: a lineage that
+ * *looks* armored and heavy must read as armored and heavy here, or the picture
+ * and the simulation have come apart.
+ */
+export interface PhysicalPhenotypeDetails {
+  mass: number;
+  energyStore: number;
+  basalUpkeep: number;
+  movementCost: number;
+  growthCost: number;
+  maxSpeed: number;
+  acceleration: number;
+  turnRate: number;
+  waterSpeed: number;
+  armor: number;
+  attack: number;
+  biteSize: number;
+  visionRange: number;
+  visionArc: number;
+  thermalTolerance: number;
+  contactExtent: number;
+  offspringCost: number;
 }
 
 const DEGREES_PER_STEP = 360 / ANGLE_STEPS;
@@ -96,7 +128,7 @@ const VELOCITY_UNITS_PER_LU = VELOCITY_SCALE * POS_SCALE;
  */
 export function queryEntity(engine: SimulationEngine, entityId: number): EntityDetails | null {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, environment, scratch, config } = context;
+  const { organisms, phenotypes, physical, environment, scratch, config } = context;
 
   const slot = organisms.findSlotByEntityId(entityId);
   if (slot < 0 || organisms.alive[slot] !== 1) {
@@ -105,7 +137,7 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
 
   const developmentQ = organisms.developmentQ[slot] as number;
   const radiusPos = currentRadiusPos(phenotypes.adultRadiusPos[slot] as number, developmentQ);
-  const mass = massFromRadiusPos(radiusPos, config.organism.massScalePerRadiusSquared);
+  const mass = bodyMass(physical, slot, radiusPos, config.organism.massScalePerRadiusSquared);
   const xPos = organisms.x[slot] as number;
   const yPos = organisms.y[slot] as number;
   const cell = environment.cellIndexFromPosition(xPos, yPos);
@@ -144,6 +176,7 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
   if (scratch.inWater[slot] === 1) {
     costMovementPerTick = qmul(costMovementPerTick, movement.waterMovementCostMultiplierQ);
   }
+  costMovementPerTick = qmul(costMovementPerTick, physical.movementCostFactorQ[slot] as number);
 
   // --- Brain view (docs/06 §11): what the last tick sensed and decided -------
   //
@@ -178,7 +211,7 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
     speedLUPerTick: speedLUPerTick(organisms.vx[slot] as number, organisms.vy[slot] as number),
 
     energy: organisms.energy[slot] as number,
-    maxEnergy: maxEnergyForMass(mass, config),
+    maxEnergy: maxEnergyForOrganism(physical, slot, mass, config),
     health: (organisms.healthQ[slot] as number) / Q,
     development: developmentQ / Q,
     radiusLU: radiusPos / POS_SCALE,
@@ -213,6 +246,26 @@ export function queryEntity(engine: SimulationEngine, entityId: number): EntityD
     plantEnergyEaten: organisms.plantEnergyEaten[slot] as number,
     meatEnergyEaten: organisms.meatEnergyEaten[slot] as number,
     kills: organisms.kills[slot] as number,
+
+    physical: {
+      mass: (physical.massFactorQ[slot] as number) / Q,
+      energyStore: (physical.energyStoreFactorQ[slot] as number) / Q,
+      basalUpkeep: (physical.basalFactorQ[slot] as number) / Q,
+      movementCost: (physical.movementCostFactorQ[slot] as number) / Q,
+      growthCost: (physical.growthCostFactorQ[slot] as number) / Q,
+      maxSpeed: (physical.maxSpeedFactorQ[slot] as number) / Q,
+      acceleration: (physical.accelFactorQ[slot] as number) / Q,
+      turnRate: (physical.turnFactorQ[slot] as number) / Q,
+      waterSpeed: (physical.waterSpeedFactorQ[slot] as number) / Q,
+      armor: (physical.armorFactorQ[slot] as number) / Q,
+      attack: (physical.attackFactorQ[slot] as number) / Q,
+      biteSize: (physical.biteFactorQ[slot] as number) / Q,
+      visionRange: (physical.visionRangeFactorQ[slot] as number) / Q,
+      visionArc: (physical.visionFovFactorQ[slot] as number) / Q,
+      thermalTolerance: (physical.thermalToleranceFactorQ[slot] as number) / Q,
+      contactExtent: (physical.collisionFactorQ[slot] as number) / Q,
+      offspringCost: (physical.offspringCostFactorQ[slot] as number) / Q,
+    },
 
     biome: environment.biome[cell] as number,
     biomeName: BIOME_NAMES[environment.biome[cell] as number] ?? "Unknown",
@@ -251,7 +304,7 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
   traitMeans: TraitMeans;
 } {
   const { context } = engineInternals(engine);
-  const { organisms, phenotypes, environment, config } = context;
+  const { organisms, phenotypes, physical, environment, config } = context;
   const massScale = config.organism.massScalePerRadiusSquared;
 
   let maxGeneration = 0;
@@ -282,9 +335,9 @@ export function collectTelemetryAggregates(engine: SimulationEngine): {
       phenotypes.adultRadiusPos[slot] as number,
       organisms.developmentQ[slot] as number,
     );
-    const mass = massFromRadiusPos(radiusPos, massScale);
+    const mass = bodyMass(physical, slot, radiusPos, massScale);
     organismMass += mass;
-    const maxEnergy = maxEnergyForMass(mass, config);
+    const maxEnergy = maxEnergyForOrganism(physical, slot, mass, config);
     if (maxEnergy > 0) {
       energyFractionSum += Math.min(1, (organisms.energy[slot] as number) / maxEnergy);
     }

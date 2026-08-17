@@ -204,6 +204,25 @@ function detailsFixture(): EntityDetailsDto {
     biomeName: "Grassland",
     cellTemperatureC: 21.3,
     cellPlantBiomass: 1450,
+    physical: {
+      mass: 1.42,
+      energyStore: 1.08,
+      basalUpkeep: 1.21,
+      movementCost: 1.33,
+      growthCost: 1.35,
+      maxSpeed: 0.79,
+      acceleration: 0.86,
+      turnRate: 0.94,
+      waterSpeed: 1.02,
+      armor: 1.5,
+      attack: 1.12,
+      biteSize: 1.05,
+      visionRange: 0.97,
+      visionArc: 1.03,
+      thermalTolerance: 0.99,
+      contactExtent: 1.11,
+      offspringCost: 1.29,
+    },
   };
 }
 

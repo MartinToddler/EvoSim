@@ -317,12 +317,122 @@ export interface MorphologyConfig {
   maxSilhouetteExtentQ: number;
 }
 
+/**
+ * How a developed body turns into physics (M15, docs/11 §M15).
+ *
+ * Every `…GainQ` is the Q-scaled amount one driver moves one factor when it
+ * travels the whole distance from the founder body's value to the extreme. A
+ * factor is `1 + Σ ±gain × (expression − founderExpression)`, so the founder
+ * morphology is exactly neutral and every coefficient reads as "how much does
+ * diverging in this direction matter".
+ *
+ * `validateConfig` bounds the summed gains of each factor below Q, so no factor
+ * can be driven to zero or inverted by a legal configuration; `minFactorQ` and
+ * `maxFactorQ` are the hard backstop, not the working range.
+ */
+export interface PhysicalMorphologyConfig {
+  /** Mass of plate tissue per unit area, relative to soft tissue. */
+  plateDensityQ: number;
+  /** Structural mass each segment past the first adds, as a share of the trunk. */
+  segmentStructureQ: number;
+
+  /** How much of the body-area ratio to the founder reaches body mass. */
+  massBulkGainQ: number;
+  /** Body width → maximum energy. */
+  storeGirthGainQ: number;
+
+  /** Limb area → basal upkeep. */
+  basalLimbGainQ: number;
+  /** Plating → basal upkeep. */
+  basalArmorGainQ: number;
+  /** Mouth size → basal upkeep: jaw muscle is maintained whether or not it bites. */
+  basalMouthGainQ: number;
+
+  /** Limb area → movement cost: a big propulsive apparatus burns more to push. */
+  movementLimbGainQ: number;
+  /** Lateral silhouette → movement cost. */
+  movementDragGainQ: number;
+
+  /** Plating → energy per unit of grown mass. */
+  growthArmorGainQ: number;
+  /** Limb area → energy per unit of grown mass. */
+  growthLimbGainQ: number;
+
+  /** Rearward-swept limb area → top speed. */
+  speedThrustGainQ: number;
+  /** Tail length → top speed: an undulating tail is a propulsive surface. */
+  speedTailGainQ: number;
+  /** Lateral silhouette → top speed (a penalty). */
+  speedDragGainQ: number;
+  /** Plating → top speed (a penalty). */
+  speedArmorGainQ: number;
+
+  /** Rearward-swept limb area → acceleration. */
+  accelThrustGainQ: number;
+  /** Realized mass → acceleration (a penalty). */
+  accelMassGainQ: number;
+
+  /** Segment count → turn rate. */
+  turnSegmentGainQ: number;
+  /** Laterally held limb area → turn rate. */
+  turnLateralGainQ: number;
+  /** Fore/aft silhouette → turn rate (a penalty): body, head and tail together. */
+  turnSpanGainQ: number;
+  /** Mouth size → turn rate (a penalty): mass carried out at the nose. */
+  turnMouthGainQ: number;
+
+  /** Slenderness → movement speed in water. */
+  waterStreamlineGainQ: number;
+  /** Limb area → movement speed in water. */
+  waterPaddleGainQ: number;
+  /** Tail length → movement speed in water. */
+  waterTailGainQ: number;
+  /** Body width → movement speed in water (a penalty). */
+  waterGirthGainQ: number;
+
+  /** Plating → effective armor. */
+  armorPlateGainQ: number;
+  /** Mouth size → attack power. */
+  attackMouthGainQ: number;
+  /** Head proportion → attack power. */
+  attackHeadGainQ: number;
+  /** Mouth size → bite size. */
+  biteMouthGainQ: number;
+
+  /** Sensor size → vision range. */
+  visionRangeSensorGainQ: number;
+  /** Forward sensor placement → vision range. */
+  visionRangeForwardGainQ: number;
+  /** Sensor size → field of view. */
+  visionFovSensorGainQ: number;
+  /** Forward sensor placement → field of view (a penalty). */
+  visionFovForwardGainQ: number;
+
+  /** Slenderness → thermal tolerance (a penalty: more surface per volume). */
+  thermalSlendernessGainQ: number;
+  /** Fore/aft silhouette → contact extent. */
+  collisionSilhouetteGainQ: number;
+
+  /** Realized mass → offspring construction overhead. */
+  offspringBulkGainQ: number;
+  /** Plating → offspring construction overhead. */
+  offspringArmorGainQ: number;
+
+  /** Hard floor on every derived factor; must be above zero. */
+  minFactorQ: number;
+  /** Hard ceiling on every derived factor. */
+  maxFactorQ: number;
+}
+
 export interface OrganismConfig {
   /** Gene → phenotype mapping ranges (docs/08 §7). */
   geneRanges: GeneRangeConfig;
 
   /** Morphological development bounds (M14, docs/11 §M14). */
   morphology: MorphologyConfig;
+
+  /** Developed body → physical phenotype (M15, docs/11 §M15). */
+  physicalMorphology: PhysicalMorphologyConfig;
 
   /** mass = massScalePerRadiusSquared * radiusLU² (docs/04 §3). */
   massScalePerRadiusSquared: number;

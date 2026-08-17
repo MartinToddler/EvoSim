@@ -36,7 +36,7 @@ import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { engineInternals } from "../internal";
 import { POS_SCALE, Q } from "../math/fixed";
 import { DEATH_CAUSE_COUNT } from "../organisms/death";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import type { SimulationEngine } from "../SimulationEngine";
 import { Biome } from "../world/biomes";
 import { totalPlantBiomass, totalPlantCapacity } from "../world/plants";
@@ -190,7 +190,7 @@ function checkOrganisms(engine: SimulationEngine, seenIds: Set<number>, v: SoakV
   const { organisms, config } = engine;
   // The phenotype cache is engine-internal (it is derived state, not part of the
   // public surface), and the energy bound needs the adult radius it holds.
-  const { phenotypes } = engineInternals(engine).context;
+  const { phenotypes, physical } = engineInternals(engine).context;
   const maxPos = config.world.sizeLU * POS_SCALE - 1;
 
   seenIds.clear();
@@ -216,7 +216,9 @@ function checkOrganisms(engine: SimulationEngine, seenIds: Set<number>, v: SoakV
     seenIds.add(id);
 
     const energy = organisms.energy[slot] as number;
-    const mass = massFromRadiusPos(
+    const mass = bodyMass(
+      physical,
+      slot,
       currentRadiusPos(
         phenotypes.adultRadiusPos[slot] as number,
         organisms.developmentQ[slot] as number,
@@ -225,7 +227,11 @@ function checkOrganisms(engine: SimulationEngine, seenIds: Set<number>, v: SoakV
     );
     // The upper bound is the one a birth could break: a child endowed with its
     // parent's investment must never be granted more than its own body holds.
-    if (!Number.isSafeInteger(energy) || energy < 0 || energy > maxEnergyForMass(mass, config)) {
+    if (
+      !Number.isSafeInteger(energy) ||
+      energy < 0 ||
+      energy > maxEnergyForOrganism(physical, slot, mass, config)
+    ) {
       v.energy += 1;
     }
 

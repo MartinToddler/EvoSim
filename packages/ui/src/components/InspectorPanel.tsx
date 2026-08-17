@@ -1,5 +1,6 @@
+import { Fragment } from "react";
 import { hueTint } from "@eon/renderer/palette";
-import type { EntityDetailsDto, WorldDisplayDto } from "@eon/protocol";
+import type { EntityDetailsDto, PhysicalPhenotypeDto, WorldDisplayDto } from "@eon/protocol";
 import { formatFixed, formatInt, formatPercent, formatSigned } from "../format";
 
 /**
@@ -226,6 +227,18 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element {
             </dl>
           </div>
 
+          <details className="section">
+            <summary className="section-title">Body plan (× founder body)</summary>
+            <dl>
+              {PHYSICAL_ROWS.map(([label, key]) => (
+                <Fragment key={key}>
+                  <dt>{label}</dt>
+                  <dd>{formatFactor(details.physical[key])}</dd>
+                </Fragment>
+              ))}
+            </dl>
+          </details>
+
           <div className="section">
             <div className="section-title">Running costs (energy/tick)</div>
             <dl>
@@ -295,6 +308,46 @@ export function InspectorPanel(props: InspectorPanelProps): React.JSX.Element {
 }
 
 /** One labelled brain value: name, signed/positive meter, exact number. */
+/**
+ * The physical phenotype rows, in the order a reader builds a mental picture:
+ * how big the body is, what it costs, what it can do, and what it costs to
+ * make another one. Labels name the *consequence*, not the morphological gene —
+ * the genes are visible in the drawing.
+ */
+const PHYSICAL_ROWS: readonly (readonly [string, keyof PhysicalPhenotypeDto])[] = [
+  ["Mass", "mass"],
+  ["Energy store", "energyStore"],
+  ["Basal upkeep", "basalUpkeep"],
+  ["Movement cost", "movementCost"],
+  ["Growth cost", "growthCost"],
+  ["Top speed", "maxSpeed"],
+  ["Acceleration", "acceleration"],
+  ["Turn rate", "turnRate"],
+  ["Speed in water", "waterSpeed"],
+  ["Armor value", "armor"],
+  ["Attack power", "attack"],
+  ["Bite size", "biteSize"],
+  ["Vision range", "visionRange"],
+  ["Vision arc", "visionArc"],
+  ["Thermal tolerance", "thermalTolerance"],
+  ["Contact extent", "contactExtent"],
+  ["Offspring cost", "offspringCost"],
+];
+
+/**
+ * A body-plan multiplier.
+ *
+ * Shown with an explicit sign against 1.0 rather than as a bare number, because
+ * the only question worth asking of these is which way the body has moved: a
+ * lineage reading "1.42x (+42%)" for armor and "0.71x (-29%)" for top speed is
+ * a trade-off a reader can see at a glance.
+ */
+function formatFactor(value: number): string {
+  const percent = Math.round((value - 1) * 100);
+  const sign = percent > 0 ? "+" : "";
+  return `${formatFixed(value, 2)}\u00d7 (${sign}${percent}%)`;
+}
+
 function FragmentRow(props: { label: string; value: number; signed: boolean }): React.JSX.Element {
   return (
     <>

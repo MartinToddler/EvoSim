@@ -156,8 +156,10 @@ export {
   PhenotypeStore,
   derivePhenotype,
   massFromRadiusPos,
+  bodyMass,
   currentRadiusPos,
   maxEnergyForMass,
+  maxEnergyForOrganism,
 } from "./organisms/phenotype";
 export { thermalStressQ, SEVERE_THERMAL_STRESS_Q } from "./organisms/thermal";
 export {
@@ -450,6 +452,16 @@ export {
   appendagePairCount,
 } from "./morphology/morphGenes";
 export { MorphologyStore, deriveMorphology } from "./morphology/morphDevelopment";
+export {
+  PhysicalPhenotypeStore,
+  type MorphologyExpressions,
+  type MorphologyReference,
+  computeMorphologyExpressions,
+  createMorphologyExpressions,
+  createMorphologyReference,
+  derivePhysical,
+  contactRadiusPos,
+} from "./morphology/physicalPhenotype";
 export {
   MorphMutationClass,
   classifyMorphRoll,

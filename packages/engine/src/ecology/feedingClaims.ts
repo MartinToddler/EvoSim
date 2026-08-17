@@ -1,6 +1,7 @@
 import { clamp, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
+import { contactRadiusPos } from "../morphology/physicalPhenotype";
 import { type NearestTarget, findCarcassInMouthRange } from "../spatial/queries";
 
 /**
@@ -110,7 +111,7 @@ export function meatBiteUnits(ctx: EngineContext, slot: number, mass: number): n
  * so a herbivore surrounded by grass costs exactly what it did before.
  */
 export function buildFeedingClaims(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, carcasses, scratch, config } = ctx;
+  const { organisms, phenotypes, physical, environment, carcasses, scratch, config } = ctx;
   const thresholdQ = config.organism.feeding.eatOutputThresholdQ;
   const massScale = config.organism.massScalePerRadiusSquared;
   const plantEnergyPerUnit = config.plants.plantEnergyPerBiomass;
@@ -133,7 +134,7 @@ export function buildFeedingClaims(ctx: EngineContext): void {
       phenotypes.adultRadiusPos[slot] as number,
       organisms.developmentQ[slot] as number,
     );
-    const mass = massFromRadiusPos(radius, massScale);
+    const mass = bodyMass(physical, slot, radius, massScale);
 
     // Expected obtainable energy from the cell underfoot. "Obtainable" is
     // bounded by what the cell actually holds, which is exactly what the old
@@ -157,7 +158,7 @@ export function buildFeedingClaims(ctx: EngineContext): void {
     const meatEfficiencyQ = phenotypes.meatEfficiencyQ[slot] as number;
     let carcassSlot = -1;
     if (meatBite > 0 && qmul(meatBite * meatEnergyPerUnit, meatEfficiencyQ) > plantGain) {
-      findCarcassInMouthRange(ctx, slot, radius, mouthCarcass);
+      findCarcassInMouthRange(ctx, slot, contactRadiusPos(physical, slot, radius), mouthCarcass);
       if (mouthCarcass.slot !== -1) {
         const remaining = carcasses.remainingMeat[mouthCarcass.slot] as number;
         const meatUnits = meatBite < remaining ? meatBite : remaining;
@@ -208,7 +209,7 @@ export function buildFeedingClaims(ctx: EngineContext): void {
  * than a carnivore does, and the reverse holds for meat.
  */
 export function resolveFeedingClaims(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, carcasses, species, scratch, config } = ctx;
+  const { organisms, phenotypes, physical, environment, carcasses, species, scratch, config } = ctx;
   const plantEnergyPerUnit = config.plants.plantEnergyPerBiomass;
   const meatEnergyPerUnit = config.plants.meatEnergyPerUnit;
   const massScale = config.organism.massScalePerRadiusSquared;
@@ -268,7 +269,12 @@ export function resolveFeedingClaims(ctx: EngineContext): void {
       phenotypes.adultRadiusPos[slot] as number,
       organisms.developmentQ[slot] as number,
     );
-    const maxEnergy = maxEnergyForMass(massFromRadiusPos(radius, massScale), config);
+    const maxEnergy = maxEnergyForOrganism(
+      physical,
+      slot,
+      bodyMass(physical, slot, radius, massScale),
+      config,
+    );
     organisms.energy[slot] = Math.min((organisms.energy[slot] as number) + gained, maxEnergy);
   }
 

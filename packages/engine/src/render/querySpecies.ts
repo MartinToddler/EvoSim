@@ -2,7 +2,7 @@ import { SpeciesEndReason, type SpeciesRecord } from "../evolution/SpeciesStore"
 import { SpeciesStatMetric, WorldStatMetric } from "../history/StatisticsStore";
 import { engineInternals } from "../internal";
 import { Q } from "../math/fixed";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import type { SimulationEngine } from "../SimulationEngine";
 
 /**
@@ -113,7 +113,7 @@ export function querySpecies(engine: SimulationEngine, speciesId: number): Speci
   let energyRatioSumQ = 0;
   let members = 0;
   if (record.endReason === SpeciesEndReason.Active && record.population > 0) {
-    const { phenotypes, config } = context;
+    const { phenotypes, physical, config } = context;
     for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
       if (organisms.alive[slot] !== 1 || organisms.speciesId[slot] !== speciesId) {
         continue;
@@ -124,8 +124,8 @@ export function querySpecies(engine: SimulationEngine, speciesId: number): Speci
         phenotypes.adultRadiusPos[slot] as number,
         organisms.developmentQ[slot] as number,
       );
-      const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
-      const maxEnergy = maxEnergyForMass(mass, config);
+      const mass = bodyMass(physical, slot, radius, config.organism.massScalePerRadiusSquared);
+      const maxEnergy = maxEnergyForOrganism(physical, slot, mass, config);
       if (maxEnergy > 0) {
         const ratio = Math.trunc(((organisms.energy[slot] as number) * Q) / maxEnergy);
         energyRatioSumQ += Math.min(ratio, Q);

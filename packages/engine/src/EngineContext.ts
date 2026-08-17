@@ -8,6 +8,7 @@ import type { EventDetectors } from "./history/eventDetection";
 import type { StatisticsStore } from "./history/StatisticsStore";
 import type { GenomeStore } from "./organisms/GenomeStore";
 import type { MorphologyStore } from "./morphology/morphDevelopment";
+import type { MorphologyReference, PhysicalPhenotypeStore } from "./morphology/physicalPhenotype";
 import type { OrganismStore } from "./organisms/OrganismStore";
 import type { PhenotypeStore } from "./organisms/phenotype";
 import type { Xoshiro128 } from "./random/Xoshiro128";
@@ -37,6 +38,16 @@ export interface EngineContext {
   readonly phenotypes: PhenotypeStore;
   /** Derived morphological phenotype cache (M14). Not hashed, not serialized. */
   readonly morphology: MorphologyStore;
+  /** Derived physical phenotype cache (M15). Not hashed, not serialized. */
+  readonly physical: PhysicalPhenotypeStore;
+  /**
+   * The neutral point the physical phenotype is measured against (M15).
+   *
+   * A pure function of the config, built once with the context: the founder
+   * body's physics is 1.0 by definition, and everything else is a difference
+   * from it.
+   */
+  readonly morphologyReference: MorphologyReference;
   /** Authoritative carrion (docs/03 §23). */
   readonly carcasses: CarcassStore;
   /** Authoritative species registry and split-candidate state (docs/05 §5). */

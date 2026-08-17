@@ -2,7 +2,8 @@ import { Q, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
 import { reportCombatKill } from "../history/eventDetection";
 import { DeathCause, markDeath } from "../organisms/death";
-import { currentRadiusPos, massFromRadiusPos } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos } from "../organisms/phenotype";
+import { contactRadiusPos } from "../morphology/physicalPhenotype";
 import { type NearestTarget, findContactTarget } from "../spatial/queries";
 
 /**
@@ -125,7 +126,7 @@ function canAttack(ctx: EngineContext, slot: number, mass: number): boolean {
  * "out-of-range no-hit").
  */
 export function buildCombatClaims(ctx: EngineContext): void {
-  const { organisms, phenotypes, scratch, config } = ctx;
+  const { organisms, phenotypes, physical, scratch, config } = ctx;
   const massScale = config.organism.massScalePerRadiusSquared;
   const cooldownTicks = config.combat.attackCooldownTicks;
 
@@ -160,12 +161,15 @@ export function buildCombatClaims(ctx: EngineContext): void {
       phenotypes.adultRadiusPos[slot] as number,
       organisms.developmentQ[slot] as number,
     );
-    const mass = massFromRadiusPos(radius, massScale);
+    const mass = bodyMass(physical, slot, radius, massScale);
     if (!canAttack(ctx, slot, mass)) {
       continue;
     }
 
-    findContactTarget(ctx, slot, radius, contactTarget);
+    // Reach follows the silhouette, not the bare radius: a long-bodied,
+    // long-limbed organism can touch what a compact one of the same radius
+    // cannot, which is the same extent it is drawn with and collides at.
+    findContactTarget(ctx, slot, contactRadiusPos(physical, slot, radius), contactTarget);
     const targetSlot = contactTarget.slot;
     if (targetSlot === -1) {
       continue;

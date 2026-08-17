@@ -26,6 +26,7 @@ export {
   isSimulationSpeed,
   targetTicksPerSecond,
   type EntityDetailsDto,
+  type PhysicalPhenotypeDto,
   type HistorySliceDto,
   type SimulationSpeed,
   type SpeciesDetailsDto,

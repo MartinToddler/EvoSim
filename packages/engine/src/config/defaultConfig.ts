@@ -168,6 +168,79 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
       maxSilhouetteExtentQ: 40960,
     },
 
+    // M15, docs/11 §M15 and ADR 0029. Read every value as "travelling the whole
+    // distance from the founder body to the extreme moves this quantity by X".
+    // The founder body is exactly neutral, so these are all differences, not
+    // absolutes, and nothing here re-tunes the calibrated MVP ecology on its own.
+    physicalMorphology: {
+      // Plate tissue weighs twice what soft tissue does per unit area, and each
+      // segment past the first adds 15% of the trunk as structural mass.
+      plateDensityQ: 8192, // 2.00
+      segmentStructureQ: 614, // 0.15
+
+      // The largest body the config can express is ~11.5x the founder's area,
+      // so the gain is what keeps morphology consequential without letting one
+      // mutation direction dwarf every ecological gene. 0.25 also keeps the
+      // heaviest expressible body (3.87x) clear of the maxFactorQ backstop, so
+      // the clamp stays a guard rather than a working part of the physics.
+      massBulkGainQ: 1024, // 0.25
+      storeGirthGainQ: 1229, // 0.30
+
+      basalLimbGainQ: 2458, // 0.60
+      basalArmorGainQ: 1638, // 0.40
+      basalMouthGainQ: 1229, // 0.30
+
+      // Locomotion is billed twice, as it should be: once for maintaining the
+      // apparatus and once for using it. Without the second term a lineage that
+      // grows limbs pays a few percent of upkeep for a few percent of speed and
+      // wins in every world, which is the "always maximize" shape the trade-off
+      // rule forbids (ADR 0029 §5c).
+      movementLimbGainQ: 3686, // 0.90
+      movementDragGainQ: 2048, // 0.50
+
+      growthArmorGainQ: 2458, // 0.60 — plate is the dearest tissue to build
+      growthLimbGainQ: 2048, // 0.50
+
+      speedThrustGainQ: 2867, // 0.70
+      speedTailGainQ: 410, // 0.10
+      speedDragGainQ: 1638, // 0.40
+      speedArmorGainQ: 1229, // 0.30
+
+      accelThrustGainQ: 2458, // 0.60
+      accelMassGainQ: 1024, // 0.25
+
+      turnSegmentGainQ: 1229, // 0.30
+      turnLateralGainQ: 2458, // 0.60
+      turnSpanGainQ: 1638, // 0.40
+      turnMouthGainQ: 1024, // 0.25
+
+      waterStreamlineGainQ: 1638, // 0.40
+      waterPaddleGainQ: 2458, // 0.60
+      waterTailGainQ: 1229, // 0.30
+      waterGirthGainQ: 1638, // 0.40
+
+      armorPlateGainQ: 2458, // 0.60
+      attackMouthGainQ: 2048, // 0.50
+      attackHeadGainQ: 1229, // 0.30
+      biteMouthGainQ: 1638, // 0.40
+
+      visionRangeSensorGainQ: 1638, // 0.40
+      visionRangeForwardGainQ: 819, // 0.20
+      visionFovSensorGainQ: 819, // 0.20
+      visionFovForwardGainQ: 1229, // 0.30
+
+      thermalSlendernessGainQ: 1229, // 0.30
+      collisionSilhouetteGainQ: 1229, // 0.30
+
+      offspringBulkGainQ: 819, // 0.20
+      offspringArmorGainQ: 1229, // 0.30
+
+      // Backstops, not the working range: the gain bounds above keep every
+      // factor well inside these for any body the config can grow.
+      minFactorQ: 819, // 0.20
+      maxFactorQ: 16384, // 4.00
+    },
+
     // docs/08 §7 in engine units. Conversions: LU → sub-units ×256,
     // LU/tick → velocity units ×65536, degrees → steps ×4096/360.
     geneRanges: {

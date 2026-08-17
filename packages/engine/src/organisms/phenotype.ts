@@ -1,7 +1,8 @@
 import { assert, type DeepReadonly } from "@eon/shared";
 import type { SimulationConfig } from "../config/SimulationConfig";
-import { POS_SCALE, Q, TRIG_SCALE, clamp, qmul } from "../math/fixed";
+import { ANGLE_STEPS, POS_SCALE, Q, TRIG_SCALE, clamp, clampQ, qmul } from "../math/fixed";
 import { cosLut } from "../math/trigLut";
+import type { PhysicalPhenotypeStore } from "../morphology/physicalPhenotype";
 import { FOV_COS_SCALE } from "../spatial/fov";
 import {
   Gene,
@@ -128,16 +129,24 @@ export class PhenotypeStore {
 }
 
 /**
- * Recompute one slot's phenotype from its genome.
+ * Recompute one slot's phenotype from its genome and its developed body.
  *
  * Called at spawn and for every live slot after a snapshot restore. Every
- * value derives from the genome and the config only — no world state, no
- * position, no history — which is what makes the cache safe to leave out of
- * the state hash.
+ * value derives from the genome, the body that genome grew and the config —
+ * no world state, no position, no history — which is what makes the cache safe
+ * to leave out of the state hash.
+ *
+ * M15 folded the physical phenotype in here rather than beside it. The genetic
+ * mapping and the morphological multiplier for a quantity are two halves of the
+ * same number, and storing them apart would leave every consumer free to read
+ * one and forget the other — which is precisely how a picture and a simulation
+ * drift apart. There is one effective maximum speed, one effective armor value
+ * and one effective vision range, and they live where they always did.
  */
 export function derivePhenotype(
   phenotypes: PhenotypeStore,
   genomes: GenomeStore,
+  physical: PhysicalPhenotypeStore,
   slot: number,
   config: DeepReadonly<SimulationConfig>,
 ): void {
@@ -163,20 +172,44 @@ export function derivePhenotype(
 
   const paceQ = metabolicPaceQ(paceGeneQ, ranges);
 
+  // M15: the body's multipliers on the genetic mapping. Every one of these is
+  // exactly Q for the founder morphology, so an unmutated world is the ecology
+  // Milestones 0–13 calibrated.
+  const speedFactorQ = physical.maxSpeedFactorQ[slot] as number;
+  const accelFactorQ = physical.accelFactorQ[slot] as number;
+  const turnFactorQ = physical.turnFactorQ[slot] as number;
+  const visionRangeFactorQ = physical.visionRangeFactorQ[slot] as number;
+  const visionFovFactorQ = physical.visionFovFactorQ[slot] as number;
+
   phenotypes.adultRadiusPos[slot] = adultRadiusPos(sizeQ, ranges);
-  phenotypes.maxSpeedVel[slot] = effectiveMaxSpeedVel(
-    geneMaxSpeedVel(speedGeneQ, ranges),
-    armorQ,
-    config,
+  phenotypes.maxSpeedVel[slot] = clamp(
+    qmul(effectiveMaxSpeedVel(geneMaxSpeedVel(speedGeneQ, ranges), armorQ, config), speedFactorQ),
+    0,
+    65535,
   );
-  phenotypes.accelerationVel[slot] = accelerationVel(accelQ, ranges);
-  phenotypes.maxTurnSteps[slot] = effectiveMaxTurnSteps(
-    geneMaxTurnSteps(turnQ, ranges),
-    sizeQ,
-    config,
+  phenotypes.accelerationVel[slot] = clamp(
+    qmul(accelerationVel(accelQ, ranges), accelFactorQ),
+    0,
+    65535,
   );
-  const halfFovSteps = visionFovSteps(fovQ, ranges) >> 1;
-  phenotypes.visionRangePos[slot] = visionRangePos(visionQ, ranges);
+  phenotypes.maxTurnSteps[slot] = clamp(
+    qmul(effectiveMaxTurnSteps(geneMaxTurnSteps(turnQ, ranges), sizeQ, config), turnFactorQ),
+    0,
+    ANGLE_STEPS >> 1,
+  );
+  // A cone wider than a full turn is not wider than a full turn, so the half
+  // angle stops at a half turn; clamping here rather than in the visibility
+  // test keeps the cached cosine and the stored angle describing the same cone.
+  const halfFovSteps = clamp(
+    qmul(visionFovSteps(fovQ, ranges) >> 1, visionFovFactorQ),
+    0,
+    ANGLE_STEPS >> 1,
+  );
+  phenotypes.visionRangePos[slot] = clamp(
+    qmul(visionRangePos(visionQ, ranges), visionRangeFactorQ),
+    0,
+    65535,
+  );
   phenotypes.visionHalfFovSteps[slot] = halfFovSteps;
   phenotypes.visionCosHalfFov[slot] = Math.trunc(
     (cosLut(halfFovSteps) * FOV_COS_SCALE) / TRIG_SCALE,
@@ -196,11 +229,27 @@ export function derivePhenotype(
     digestionEfficiencySpanQ,
   );
 
-  phenotypes.attackQ[slot] = attackQ;
-  phenotypes.armorQ[slot] = armorQ;
+  // Effective attack and armor: what the mouth can bite with and what the
+  // plating actually stops. The genetic value is the investment, the
+  // morphological factor is how much of it the body expresses — and because
+  // these effective values feed the basal coefficients below, a bigger jaw or
+  // heavier plating raises its own upkeep rather than being free.
+  const effectiveAttackQ = clampQ(qmul(attackQ, physical.attackFactorQ[slot] as number));
+  const effectiveArmorQ = clampQ(qmul(armorQ, physical.armorFactorQ[slot] as number));
+  phenotypes.attackQ[slot] = effectiveAttackQ;
+  phenotypes.armorQ[slot] = effectiveArmorQ;
   phenotypes.metabolicPaceQ[slot] = paceQ;
   phenotypes.thermalOptimumCentiC[slot] = thermalOptimumCentiC(thermalOptQ, ranges);
-  phenotypes.thermalToleranceCentiC[slot] = thermalToleranceCentiC(toleranceGeneQ, ranges);
+  // Surface area against volume: a slender body sheds heat faster, so the same
+  // genetic tolerance covers a narrower band (M15).
+  phenotypes.thermalToleranceCentiC[slot] = clamp(
+    qmul(
+      thermalToleranceCentiC(toleranceGeneQ, ranges),
+      physical.thermalToleranceFactorQ[slot] as number,
+    ),
+    0,
+    65535,
+  );
   phenotypes.maturityAgeTicks[slot] = maturityAgeTicks(maturityQ, ranges);
   phenotypes.maxAgeTicks[slot] = maxAgeTicks(maxAgeQ, ranges);
   phenotypes.offspringInvestmentQ[slot] = offspringInvestmentQ(investmentQ, ranges);
@@ -212,22 +261,33 @@ export function derivePhenotype(
   const basal = config.organism.basal;
   let massCoeffQ = qmul(paceQ, basal.baseMassPaceCoeffQ);
   massCoeffQ += qmul(qmul(speedGeneQ, speedGeneQ), basal.muscleCapacityCoeffQ);
-  massCoeffQ += qmul(qmul(attackQ, attackQ), basal.attackMaintCoeffQ);
-  massCoeffQ += qmul(qmul(armorQ, armorQ), basal.armorMaintCoeffQ);
+  massCoeffQ += qmul(qmul(effectiveAttackQ, effectiveAttackQ), basal.attackMaintCoeffQ);
+  massCoeffQ += qmul(qmul(effectiveArmorQ, effectiveArmorQ), basal.armorMaintCoeffQ);
   massCoeffQ += qmul(toleranceGeneQ, basal.toleranceMaintCoeffQ);
   massCoeffQ += qmul(maxAgeQ, basal.longevityMaintCoeffQ);
-  phenotypes.basalMassCoeffQ[slot] = clamp(massCoeffQ, 0, 65535);
+  // M15: limbs and plating are maintained tissue, so they are billed per unit of
+  // body mass alongside the genetic capabilities.
+  phenotypes.basalMassCoeffQ[slot] = clamp(
+    qmul(massCoeffQ, physical.basalFactorQ[slot] as number),
+    0,
+    65535,
+  );
 
   // vision = visionBaseCost * rangeNorm² * fovNorm (docs/08 §9): long and wide
-  // sight is the expensive combination.
+  // sight is the expensive combination. The morphological multipliers enter the
+  // same way — a bigger sensor buys range, and range costs quadratically — so
+  // sensory tissue needs no upkeep term of its own.
   phenotypes.basalVisionCost[slot] = clamp(
-    qmul(qmul(qmul(visionQ, visionQ), fovQ), basal.visionBaseCost),
+    qmul(
+      qmul(qmul(qmul(visionQ, visionQ), fovQ), basal.visionBaseCost),
+      qmul(qmul(visionRangeFactorQ, visionRangeFactorQ), visionFovFactorQ),
+    ),
     0,
     65535,
   );
 
   phenotypes.biteMassPaceCoeffQ[slot] = clamp(
-    qmul(config.organism.feeding.biteMassCoeffQ, paceQ),
+    qmul(qmul(config.organism.feeding.biteMassCoeffQ, paceQ), physical.biteFactorQ[slot] as number),
     0,
     65535,
   );
@@ -237,9 +297,35 @@ export function derivePhenotype(
  * Body mass from a radius in sub-units: `massScale * radiusLU²`
  * (docs/04 §3). Computed in one expression so the POS_SCALE² division happens
  * last and small juveniles do not round to zero mass prematurely.
+ *
+ * This is the mass of the *unit* body — a disc of that radius. What an organism
+ * actually weighs depends on the body it grew, which is what {@link bodyMass}
+ * adds; call that instead unless you genuinely want the geometric figure.
  */
 export function massFromRadiusPos(radiusPos: number, massScalePerRadiusSquared: number): number {
   return Math.trunc((massScalePerRadiusSquared * radiusPos * radiusPos) / (POS_SCALE * POS_SCALE));
+}
+
+/**
+ * What one organism actually weighs: the unit-body mass scaled by its
+ * morphology (M15).
+ *
+ * Mass is the busiest quantity in the engine — basal upkeep, movement cost,
+ * growth cost, maximum energy, bite size, attack fee and carcass yield all read
+ * it — which is exactly why morphology enters through it. A long-limbed,
+ * heavily plated body is expensive to run and worth eating; a small slender one
+ * is neither. Nothing about that had to be added as a rule.
+ */
+export function bodyMass(
+  physical: PhysicalPhenotypeStore,
+  slot: number,
+  radiusPos: number,
+  massScalePerRadiusSquared: number,
+): number {
+  return qmul(
+    massFromRadiusPos(radiusPos, massScalePerRadiusSquared),
+    physical.massFactorQ[slot] as number,
+  );
 }
 
 /** Current body radius in sub-units: adult radius scaled by realized development. */
@@ -247,7 +333,30 @@ export function currentRadiusPos(adultRadius: number, developmentQ: number): num
   return qmul(adultRadius, clamp(developmentQ, 0, Q));
 }
 
-/** Maximum energy for a body mass: `baseMaxEnergy + mass * maxEnergyPerMass`. */
-export function maxEnergyForMass(mass: number, config: DeepReadonly<SimulationConfig>): number {
-  return config.organism.baseMaxEnergy + mass * config.organism.maxEnergyPerMass;
+/**
+ * Maximum energy for a body mass: `(baseMaxEnergy + mass * maxEnergyPerMass)`
+ * scaled by the body's storage factor.
+ *
+ * The factor defaults to Q so callers with no organism in hand — the config
+ * probes and the founder-endowment tests — still read the unit body's capacity.
+ */
+export function maxEnergyForMass(
+  mass: number,
+  config: DeepReadonly<SimulationConfig>,
+  storeFactorQ = Q,
+): number {
+  return qmul(
+    config.organism.baseMaxEnergy + mass * config.organism.maxEnergyPerMass,
+    storeFactorQ,
+  );
+}
+
+/** Maximum energy for one organism, including what its body plan can store. */
+export function maxEnergyForOrganism(
+  physical: PhysicalPhenotypeStore,
+  slot: number,
+  mass: number,
+  config: DeepReadonly<SimulationConfig>,
+): number {
+  return maxEnergyForMass(mass, config, physical.energyStoreFactorQ[slot]);
 }

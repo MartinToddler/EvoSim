@@ -6,6 +6,63 @@ Golden-hash policy (CLAUDE.md): any intentional authoritative behavior change re
 `ENGINE_VERSION` bump, regenerated golden hashes and an entry here. UI-only changes must never
 alter engine hashes.
 
+## M15 — Functional morphology (engine 0.10.0, protocol 11, snapshot 10, config 9)
+
+The developed body now has physical consequence. ADR 0029.
+
+### Added
+
+- **`morphology/physicalPhenotype.ts` — one place a body becomes physics.** Sixteen Q
+  multipliers derived from the developed body and the config alone: mass, energy storage, basal
+  upkeep, growth cost, top speed, acceleration, turn rate, speed in water, effective armor,
+  attack power, bite size, vision range, vision arc, thermal tolerance, contact extent and
+  offspring construction cost. A derived cache on the same footing as `PhenotypeStore` and
+  `MorphologyStore` — never hashed, never serialized, rebuilt on restore. Nothing downstream of
+  it reads a morphological gene.
+- **The founder body is exactly neutral.** All sixteen factors are 1.0 for the body
+  `createFounderMorphGenes` grows, and the neutral point is _derived_ from that genome rather
+  than written down, so a later milestone that reshapes the founder cannot leave the physics
+  centred on a body nothing grows. Tests assert both.
+- **`EntityDetailsDto.physical`** — the sixteen multipliers on the wire, shown in the inspector
+  as a "Body plan" section against the founder body.
+- **`fixtures/morphologySelection.ts`** — two controlled selection environments and an observer
+  that measures the selection differential from realized reproduction: the mean body plan of
+  the organisms that actually produced offspring against the mean of the population they came
+  from. No fitness is assigned.
+
+### Changed
+
+- Body mass is now `massScale × radius² × massFactor`, so basal upkeep, movement cost, growth
+  cost, maximum energy, bite size, the attack fee and carcass yield all follow the body plan
+  without any of them gaining a rule.
+- Effective armor, attack power, top speed, acceleration, turn rate, vision range, vision arc
+  and thermal tolerance are the genetic mapping times the morphological multiplier, computed in
+  `derivePhenotype`. There is one effective value for each, where there always was.
+- Soft separation, combat reach and mouth range use the drawn silhouette rather than the bare
+  radius.
+- A parent pays `investment × offspringCostFactor` and the child still receives `investment`;
+  the overhead is destroyed, not banked, so a birth still cannot create energy.
+- `validateConfig` computes the smallest value every factor could reach over the whole
+  expressible genome space and rejects a config that could drive one to zero. The first version
+  of this check rejected `DEFAULT_CONFIG`, which is what it is for.
+
+### Fixed
+
+- **The mouth was free** — it bought attack power and bite size and cost nothing. It now
+  contributes to bulk as dense tissue, carries jaw upkeep, and costs turning as mass at the
+  nose.
+- **The tail was a pure cost** — it extended the silhouette and bought nothing, which drives a
+  locus to zero as surely as a free benefit drives one to the maximum. A tail is a propulsive
+  surface and now contributes to top speed and to movement in water.
+
+### Hashes
+
+Every golden fixture checkpoint and both soak hashes regenerated for one intentional
+authoritative change. Tick 0 moves through the config digest alone — every founder wears the
+founder body and is exactly neutral — and the trajectory diverges from the first birth, when a
+mutated body first weighs, moves, eats and costs something different from its parent's. No PRNG
+draw was added or removed, so the mutation golden is unchanged.
+
 ## [Unreleased] — 2026-08-16 — Offline world creation, and a browser suite that could never run
 
 Versions: **all four unchanged**. No engine, protocol or golden hash is touched — the

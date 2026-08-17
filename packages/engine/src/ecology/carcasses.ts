@@ -1,6 +1,6 @@
 import { Q, clamp, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
-import { currentRadiusPos, massFromRadiusPos } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos } from "../organisms/phenotype";
 
 /**
  * Carcass creation and decay (docs/03 §23, docs/08 §15, task F01).
@@ -43,14 +43,14 @@ export const MIN_CARCASS_DECAY_UNITS = 1;
  * `plantEnergyPerBiomass`, not a refund of what the organism spent growing.
  */
 export function carcassMeatUnits(ctx: EngineContext, slot: number): number {
-  const { organisms, phenotypes, config } = ctx;
+  const { organisms, phenotypes, physical, config } = ctx;
   const { carcass } = config.organism;
 
   const radius = currentRadiusPos(
     phenotypes.adultRadiusPos[slot] as number,
     organisms.developmentQ[slot] as number,
   );
-  const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
+  const mass = bodyMass(physical, slot, radius, config.organism.massScalePerRadiusSquared);
   const bodyMeat = mass * carcass.meatPerMass;
 
   const energyPerUnit = config.plants.meatEnergyPerUnit;

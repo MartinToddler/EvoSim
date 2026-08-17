@@ -729,13 +729,34 @@ fixture oscillates between peaks of ~2 400 and troughs of ~50, so its survival t
 was a coin flip that 0.9.0's stream lost; the fixture world is enlarged until its troughs are
 not near-extinction (ADR 0028 §5). No DEFAULT_CONFIG value changed and no assertion weakened.
 
-### M15 Functional morphology
-- [ ] M15-01 centralized MorphologyPhenotype -> PhysicalPhenotype derivation.
-- [ ] M15-02 mass, collision, storage, metabolism, force, speed, agility, terrain, armor,
-      attack, sensing, thermal and offspring-cost effects.
-- [ ] M15-03 trade-off audit: no globally dominant morphology.
-- [ ] M15-04 two opposing controlled selection environments using realized fitness only.
-- [ ] M15-05 inspector exposes the physical phenotype.
+### M15 Functional morphology (ADR 0029)
+- [x] M15-01 centralized MorphologyPhenotype -> PhysicalPhenotype derivation
+      (`morphology/physicalPhenotype.ts`): 17 Q multipliers, exactly 1.0 for the founder body,
+      derived from the developed body and the config only. A derived cache, never hashed, never
+      serialized, rebuilt on restore. Nothing downstream of it reads a morphological gene.
+- [x] M15-02 effects wired through the ordinary phases: body mass (and through it basal upkeep,
+      movement cost, growth cost, maximum energy, bite size, attack fee and carcass yield),
+      energy storage, basal upkeep, movement cost from the propulsive apparatus, energy per
+      grown mass, top speed, acceleration, turn rate, speed in water, effective armor, attack
+      power, bite size, vision range and arc, thermal tolerance, contact extent for
+      collision/combat/feeding, and offspring construction cost.
+- [x] M15-03 trade-off audit: every direction buys something and pays for it, two loci are pure
+      allocation, and a 3 000-body search finds no morphology that dominates on every axis.
+      The audit found THREE defects in the first design and all three are fixed (ADR 0029 §3a,
+      §5c): a free mouth, a costs-only tail, and locomotion that was free at the point of use.
+- [ ] M15-04 two opposing controlled selection environments (turf and archipelago,
+      `fixtures/morphologySelection.ts`) judged by realized survival and reproduction only.
+      **NOT YET ESTABLISHED.** The mechanism and the fixtures are in place and one measured
+      pass showed the contrast (turf 0.44, archipelago 0.59 from an identical 50/50 start of
+      two locomotor morphs), but it has not yet reproduced across the seed set: shrinking the
+      worlds to cut the gate cost crashed populations into drift and destroyed the signal.
+      A full three-seed measurement at the parameters that worked is the outstanding work.
+- [x] M15-05 inspector exposes the physical phenotype: `EntityDetailsDto.physical`, seventeen
+      multipliers against the founder body, rendered as a "Body plan" section.
+
+M15 gate: **NOT PASSED YET** — M15-04 is open. Everything else is delivered, tested and
+version-bumped (engine 0.9.0 -> 0.10.0, protocol 10 -> 11, snapshot 9 -> 10, config 8 -> 9;
+ADR 0029). Do not start M16 until M15-04 reproduces.
 
 ### M16 Evolvable brain and memory
 - [ ] M16-01 bounded neural genotype: input/hidden/connection/recurrent masks.

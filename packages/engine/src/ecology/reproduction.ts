@@ -4,7 +4,7 @@ import { GENE_COUNT } from "../genetics/genes";
 import { mutateBrainWeights, mutateEcologicalGenes } from "../genetics/mutation";
 import { ANGLE_STEPS, POS_SCALE, TRIG_SCALE, qmul } from "../math/fixed";
 import { cosLut, sinLut } from "../math/trigLut";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
 import { mutateMorphologyGenes } from "../morphology/morphMutation";
 import { spawnOrganism } from "../organisms/spawn";
@@ -114,33 +114,55 @@ function findChildPlacement(ctx: EngineContext, parentSlot: number): ChildPlacem
  * candidate from the same development value the physiology phase just used.
  */
 function parentMaxEnergy(ctx: EngineContext, slot: number): number {
-  const { organisms, phenotypes, config } = ctx;
+  const { organisms, phenotypes, physical, config } = ctx;
   const radius = currentRadiusPos(
     phenotypes.adultRadiusPos[slot] as number,
     organisms.developmentQ[slot] as number,
   );
-  return maxEnergyForMass(
-    massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared),
+  return maxEnergyForOrganism(
+    physical,
+    slot,
+    bodyMass(physical, slot, radius, config.organism.massScalePerRadiusSquared),
     config,
   );
 }
 
-/** What one birth costs its parent (docs/04 §19, docs/08 §16). */
+/** What one birth costs its parent (docs/04 §19, docs/08 §16, M15). */
 export interface ReproductionCost {
   /** Energy handed to the child, before the newborn's own capacity clamp. */
   investment: number;
+  /** What the parent actually spends: the investment plus construction overhead. */
+  paid: number;
   /** Energy the parent must still hold afterwards. */
   reserve: number;
-  /** Energy the parent needs before the birth: investment + reserve. */
+  /** Energy the parent needs before the birth: paid + reserve. */
   required: number;
 }
 
-/** Compute the energy a parent must be holding to afford one birth. */
+/**
+ * Compute the energy a parent must be holding to afford one birth.
+ *
+ * ## Building a complex body costs more than filling it (M15)
+ *
+ * The child receives `investment`; the parent pays `investment ×
+ * offspringCostFactor`, and the difference is destroyed rather than banked. A
+ * heavy, plated body plan is therefore dearer to reproduce than a light one at
+ * the same offspring-investment gene — the trade-off that stops armor from
+ * being paid for only in upkeep.
+ *
+ * The factor is the PARENT's, not the child's, for two reasons. The child's
+ * genome is a mutated copy of the parent's, so the parent's body plan is what
+ * the construction actually builds to within one mutation; and the cost has to
+ * be knowable at the eligibility check, before a slot is allocated and before
+ * any PRNG is drawn. Reading it from the child would make affordability depend
+ * on a body that does not exist yet.
+ */
 export function reproductionEnergyCost(ctx: EngineContext, slot: number): ReproductionCost {
   const maxEnergy = parentMaxEnergy(ctx, slot);
   const investment = qmul(maxEnergy, ctx.phenotypes.offspringInvestmentQ[slot] as number);
+  const paid = qmul(investment, ctx.physical.offspringCostFactorQ[slot] as number);
   const reserve = qmul(maxEnergy, ctx.config.reproduction.minParentReserveFractionQ);
-  return { investment, reserve, required: investment + reserve };
+  return { investment, paid, reserve, required: paid + reserve };
 }
 
 /**
@@ -196,7 +218,7 @@ export function resolveReproduction(ctx: EngineContext): void {
       continue;
     }
 
-    const { investment } = reproductionEnergyCost(ctx, parentSlot);
+    const { investment, paid } = reproductionEnergyCost(ctx, parentSlot);
     const placement = findChildPlacement(ctx, parentSlot);
 
     // The child's genome is mutated in scratch BEFORE it is handed to the
@@ -242,9 +264,11 @@ export function resolveReproduction(ctx: EngineContext): void {
     }
 
     // The child was endowed with what its own newborn body can hold; the parent
-    // pays the full investment either way and the difference is destroyed.
-    organisms.birthEnergyDiscarded += investment - (organisms.energy[childSlot] as number);
-    organisms.energy[parentSlot] = (organisms.energy[parentSlot] as number) - investment;
+    // pays the full investment plus its body plan's construction overhead either
+    // way, and every unit of the difference is destroyed. Energy is never
+    // created by a birth, and the overhead is a real cost rather than a transfer.
+    organisms.birthEnergyDiscarded += paid - (organisms.energy[childSlot] as number);
+    organisms.energy[parentSlot] = (organisms.energy[parentSlot] as number) - paid;
     organisms.reproductionCooldown[parentSlot] = cooldownTicks;
   }
 }

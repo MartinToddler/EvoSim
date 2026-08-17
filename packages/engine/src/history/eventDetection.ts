@@ -5,7 +5,7 @@ import { TraitDim, writeTraitVector } from "../evolution/traitVector";
 import { Q } from "../math/fixed";
 import { HASH_TAG, type StateHash } from "../math/hash";
 import { DeathCause } from "../organisms/death";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { EventSeverity, WorldEventType } from "./EventStore";
 import {
   SPECIES_STAT_METRIC_COUNT,
@@ -264,6 +264,7 @@ export function collectStatisticsAndDetectEvents(ctx: EngineContext, tick: numbe
   const {
     organisms,
     phenotypes,
+    physical,
     environment,
     carcasses,
     species,
@@ -291,7 +292,12 @@ export function collectStatisticsAndDetectEvents(ctx: EngineContext, tick: numbe
       phenotypes.adultRadiusPos[slot] as number,
       organisms.developmentQ[slot] as number,
     );
-    const maxEnergy = maxEnergyForMass(massFromRadiusPos(radius, massScale), config);
+    const maxEnergy = maxEnergyForOrganism(
+      physical,
+      slot,
+      bodyMass(physical, slot, radius, massScale),
+      config,
+    );
     if (maxEnergy > 0) {
       const ratioQ = Math.trunc(((organisms.energy[slot] as number) * Q) / maxEnergy);
       energyRatioSumQ += ratioQ < Q ? ratioQ : Q;

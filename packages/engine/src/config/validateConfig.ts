@@ -6,6 +6,7 @@ import {
   MAX_MORPH_SEGMENTS,
 } from "../morphology/morphGenes";
 import { MORPH_MAGNITUDE_SCALE } from "../render/renderSnapshot";
+import { createMorphologyReference } from "../morphology/physicalPhenotype";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { Biome, BIOME_COUNT } from "../world/biomes";
 import { DEFAULT_CONFIG } from "./defaultConfig";
@@ -184,6 +185,7 @@ export function validateConfig(config: DeepReadonly<SimulationConfig>): void {
   validateOrganism(config);
   validateGeneRanges(config);
   validateMorphology(config);
+  validatePhysicalMorphology(config);
   validateSenses(config);
   validateBrain(config);
   validateMutation(config);
@@ -1014,6 +1016,165 @@ function validateMorphology(config: DeepReadonly<SimulationConfig>): void {
 function checkHalfDegreeRange(value: number, name: string): void {
   checkNonNegativeInt(value, name);
   check(value <= 180, `${name} must not exceed 180 degrees; it is a half-range`);
+}
+
+/**
+ * Functional morphology coefficients (M15, ADR 0029).
+ *
+ * The load-bearing check is the last loop. Every factor except the three driven
+ * by realized mass is `1 + Σ ±gain × (expression − founderExpression)` over
+ * expressions bounded in `[0, Q]`, so the smallest value a body can reach is
+ * computable exactly: a term that ADDS bottoms out at `−gain × founder`, and a
+ * term that SUBTRACTS bottoms out at `−gain × (Q − founder)`. Requiring that
+ * minimum to stay positive is what makes it *impossible* for a legal config to
+ * ask for a zero or inverted speed, turn rate, armor value or upkeep — the
+ * `minFactorQ` clamp is a backstop against arithmetic surprise, not a
+ * substitute for a config that cannot express the impossible.
+ *
+ * The bound is exact rather than the cruder `Σ gain < Q` because the founder
+ * expressions are a pure function of the config, so there is no reason to
+ * reject configurations that are in fact safe. It costs two developed bodies.
+ */
+function validatePhysicalMorphology(config: DeepReadonly<SimulationConfig>): void {
+  const p = config.organism.physicalMorphology;
+  const prefix = "organism.physicalMorphology";
+
+  checkPositiveQCoefficient(p.plateDensityQ, `${prefix}.plateDensityQ`);
+  check(
+    p.plateDensityQ >= Q,
+    `${prefix}.plateDensityQ must be at least Q (${Q}); plate is denser than the soft tissue ` +
+      "it covers, and a value below Q would make armor lighten a body",
+  );
+  checkNonNegativeQCoefficient(p.segmentStructureQ, `${prefix}.segmentStructureQ`);
+
+  checkPositiveQCoefficient(p.minFactorQ, `${prefix}.minFactorQ`);
+  checkPositiveQCoefficient(p.maxFactorQ, `${prefix}.maxFactorQ`);
+  check(
+    p.minFactorQ <= Q && p.maxFactorQ >= Q,
+    `${prefix}: minFactorQ ${p.minFactorQ} and maxFactorQ ${p.maxFactorQ} must bracket Q (${Q}), ` +
+      "or the founder body would not be neutral",
+  );
+  check(
+    p.maxFactorQ <= UINT16_MAX,
+    `${prefix}.maxFactorQ must fit in the Uint16 factor rows (<= ${UINT16_MAX})`,
+  );
+
+  const founder = createMorphologyReference(config).founder;
+
+  /** One term of one factor: a gain, its sign, and the founder's expression. */
+  type Term = readonly [gain: number, name: string, adds: boolean, founderExprQ: number];
+  const factors: readonly [string, readonly Term[]][] = [
+    ["energyStore", [[p.storeGirthGainQ, "storeGirthGainQ", true, founder.girthQ]]],
+    [
+      "basal",
+      [
+        [p.basalLimbGainQ, "basalLimbGainQ", true, founder.propulsionQ],
+        [p.basalArmorGainQ, "basalArmorGainQ", true, founder.armorQ],
+        [p.basalMouthGainQ, "basalMouthGainQ", true, founder.mouthQ],
+      ],
+    ],
+    [
+      "movementCost",
+      [
+        [p.movementLimbGainQ, "movementLimbGainQ", true, founder.propulsionQ],
+        [p.movementDragGainQ, "movementDragGainQ", true, founder.dragQ],
+      ],
+    ],
+    [
+      "growthCost",
+      [
+        [p.growthArmorGainQ, "growthArmorGainQ", true, founder.armorQ],
+        [p.growthLimbGainQ, "growthLimbGainQ", true, founder.propulsionQ],
+      ],
+    ],
+    [
+      "maxSpeed",
+      [
+        [p.speedThrustGainQ, "speedThrustGainQ", true, founder.sweptLimbQ],
+        [p.speedTailGainQ, "speedTailGainQ", true, founder.tailQ],
+        [p.speedDragGainQ, "speedDragGainQ", false, founder.dragQ],
+        [p.speedArmorGainQ, "speedArmorGainQ", false, founder.armorQ],
+      ],
+    ],
+    [
+      "turn",
+      [
+        [p.turnSegmentGainQ, "turnSegmentGainQ", true, founder.segmentationQ],
+        [p.turnLateralGainQ, "turnLateralGainQ", true, founder.lateralLimbQ],
+        [p.turnSpanGainQ, "turnSpanGainQ", false, founder.spanQ],
+        [p.turnMouthGainQ, "turnMouthGainQ", false, founder.mouthQ],
+      ],
+    ],
+    [
+      "waterSpeed",
+      [
+        [p.waterStreamlineGainQ, "waterStreamlineGainQ", true, founder.slendernessQ],
+        [p.waterPaddleGainQ, "waterPaddleGainQ", true, founder.propulsionQ],
+        [p.waterTailGainQ, "waterTailGainQ", true, founder.tailQ],
+        [p.waterGirthGainQ, "waterGirthGainQ", false, founder.girthQ],
+      ],
+    ],
+    ["armor", [[p.armorPlateGainQ, "armorPlateGainQ", true, founder.armorQ]]],
+    [
+      "attack",
+      [
+        [p.attackMouthGainQ, "attackMouthGainQ", true, founder.mouthQ],
+        [p.attackHeadGainQ, "attackHeadGainQ", true, founder.headQ],
+      ],
+    ],
+    ["bite", [[p.biteMouthGainQ, "biteMouthGainQ", true, founder.mouthQ]]],
+    [
+      "visionRange",
+      [
+        [p.visionRangeSensorGainQ, "visionRangeSensorGainQ", true, founder.sensorQ],
+        [p.visionRangeForwardGainQ, "visionRangeForwardGainQ", true, founder.forwardQ],
+      ],
+    ],
+    [
+      "visionFov",
+      [
+        [p.visionFovSensorGainQ, "visionFovSensorGainQ", true, founder.sensorQ],
+        [p.visionFovForwardGainQ, "visionFovForwardGainQ", false, founder.forwardQ],
+      ],
+    ],
+    [
+      "thermalTolerance",
+      [[p.thermalSlendernessGainQ, "thermalSlendernessGainQ", false, founder.slendernessQ]],
+    ],
+    ["collision", [[p.collisionSilhouetteGainQ, "collisionSilhouetteGainQ", true, founder.spanQ]]],
+    ["offspringCost", [[p.offspringArmorGainQ, "offspringArmorGainQ", true, founder.armorQ]]],
+  ];
+
+  for (const [factor, terms] of factors) {
+    let worstQ = Q;
+    for (const [gain, name, adds, founderExprQ] of terms) {
+      checkNonNegativeQCoefficient(gain, `${prefix}.${name}`);
+      worstQ -= qmul(gain, adds ? founderExprQ : Q - founderExprQ);
+    }
+    check(
+      worstQ > 0,
+      `${prefix}: the gains driving the ${factor} factor can take it to ${worstQ}, which is not ` +
+        `above zero. A body could then be given a non-positive ${factor}, which no clamp can ` +
+        "make meaningful",
+    );
+  }
+
+  // Mass, acceleration and offspring cost are driven by the ratio of a body's
+  // area to the founder's, which has no config-level ceiling — so these three
+  // genuinely lean on `maxFactorQ`, and the bound below is stated against it.
+  checkNonNegativeQCoefficient(p.massBulkGainQ, `${prefix}.massBulkGainQ`);
+  checkNonNegativeQCoefficient(p.accelThrustGainQ, `${prefix}.accelThrustGainQ`);
+  checkNonNegativeQCoefficient(p.accelMassGainQ, `${prefix}.accelMassGainQ`);
+  checkNonNegativeQCoefficient(p.offspringBulkGainQ, `${prefix}.offspringBulkGainQ`);
+  const heaviestExcessQ = p.maxFactorQ - Q;
+  const worstAccelQ =
+    Q - qmul(p.accelThrustGainQ, founder.sweptLimbQ) - qmul(p.accelMassGainQ, heaviestExcessQ);
+  check(
+    worstAccelQ > 0,
+    `${prefix}: accelMassGainQ ${p.accelMassGainQ} against maxFactorQ ${p.maxFactorQ} takes the ` +
+      `acceleration factor to ${worstAccelQ}. The heaviest body a config allows must still be ` +
+      "able to accelerate",
+  );
 }
 
 function validateCombat(config: DeepReadonly<SimulationConfig>): void {

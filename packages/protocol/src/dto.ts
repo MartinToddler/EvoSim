@@ -359,6 +359,47 @@ export interface EntityDetailsDto {
   biomeName: string;
   cellTemperatureC: number;
   cellPlantBiomass: number;
+
+  /** What this organism's body does to it (M15). */
+  physical: PhysicalPhenotypeDto;
+}
+
+/**
+ * The developed body expressed as physics (M15, docs/11 §M15).
+ *
+ * Every value is a multiplier against the founder body: 1.0 is "the same as an
+ * unevolved organism", 1.4 is "40% more than one". Multipliers rather than
+ * absolutes because the question a viewer is asking is what the *shape* is
+ * doing — the absolute speed, armor and vision are already above, with the
+ * morphology folded in.
+ */
+export interface PhysicalPhenotypeDto {
+  /** Body mass against a founder-shaped body of the same radius. */
+  mass: number;
+  /** Maximum energy this body plan can store. */
+  energyStore: number;
+  /** Basal upkeep for the structure it maintains. */
+  basalUpkeep: number;
+  /** Energy burned per unit of movement effort. */
+  movementCost: number;
+  /** Energy per unit of mass grown. */
+  growthCost: number;
+  maxSpeed: number;
+  acceleration: number;
+  turnRate: number;
+  /** Movement speed retained in water. */
+  waterSpeed: number;
+  armor: number;
+  attack: number;
+  biteSize: number;
+  visionRange: number;
+  /** Field-of-view width. */
+  visionArc: number;
+  thermalTolerance: number;
+  /** Reach for collisions, combat and feeding. */
+  contactExtent: number;
+  /** Construction overhead a parent pays on top of the offspring investment. */
+  offspringCost: number;
 }
 
 /** Everything a fatal or non-fatal worker failure must report (docs/02 §19). */

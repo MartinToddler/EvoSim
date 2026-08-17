@@ -2,7 +2,7 @@ import { Q, clamp, qmul } from "../math/fixed";
 import { smoothstepQ } from "../math/noise";
 import type { EngineContext } from "../EngineContext";
 import { DeathCause, markDeath } from "./death";
-import { currentRadiusPos, massFromRadiusPos, maxEnergyForMass } from "./phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "./phenotype";
 import { SEVERE_THERMAL_STRESS_Q, thermalStressQ } from "./thermal";
 
 /**
@@ -69,7 +69,7 @@ export function thermalBasalMultiplierQ(stressQ: number, severeMultiplierMaxQ: n
 
 /** Run the whole physiology phase for every living organism. */
 export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
-  const { organisms, phenotypes, environment, scratch, config } = ctx;
+  const { organisms, phenotypes, physical, environment, scratch, config } = ctx;
   const organism = config.organism;
   const { basal, movement, health } = organism;
   const massScale = organism.massScalePerRadiusSquared;
@@ -82,7 +82,7 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
     const developmentQ = organisms.developmentQ[slot] as number;
     const adultRadius = phenotypes.adultRadiusPos[slot] as number;
     const radius = currentRadiusPos(adultRadius, developmentQ);
-    const mass = massFromRadiusPos(radius, massScale);
+    const mass = bodyMass(physical, slot, radius, massScale);
     let energy = organisms.energy[slot] as number;
     let healthQ = organisms.healthQ[slot] as number;
     // Seeded from what combat already took off this organism in phase 11, not
@@ -128,7 +128,9 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
     if (scratch.inWater[slot] === 1) {
       movementCost = qmul(movementCost, movement.waterMovementCostMultiplierQ);
     }
-    cost += movementCost;
+    // M15: what the body burns to push itself, as opposed to what it burns to
+    // stay alive. Limb area and lateral silhouette both raise it.
+    cost += qmul(movementCost, physical.movementCostFactorQ[slot] as number);
 
     // 3. Pay, and starve for the shortfall (docs/04 §9). There is no debt:
     //    energy floors at zero and the deficit becomes health damage.
@@ -150,9 +152,23 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
       organism.birthSizeFractionQ,
     );
     if (targetQ > developmentQ) {
-      const targetMass = massFromRadiusPos(currentRadiusPos(adultRadius, targetQ), massScale);
+      const targetMass = bodyMass(
+        physical,
+        slot,
+        currentRadiusPos(adultRadius, targetQ),
+        massScale,
+      );
       const addedMass = targetMass - mass;
-      const perMass = organism.energyPerGrowthMass;
+      // M15: dense and complex tissue costs more per unit to build, so plating
+      // and long limbs are paid for in development time as well as in mass.
+      // The floor of 1 keeps a costed configuration from rounding to free.
+      const perMass =
+        organism.energyPerGrowthMass === 0
+          ? 0
+          : Math.max(
+              1,
+              qmul(organism.energyPerGrowthMass, physical.growthCostFactorQ[slot] as number),
+            );
       if (addedMass <= 0 || perMass === 0) {
         // The step is too small to change integer mass, or growth is free in
         // this configuration; either way there is nothing to charge for.
@@ -197,7 +213,7 @@ export function applyMetabolismGrowthThermalAging(ctx: EngineContext): void {
     // 6. Passive healing (docs/04 §9): only when well fed and not severely
     //    stressed, and it costs energy. Eating never restores health directly.
     if (healthQ > 0 && healthQ < Q && stressQ < SEVERE_THERMAL_STRESS_Q) {
-      const maxEnergy = maxEnergyForMass(mass, config);
+      const maxEnergy = maxEnergyForOrganism(physical, slot, mass, config);
       const threshold = qmul(maxEnergy, health.passiveHealingMinEnergyFractionQ);
       if (energy > threshold) {
         const healCost =

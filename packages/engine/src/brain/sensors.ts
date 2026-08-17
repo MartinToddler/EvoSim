@@ -4,7 +4,7 @@ import { isqrt } from "../math/isqrt";
 import { statelessNoiseSignedQ, statelessNoiseU32 } from "../random/statelessNoise";
 import type { EngineContext } from "../EngineContext";
 import { HUE_DEGREES } from "../genetics/genes";
-import { currentRadiusPos, maxEnergyForMass, massFromRadiusPos } from "../organisms/phenotype";
+import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { thermalStressQ } from "../organisms/thermal";
 import { plantGradientXQAt, plantGradientYQAt } from "../world/plants";
 import {
@@ -127,7 +127,7 @@ function hueDifferenceQ(selfHue: number, otherHue: number): number {
 
 /** Write the sensor block for every living organism. */
 export function senseAll(ctx: EngineContext, tick: number): void {
-  const { organisms, phenotypes, environment, config, scratch, seed } = ctx;
+  const { organisms, phenotypes, physical, environment, config, scratch, seed } = ctx;
   const sensors = scratch.sensorValues;
   const senses = config.senses;
   const maxPos = config.world.sizeLU * POS_SCALE - 1;
@@ -159,8 +159,8 @@ export function senseAll(ctx: EngineContext, tick: number): void {
     // --- Interoception -----------------------------------------------------
     const developmentQ = organisms.developmentQ[slot] as number;
     const radius = currentRadiusPos(phenotypes.adultRadiusPos[slot] as number, developmentQ);
-    const mass = massFromRadiusPos(radius, config.organism.massScalePerRadiusSquared);
-    const maxEnergy = maxEnergyForMass(mass, config);
+    const mass = bodyMass(physical, slot, radius, config.organism.massScalePerRadiusSquared);
+    const maxEnergy = maxEnergyForOrganism(physical, slot, mass, config);
     sensors[base + BrainInput.Energy] = toSignedRange(organisms.energy[slot] as number, maxEnergy);
     sensors[base + BrainInput.Health] = toSignedRange(organisms.healthQ[slot] as number, Q);
     sensors[base + BrainInput.Development] =

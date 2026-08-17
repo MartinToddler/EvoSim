@@ -1,9 +1,14 @@
 import type { DeepReadonly } from "@eon/shared";
 import { BRAIN_WEIGHT_COUNT } from "../brain/BrainLayout";
 import type { SimulationConfig } from "../config/SimulationConfig";
-import { GENE_COUNT } from "../genetics/genes";
+import { GENE_COUNT, Gene, geneToQ, hueDegrees } from "../genetics/genes";
 import { MORPH_GENE_COUNT } from "../morphology/morphGenes";
 import { type MorphologyStore, deriveMorphology } from "../morphology/morphDevelopment";
+import {
+  type MorphologyReference,
+  type PhysicalPhenotypeStore,
+  derivePhysical,
+} from "../morphology/physicalPhenotype";
 import { DEATH_CAUSE_COUNT } from "./death";
 import type { GenomeStore } from "./GenomeStore";
 import type { OrganismStore } from "./OrganismStore";
@@ -131,6 +136,8 @@ export function restoreOrganisms(
   genomes: GenomeStore,
   phenotypes: PhenotypeStore,
   morphology: MorphologyStore,
+  physical: PhysicalPhenotypeStore,
+  reference: MorphologyReference,
   config: DeepReadonly<SimulationConfig>,
 ): void {
   if (snapshot.capacity !== organisms.capacity) {
@@ -197,8 +204,18 @@ export function restoreOrganisms(
 
   for (let slot = 0; slot < used; slot += 1) {
     if (organisms.alive[slot] === 1) {
-      derivePhenotype(phenotypes, genomes, slot, config);
-      deriveMorphology(morphology, genomes, slot, phenotypes.hueDegrees[slot] as number, config);
+      // The same genome -> body -> physics -> phenotype pipeline the spawner
+      // runs, so a restored world cannot carry a body that disagrees with the
+      // genes that grew it or physics that disagrees with the body.
+      deriveMorphology(
+        morphology,
+        genomes,
+        slot,
+        hueDegrees(geneToQ(genomes.gene(slot, Gene.Hue))),
+        config,
+      );
+      derivePhysical(physical, morphology, slot, reference, config);
+      derivePhenotype(phenotypes, genomes, physical, slot, config);
     }
   }
 }

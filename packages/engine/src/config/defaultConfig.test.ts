@@ -52,7 +52,7 @@ describe("DEFAULT_CONFIG", () => {
   });
 
   it("matches the golden config hash (config drift is a versioned decision)", () => {
-    expect(hashConfig(DEFAULT_CONFIG)).toBe("663e99c202ba0f82");
+    expect(hashConfig(DEFAULT_CONFIG)).toBe("bc7998060a3d634a");
   });
 });
 
