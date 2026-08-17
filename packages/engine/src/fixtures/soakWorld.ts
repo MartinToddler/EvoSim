@@ -132,7 +132,7 @@ export const SOAK_GOLDEN_TICKS = 100_000;
  * POSITIVE control is the fixtures/speciationScenario.ts world, whose
  * channel-fragmented run splits at ~tick 45 000.
  */
-export const GOLDEN_SOAK_HASH = "6995271aeec2b696";
+export const GOLDEN_SOAK_HASH = "56f17c979362420b";
 
 /** Every way a sweep can find the world broken. All zero means healthy. */
 export interface SoakViolations {

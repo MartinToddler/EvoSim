@@ -172,4 +172,74 @@ reachability sweep belongs in the final audit (F-02), not in the per-commit gate
 
 ---
 
+### M15 — Functional morphology
+
+| Field            | Value                                                       |
+| ---------------- | ----------------------------------------------------------- |
+| Status           | complete                                                    |
+| Branch           | `claude/evosim-2-0-implementation-7sjovi`                    |
+| Commit SHA       | `f17f194` (mechanism `727b53c`)                              |
+| Engine version   | 0.9.0 → **0.10.0**                                          |
+| Config schema    | 8 → **9**                                                   |
+| Snapshot schema  | 9 → **10**                                                  |
+| Protocol version | 10 → **11** (render snapshot layout unchanged at 2)          |
+| ADR              | 0029                                                        |
+| `pnpm verify`    | pending                                                     |
+| Deployment       | pending                                                     |
+
+**Delivered.** One centralized derivation — `morphology/physicalPhenotype.ts` — turning a
+developed body into seventeen Q multipliers: mass, energy storage, basal upkeep, movement cost,
+growth cost, top speed, acceleration, turn rate, speed in water, effective armor, attack power,
+bite size, vision range and arc, thermal tolerance, contact extent and offspring construction
+cost. Nothing downstream of it reads a morphological gene. The founder body is exactly 1.0 in
+all seventeen, and that neutral point is *derived* from the founder genome rather than written
+down, so the ecology Milestones 0–13 calibrated is preserved by construction and a later
+milestone cannot leave the physics centred on a body nothing grows.
+
+**Important tests.** 23 physics tests and 12 integration tests, plus the reachability gate.
+Derivation: founder neutrality across all seventeen factors, neutrality surviving a change to
+the morphological ranges, purity over 64 random genomes, bounds over 2 000, clamps proven inert
+over 2 000, every normalized expression inside [0, Q] over 4 000. Trade-offs: eight
+single-locus directions each asserted to buy something and pay for it, the two pure-allocation
+loci asserted to change neither mass nor upkeep, and a 3 000-body search for a morphology that
+dominates on every axis at once (none). Integration: mass and upkeep through the real
+metabolism phase, plating through a real attack, bite size through the real feeding phase,
+water performance through the real movement phase, offspring cost through the real reproduction
+cost, snapshot round-trip equality of the derived caches, and the inspector reporting what the
+engine is using.
+
+**Evolutionary reachability.** Two worlds, three seeds each, seeded with an identical 50/50 mix
+of two locomotor morphs and judged by realized survival and reproduction only:
+
+| world     | 0xE0A12026 | 0xE0A13F15 | 0xE0A17CF3 | mean      |
+| --------- | ---------- | ---------- | ---------- | --------- |
+| patchwork | 0.823      | 0.846      | 0.843      | **0.837** |
+| turf      | 0.447      | 0.458      | 0.522      | **0.476** |
+
+**Defects found by this milestone's own gate, and fixed.**
+
+1. **The mouth was free** — it bought attack power and bite size and cost nothing. Now dense
+   tissue in the body's bulk, with jaw upkeep and a turning cost for mass carried at the nose.
+2. **The tail was a pure cost** — it extended the silhouette and bought nothing, which drives a
+   locus to zero as surely as a free benefit drives one to the maximum. It is a propulsive
+   surface now.
+3. **Locomotion was free at the point of use.** Movement cost read only mass, and limbs are a
+   small share of body area, so a limbed morph swept to fixation in *every* environment tested.
+   Movement cost now carries its own factor from limb area and lateral silhouette; the
+   coefficient was bracketed by measurement (0.45 still won everywhere, 0.90 turned the turf).
+4. **`validateConfig`'s first factor bound rejected `DEFAULT_CONFIG`** — the growth-cost gains
+   summed to exactly Q. The bound is now exact rather than conservative, computed from the
+   founder expressions.
+
+**Three scenario designs failed before the fourth worked**, and all three are findings rather
+than false starts (ADR 0029 §5): 20 000 ticks is 13 generations and measures drift; a
+compressed life history is not a faster clock, because growth to the reproduction gate is paid
+for out of intake, and every seed went extinct; and an archipelago selects for nothing, because
+drowning damage and the terrain-danger sensors mean organisms avoid water rather than crossing
+it. The gaps have to be barren land.
+
+**Deferred:** none recorded yet.
+
+---
+
 _Stages M16 through the final audit are appended below as they complete._
