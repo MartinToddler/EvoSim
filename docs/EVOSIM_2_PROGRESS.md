@@ -230,6 +230,12 @@ of two locomotor morphs and judged by realized survival and reproduction only:
 4. **`validateConfig`'s first factor bound rejected `DEFAULT_CONFIG`** — the growth-cost gains
    summed to exactly Q. The bound is now exact rather than conservative, computed from the
    founder expressions.
+5. **A birth could create energy.** `offspringCostFactorQ` is overhead on what the parent pays
+   while the child receives the unmultiplied investment, so a body plan simpler than the
+   founder's had the parent pay out less than the child received. Found by the twelve-seed
+   sweep as a crash on a negative `birthEnergyDiscarded`; the golden fixture's own seed does
+   not trip it until after tick 1000, which is the case for the sweep being mandatory rather
+   than optional (ADR 0029 §3f).
 
 **Three scenario designs failed before the fourth worked**, and all three are findings rather
 than false starts (ADR 0029 §5): 20 000 ticks is 13 generations and measures drift; a

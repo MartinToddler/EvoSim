@@ -148,6 +148,30 @@ The pigment and pattern loci are deliberately left informational — they are th
 later milestone builds visual signalling on, and giving a colour a survival effect now would
 pre-decide what that colour means, which is exactly what ADR 0027 forbids.
 
+### 3f. Offspring construction cost is overhead, and overhead cannot be negative
+
+A parent pays `investment × offspringCostFactorQ`; the child receives `investment`, clamped to
+its own newborn capacity; the difference is destroyed. That is what makes a complex body plan
+genuinely more expensive to reproduce rather than merely differently expensive.
+
+It only works while the factor is **at or above 1.0**. The factor is
+`1 + offspringBulk·d(mass) + offspringArmor·d(armor)`, and a body lighter and barer than the
+founder's drives both differences negative — so the parent paid out _less_ than the child
+received, and the birth created the difference out of nothing. The twelve-seed sweep found it
+as a crash: `StateHash.safeInteger requires a non-negative safe integer, got -7223`, the running
+total of energy destroyed by births having gone negative.
+
+The floor is therefore Q rather than `minFactorQ`, and the reason is stated in the code: a body
+plan simpler than the founder's builds without waste, not at a profit.
+
+Two things are worth recording beyond the fix. First, the golden fixture never caught this —
+its tick-0 through tick-1000 hashes are unchanged and only tick 10 000 moved, because on that
+seed no parent lighter than the founder reproduces before tick 1000. A single deterministic
+fixture proves reproducibility, not correctness, and the multi-seed sweep is what covers the
+difference. Second, the failure surfaced as a _hash-range assertion_ rather than as wrong
+numbers, which is the argument for hashing conservation counters that can only legitimately
+grow.
+
 ## 4. The config cannot ask for physics that has no meaning
 
 `validateConfig` computes, for every factor, the **smallest value any expressible body could
