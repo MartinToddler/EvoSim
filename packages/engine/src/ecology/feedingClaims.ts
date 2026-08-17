@@ -1,5 +1,6 @@
 import { Q, clamp, clampQ, qmul } from "../math/fixed";
 import type { EngineContext } from "../EngineContext";
+import { DeathCause, markDeath } from "../organisms/death";
 import { bodyMass, currentRadiusPos, maxEnergyForOrganism } from "../organisms/phenotype";
 import { contactRadiusPos } from "../morphology/physicalPhenotype";
 import { type NearestTarget, findCarcassInMouthRange } from "../spatial/queries";
@@ -301,7 +302,25 @@ export function resolveFeedingClaims(ctx: EngineContext): void {
         const exposureQ = Q - (phenotypes.toxinResistanceQ[slot] as number);
         const damageQ = qmul(allocated * profile.toxicityQ, clampQ(exposureQ));
         if (damageQ > 0) {
-          scratch.toxinDamageQ[slot] = (scratch.toxinDamageQ[slot] as number) + damageQ;
+          // Recorded for the physiology phase, which folds it into
+          // `lastDamageQ`, AND applied here — exactly as combat applies its own
+          // damage in its own phase. Recording alone was the first version, and
+          // it made defended growth free: `damageThisTick` in metabolism is a
+          // report, not an application, so the health never moved. A free
+          // benefit and a resistance gene that was pure cost, in one defect.
+          scratch.toxinDamageQ[slot] = Math.min(
+            (scratch.toxinDamageQ[slot] as number) + damageQ,
+            65535,
+          );
+          const healthQ = organisms.healthQ[slot] as number;
+          if (damageQ < healthQ) {
+            organisms.healthQ[slot] = healthQ - damageQ;
+          } else {
+            organisms.healthQ[slot] = 0;
+            // Its own cause. Merging it into starvation or combat would make the
+            // timeline report a predation or a famine that never happened.
+            markDeath(ctx, slot, DeathCause.Toxin);
+          }
         }
       }
     } else {

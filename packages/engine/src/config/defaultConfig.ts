@@ -255,7 +255,16 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         fertilityWeightQ: 819, // 0.20
         optimumElevationQ: 2048,
         elevationToleranceQ: 4096,
-        toxicityQ: 246, // 0.06 health per unit at zero resistance
+        // Health lost per unit eaten, in Q health units, at zero resistance.
+        //
+        // Sized against the bite, not guessed: `maxPlantBiteUnits` is 64 and
+        // health runs 0 … Q (4096), so 12 per unit costs a full bite about 19%
+        // of health — a real price a fed organism can absorb and heal off, and
+        // a fatal one for anything already hurt. The first value was 246, which
+        // read as "0.06 health per unit" and is nothing of the kind: it made
+        // seventeen units lethal, so one bite killed outright and the channel
+        // was a suicide button rather than a trade.
+        toxicityQ: 12,
       },
     ],
     meatEnergyPerUnit: 45,

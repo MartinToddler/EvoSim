@@ -18,12 +18,14 @@ export const DeathCause = {
   OldAge: 4,
   Drowning: 5,
   Meteor: 6,
-  Other: 7,
+  /** Poisoned by chemically defended growth it ate (M17). */
+  Toxin: 7,
+  Other: 8,
 } as const;
 
 export type DeathCause = (typeof DeathCause)[keyof typeof DeathCause];
 
-export const DEATH_CAUSE_COUNT = 8;
+export const DEATH_CAUSE_COUNT = 9;
 
 /** Human-readable cause names, indexed by cause value. Diagnostics only. */
 export const DEATH_CAUSE_NAMES: readonly string[] = [
@@ -34,6 +36,7 @@ export const DEATH_CAUSE_NAMES: readonly string[] = [
   "oldAge",
   "drowning",
   "meteor",
+  "toxin",
   "other",
 ];
 
