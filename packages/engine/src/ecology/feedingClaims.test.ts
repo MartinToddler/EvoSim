@@ -13,14 +13,15 @@ import {
 } from "./feedingClaims";
 
 /** The foliage channel of a config, non-optional. M17 made plants a list. */
-function foliageProfile(config: { plants: { resources: readonly ResourceProfile[] } }): ResourceProfile {
+function foliageProfile(config: {
+  plants: { resources: readonly ResourceProfile[] };
+}): ResourceProfile {
   const profile = config.plants.resources[Resource.Foliage];
   if (profile === undefined) {
     throw new Error("config is missing the foliage channel");
   }
   return profile;
 }
-
 
 /**
  * Plant feeding allocation (docs/03 §21, task D10).
@@ -262,7 +263,7 @@ describe("energy conversion", () => {
     const allocated = world.ctx.scratch.feedingAllocated[slot] as number;
     const expected = qmul(
       allocated * foliageProfile(world.config).energyPerUnit,
-      world.ctx.phenotypes.processEfficiencyQ[(slot) * RESOURCE_COUNT + Resource.Foliage] as number,
+      world.ctx.phenotypes.processEfficiencyQ[slot * RESOURCE_COUNT + Resource.Foliage] as number,
     );
     expect(world.organisms.energy[slot]).toBe(expected);
     expect(world.organisms.plantEnergyEaten[slot]).toBe(expected);

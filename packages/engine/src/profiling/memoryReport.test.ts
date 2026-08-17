@@ -1,3 +1,4 @@
+import { PLANT_RESOURCE_COUNT } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "../SimulationEngine";
 import { cloneConfig, type ReadonlySimulationConfig } from "../config/cloneConfig";
@@ -71,10 +72,14 @@ describe("estimateEngineMemory (task L03)", () => {
     const after = estimateEngineMemory(engine);
 
     expect(after.bytes.environment).toBe(before.bytes.environment);
-    // The grid is 64x64 cells; every column is 1 or 2 bytes per cell, so the
-    // total must be within an order of magnitude of cellCount * 16.
+    // The grid is 64x64 cells. Most columns are 1 or 2 bytes per cell, but
+    // three of them — biomass, capacity and the growth carry — are one plane
+    // PER PLANT CHANNEL since M17, so the ceiling has to know about the
+    // channels or it measures the old world. Derived rather than restated, so
+    // a sixth channel moves it automatically.
+    const perCellBytes = 16 + 3 * 2 * PLANT_RESOURCE_COUNT;
     expect(before.bytes.environment).toBeGreaterThan(64 * 64);
-    expect(before.bytes.environment).toBeLessThan(64 * 64 * 32);
+    expect(before.bytes.environment).toBeLessThan(64 * 64 * perCellBytes * 2);
   });
 
   it("counts every category into the total", () => {

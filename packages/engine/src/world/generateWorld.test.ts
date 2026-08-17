@@ -80,7 +80,9 @@ describe("generated world invariants (docs/03 §27)", () => {
   it("never lets biomass exceed capacity", () => {
     let violations = 0;
     for (let i = 0; i < environment.cellCount; i += 1) {
-      if ((environment.resourceBiomass[i] as number) > (environment.resourceCapacity[i] as number)) {
+      if (
+        (environment.resourceBiomass[i] as number) > (environment.resourceCapacity[i] as number)
+      ) {
         violations += 1;
       }
     }

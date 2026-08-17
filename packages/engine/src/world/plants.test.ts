@@ -17,14 +17,15 @@ import {
 } from "./plants";
 
 /** The foliage channel of a config, non-optional. M17 made plants a list. */
-function foliageProfile(config: { plants: { resources: readonly ResourceProfile[] } }): ResourceProfile {
+function foliageProfile(config: {
+  plants: { resources: readonly ResourceProfile[] };
+}): ResourceProfile {
   const profile = config.plants.resources[Resource.Foliage];
   if (profile === undefined) {
     throw new Error("config is missing the foliage channel");
   }
   return profile;
 }
-
 
 /** A tiny grassland world with one uniform capacity, for growth arithmetic. */
 function grasslandStore(capacity: number, biomass: number, size = 4): EnvironmentStore {
@@ -77,27 +78,67 @@ describe("moistureSuitabilityQ", () => {
 
 describe("computeResourceCapacity", () => {
   it("is zero in water however fertile the cell looks", () => {
-    expect(computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Water, Q, Q, 1800, 2048)).toBe(0);
+    expect(
+      computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Water, Q, Q, 1800, 2048),
+    ).toBe(0);
   });
 
   it("is zero outside the temperature window", () => {
-    expect(computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, Q, -5000, 2048)).toBe(0);
-    expect(computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, Q, 9000, 2048)).toBe(0);
+    expect(
+      computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, Q, -5000, 2048),
+    ).toBe(0);
+    expect(
+      computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, Q, 9000, 2048),
+    ).toBe(0);
   });
 
   it("is zero in a bone-dry cell", () => {
-    expect(computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, 0, 1800, 2048)).toBe(0);
+    expect(
+      computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, 0, 1800, 2048),
+    ).toBe(0);
   });
 
   it("reaches the biome base under ideal conditions", () => {
-    const ideal = computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, Q, 1800, 2048);
+    const ideal = computeResourceCapacity(
+      DEFAULT_CONFIG,
+      Resource.Foliage,
+      Biome.Grassland,
+      Q,
+      Q,
+      1800,
+      2048,
+    );
     expect(ideal).toBe(foliageProfile(DEFAULT_CONFIG).baseCapacityByBiome[Biome.Grassland]);
   });
 
   it("ranks forest above grassland above desert under equal conditions", () => {
-    const forest = computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Forest, Q, Q, 1800, 2048);
-    const grass = computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Grassland, Q, Q, 1800, 2048);
-    const desert = computeResourceCapacity(DEFAULT_CONFIG, Resource.Foliage, Biome.Desert, Q, Q, 1800, 2048);
+    const forest = computeResourceCapacity(
+      DEFAULT_CONFIG,
+      Resource.Foliage,
+      Biome.Forest,
+      Q,
+      Q,
+      1800,
+      2048,
+    );
+    const grass = computeResourceCapacity(
+      DEFAULT_CONFIG,
+      Resource.Foliage,
+      Biome.Grassland,
+      Q,
+      Q,
+      1800,
+      2048,
+    );
+    const desert = computeResourceCapacity(
+      DEFAULT_CONFIG,
+      Resource.Foliage,
+      Biome.Desert,
+      Q,
+      Q,
+      1800,
+      2048,
+    );
     expect(forest).toBeGreaterThan(grass);
     expect(grass).toBeGreaterThan(desert);
   });
@@ -105,15 +146,7 @@ describe("computeResourceCapacity", () => {
   it("never exceeds the Uint16 biomass array range", () => {
     for (let biome = 0; biome < 6; biome += 1) {
       for (let resource = 0; resource < PLANT_RESOURCE_COUNT; resource += 1) {
-        const capacity = computeResourceCapacity(
-          DEFAULT_CONFIG,
-          resource,
-          biome,
-          Q,
-          Q,
-          1800,
-          2048,
-        );
+        const capacity = computeResourceCapacity(DEFAULT_CONFIG, resource, biome, Q, Q, 1800, 2048);
         expect(capacity).toBeLessThanOrEqual(65535);
       }
       const capacity = computeResourceCapacity(

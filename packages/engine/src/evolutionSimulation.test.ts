@@ -1,5 +1,3 @@
-import { Resource } from "./world/resources";
-import type { ResourceProfile } from "./config/SimulationConfig";
 import { describe, expect, it } from "vitest";
 import { SimulationEngine } from "./SimulationEngine";
 import { cloneConfig } from "./config/cloneConfig";
@@ -8,16 +6,6 @@ import { GENE_COUNT, Gene, geneToQ } from "./genetics/genes";
 import { createFounderGenes } from "./genetics/founderGenome";
 import { Q } from "./math/fixed";
 import { engineFromSnapshot } from "./snapshot/deserialize";
-
-/** The foliage channel of a config, non-optional. M17 made plants a list. */
-function foliageProfile(config: { plants: { resources: readonly ResourceProfile[] } }): ResourceProfile {
-  const profile = config.plants.resources[Resource.Foliage];
-  if (profile === undefined) {
-    throw new Error("config is missing the foliage channel");
-  }
-  return profile;
-}
-
 
 /**
  * Milestone 4 acceptance (docs/07 Milestone 4): "multiple generations; 100k
@@ -243,8 +231,15 @@ describe("births never create energy (the Milestone 4 invariant)", () => {
     // and test nothing. Nothing else about their biology changes.
     const config = cloneConfig(DEFAULT_CONFIG);
     config.plants.initialBiomassFractionQ = 0;
-    foliageProfile(config).seedBankRegenUnits = 0;
-    foliageProfile(config).growthRateQByBiome = foliageProfile(config).growthRateQByBiome.map(() => 0);
+    // EVERY channel, not just foliage. M17 gave the world five plant fields and
+    // silencing one leaves four growing — the world would not be barren, energy
+    // would legitimately enter the system, and this test would report a
+    // conservation violation that is really a fixture that forgot to close the
+    // door. (It did exactly that: +7324 energy in a "barren" world.)
+    for (const profile of config.plants.resources) {
+      profile.seedBankRegenUnits = 0;
+      profile.growthRateQByBiome = profile.growthRateQByBiome.map(() => 0);
+    }
     config.organism.initialEnergyFractionQ = Q;
     config.organism.baseMaxEnergy = 400_000;
 

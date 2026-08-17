@@ -491,7 +491,7 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
     check(
       profile.baseCapacityByBiome[Biome.Water] === 0 &&
         profile.growthRateQByBiome[Biome.Water] === 0,
-      `${name}: water capacity and growth rate must be 0 while aquatic life is out of scope`,
+      `${name}: water biome capacity and growth rate must be 0 while aquatic life is out of scope`,
     );
     checkNonNegativeInt(profile.seedBankRegenUnits, `${name}.seedBankRegenUnits`);
     checkNonNegativeInt(profile.minRegenThreshold, `${name}.minRegenThreshold`);

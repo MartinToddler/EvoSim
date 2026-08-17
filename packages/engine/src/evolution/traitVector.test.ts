@@ -1,3 +1,5 @@
+import { PLANT_RESOURCE_COUNT, Resource } from "../world/resources";
+import { GENE_COUNT } from "../genetics/genes";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { Gene } from "../genetics/genes";
@@ -69,13 +71,13 @@ describe("writeTraitVector", () => {
       xPos: 5000,
       yPos: 5000,
       silentBrain: true,
-      genesQ: Object.fromEntries(Array.from({ length: 16 }, (_, gene) => [gene, 0])),
+      genesQ: Object.fromEntries(Array.from({ length: GENE_COUNT }, (_, gene) => [gene, 0])),
     });
     const high = spawnTestOrganism(world, {
       xPos: 6000,
       yPos: 6000,
       silentBrain: true,
-      genesQ: Object.fromEntries(Array.from({ length: 16 }, (_, gene) => [gene, Q])),
+      genesQ: Object.fromEntries(Array.from({ length: GENE_COUNT }, (_, gene) => [gene, Q])),
     });
 
     const out = new Int32Array(2 * TRAIT_DIMENSIONS);
@@ -91,10 +93,54 @@ describe("writeTraitVector", () => {
     // each band except where a penalty (armor on speed, size on turn) applies.
     expect(out[TraitDim.AdultSize]).toBe(0);
     expect(out[TRAIT_DIMENSIONS + TraitDim.AdultSize]).toBe(Q);
-    expect(out[TraitDim.Diet]).toBe(0);
-    expect(out[TRAIT_DIMENSIONS + TraitDim.Diet]).toBe(Q);
     expect(out[TraitDim.Attack]).toBe(0);
     expect(out[TRAIT_DIMENSIONS + TraitDim.Attack]).toBe(Q);
+    // Diet is deliberately NOT in that list. Since M17 it is a CONTRAST — meat
+    // processing against the best plant channel — so moving every locus the
+    // same way leaves it at the midpoint by construction, and an all-zero and
+    // an all-maximum genome are both exactly diet-neutral. Driving it to its
+    // ends means putting the loci in opposition, which is the next test.
+    expect(out[TraitDim.Diet]).toBe(Q >> 1);
+    expect(out[TRAIT_DIMENSIONS + TraitDim.Diet]).toBe(Q >> 1);
+  });
+
+  it("puts the diet dimension at its ends only when the loci disagree", () => {
+    const plantLoci = (valueQ: number): Record<number, number> =>
+      Object.fromEntries(
+        Array.from({ length: PLANT_RESOURCE_COUNT }, (_, resource) => [
+          Gene.Process + resource,
+          valueQ,
+        ]),
+      );
+    const world = createTestWorld();
+    const plantSpecialist = spawnTestOrganism(world, {
+      xPos: 5000,
+      yPos: 5000,
+      silentBrain: true,
+      // Every plant locus, not just foliage: diet contrasts meat against the
+      // BEST plant channel, so a locus left at its founder value sets the
+      // baseline and the contrast never reaches its end.
+      genesQ: { ...plantLoci(Q), [Gene.Process + Resource.Meat]: 0 },
+    });
+    const meatSpecialist = spawnTestOrganism(world, {
+      xPos: 6000,
+      yPos: 6000,
+      silentBrain: true,
+      genesQ: { ...plantLoci(0), [Gene.Process + Resource.Meat]: Q },
+    });
+
+    const out = new Int32Array(2 * TRAIT_DIMENSIONS);
+    writeTraitVector(out, 0, world.ctx.phenotypes, plantSpecialist, world.ctx.traitRanges);
+    writeTraitVector(
+      out,
+      TRAIT_DIMENSIONS,
+      world.ctx.phenotypes,
+      meatSpecialist,
+      world.ctx.traitRanges,
+    );
+
+    expect(out[TraitDim.Diet]).toBe(0);
+    expect(out[TRAIT_DIMENSIONS + TraitDim.Diet]).toBe(Q);
   });
 
   it("excludes hue: two organisms differing only in hue have distance zero", () => {

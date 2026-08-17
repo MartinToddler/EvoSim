@@ -147,11 +147,23 @@ describe("the architecture can represent reflexes (M16)", () => {
     // one skip connection from a gradient to a steering output.
     const net = emptyNetwork();
     enableInput(net, BrainInput.ResourceGradientLateral + Resource.Foliage);
-    wire(net, ioWeightIndex(BrainOutput.Turn, BrainInput.ResourceGradientLateral + Resource.Foliage), 2 * weightScale);
+    wire(
+      net,
+      ioWeightIndex(BrainOutput.Turn, BrainInput.ResourceGradientLateral + Resource.Foliage),
+      2 * weightScale,
+    );
 
     const body = newBody();
-    const rightward = tick(net, body, sensors({ [BrainInput.ResourceGradientLateral + Resource.Foliage]: Q / 2 }));
-    const leftward = tick(net, body, sensors({ [BrainInput.ResourceGradientLateral + Resource.Foliage]: -Q / 2 }));
+    const rightward = tick(
+      net,
+      body,
+      sensors({ [BrainInput.ResourceGradientLateral + Resource.Foliage]: Q / 2 }),
+    );
+    const leftward = tick(
+      net,
+      body,
+      sensors({ [BrainInput.ResourceGradientLateral + Resource.Foliage]: -Q / 2 }),
+    );
     expect(rightward[BrainOutput.Turn] as number).toBeGreaterThan(0);
     expect(leftward[BrainOutput.Turn] as number).toBeLessThan(0);
   });
@@ -325,10 +337,16 @@ describe("memory obeys the rules it is given (M16)", () => {
     wire(net, index, 2 * weightScale);
     // The connection is wired but the input channel is off.
     const body = newBody();
-    expect(tick(net, body, sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q }))[BrainOutput.Eat]).toBe(0);
+    expect(
+      tick(net, body, sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q }))[
+        BrainOutput.Eat
+      ],
+    ).toBe(0);
     enableInput(net, BrainInput.LocalResource + Resource.Foliage);
     expect(
-      tick(net, body, sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q }))[BrainOutput.Eat] as number,
+      tick(net, body, sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q }))[
+        BrainOutput.Eat
+      ] as number,
     ).toBeGreaterThan(0);
   });
 

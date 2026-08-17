@@ -127,7 +127,13 @@ describe("gene quantization", () => {
   it("names every gene exactly once", () => {
     expect(GENE_NAMES).toHaveLength(GENE_COUNT);
     expect(new Set(GENE_NAMES).size).toBe(GENE_COUNT);
-    expect(Object.keys(Gene)).toHaveLength(GENE_COUNT);
+    // The enum has one key per *named* locus, and `Process` is one name for a
+    // block of RESOURCE_COUNT consecutive loci (M17) — that contiguity is what
+    // lets the feeding phase index `Gene.Process + resource` instead of
+    // switching on channel identity. So the key count is the locus count minus
+    // the block, plus the one name that stands for it.
+    expect(Object.keys(Gene)).toHaveLength(GENE_COUNT - RESOURCE_COUNT + 1);
+    expect(Gene.ToxinResistance).toBe(Gene.Process + RESOURCE_COUNT);
   });
 });
 

@@ -203,7 +203,9 @@ describe("validateConfig structural invariants", () => {
 
   it("rejects plant growth in water while aquatic life is out of scope", () => {
     const config = mutatedConfig((c) => {
-      c.plants.resources[Resource.Foliage]!.baseCapacityByBiome = [100, 36000, 52000, 7000, 10000, 4000];
+      c.plants.resources[Resource.Foliage]!.baseCapacityByBiome = [
+        100, 36000, 52000, 7000, 10000, 4000,
+      ];
     });
     expect(() => validateConfig(config)).toThrowError(/water biome/);
   });

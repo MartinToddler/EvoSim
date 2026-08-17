@@ -1,4 +1,4 @@
-import { Resource } from "../world/resources";
+import { PLANT_RESOURCE_COUNT, Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { ANGLE_STEPS, POS_SCALE, Q } from "../math/fixed";
 import { Gene } from "../genetics/genes";
@@ -25,7 +25,15 @@ describe("sensor vector shape", () => {
   it("writes exactly one named value per input index", () => {
     expect(BRAIN_INPUT_NAMES).toHaveLength(BRAIN_INPUT_COUNT);
     expect(new Set(BRAIN_INPUT_NAMES).size).toBe(BRAIN_INPUT_COUNT);
-    expect(Object.keys(BrainInput)).toHaveLength(BRAIN_INPUT_COUNT);
+    // One key per *named* input, and three of those names each stand for a
+    // block of PLANT_RESOURCE_COUNT consecutive inputs (M17): the local
+    // density, the forward gradient and the lateral gradient of every channel.
+    // That contiguity is what lets the sensor loop write
+    // `LocalResource + resource` instead of switching on channel identity.
+    const blocks = 3;
+    expect(Object.keys(BrainInput)).toHaveLength(
+      BRAIN_INPUT_COUNT - blocks * PLANT_RESOURCE_COUNT + blocks,
+    );
   });
 
   it("keeps every value inside the signed Q range", () => {

@@ -527,10 +527,10 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
   },
 
   brain: {
-    inputCount: 20,
+    inputCount: 32,
     hiddenCount: 12,
     outputCount: 5,
-    weightCount: 400, // 20*12 + 12*5 + 20*5
+    weightCount: 604, // 20*12 + 12*5 + 20*5
     valueScale: 4096,
     weightScale: 4096,
     weightMin: -8192,

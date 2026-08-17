@@ -73,14 +73,18 @@ function run(sensors: Int16Array, weights: Int16Array): Int16Array {
 }
 
 describe("brain layout", () => {
-  it("matches the documented v0.1 topology and weight budget", () => {
-    expect(BRAIN_INPUT_COUNT).toBe(20);
+  it("matches the documented topology and weight budget", () => {
+    // 32 inputs since M17: the single "plant" reading became five per-channel
+    // readings and the single gradient pair became five pairs, because a world
+    // with five plant channels an organism can only perceive as one number is a
+    // world where the channels cannot be told apart by anything that has to act.
+    expect(BRAIN_INPUT_COUNT).toBe(32);
     expect(BRAIN_HIDDEN_COUNT).toBe(12);
     expect(BRAIN_OUTPUT_COUNT).toBe(5);
     expect(IH_OFFSET).toBe(0);
-    expect(HO_OFFSET).toBe(240);
-    expect(IO_OFFSET).toBe(300);
-    expect(BRAIN_WEIGHT_COUNT).toBe(400);
+    expect(HO_OFFSET).toBe(384);
+    expect(IO_OFFSET).toBe(444);
+    expect(BRAIN_WEIGHT_COUNT).toBe(604);
   });
 
   it("agrees with the config, which the validator also cross-checks", () => {
@@ -278,7 +282,11 @@ describe("founder brain fixture", () => {
   it("encodes the documented conceptual weights symmetrically", () => {
     expect(weights[ioWeightIndex(BrainOutput.Throttle, BrainInput.Bias)]).toBe(1229); // +0.30
     expect(weights[ioWeightIndex(BrainOutput.Throttle, BrainInput.Energy)]).toBe(-1638); // -0.40
-    expect(weights[ioWeightIndex(BrainOutput.Turn, BrainInput.ResourceGradientLateral + Resource.Foliage)]).toBe(6144);
+    expect(
+      weights[
+        ioWeightIndex(BrainOutput.Turn, BrainInput.ResourceGradientLateral + Resource.Foliage)
+      ],
+    ).toBe(6144);
     expect(weights[ioWeightIndex(BrainOutput.Turn, BrainInput.TerrainDangerLateral)]).toBe(7373);
     expect(weights[ioWeightIndex(BrainOutput.Attack, BrainInput.Bias)]).toBe(-3482); // -0.85
     expect(weights[ioWeightIndex(BrainOutput.Reproduce, BrainInput.Energy)]).toBe(5325);

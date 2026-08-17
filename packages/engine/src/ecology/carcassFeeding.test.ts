@@ -23,8 +23,14 @@ import {
  */
 
 /** Diet gene value that makes meat digest better than plants, and the reverse. */
-const CARNIVORE = { [Gene.Process + Resource.Meat]: Q, [Gene.Process + Resource.Foliage]: 0 } as const;
-const HERBIVORE = { [Gene.Process + Resource.Foliage]: Q, [Gene.Process + Resource.Meat]: 0 } as const;
+const CARNIVORE = {
+  [Gene.Process + Resource.Meat]: Q,
+  [Gene.Process + Resource.Foliage]: 0,
+} as const;
+const HERBIVORE = {
+  [Gene.Process + Resource.Foliage]: Q,
+  [Gene.Process + Resource.Meat]: 0,
+} as const;
 
 function feed(world: TestWorld, eatQ: number = Q): void {
   for (let slot = 0; slot < world.organisms.slotHighWater; slot += 1) {
@@ -168,7 +174,11 @@ describe("the food-target policy (docs/04 §20)", () => {
     const world = createTestWorld();
     const eater = spawnTestOrganism(world, {
       ...world.cellCenter(10, 10),
-      genesQ: { [Gene.Process + Resource.Meat]: Q >> 1, [Gene.Process + Resource.Foliage]: Q >> 1, [Gene.AdultSize]: Q },
+      genesQ: {
+        [Gene.Process + Resource.Meat]: Q >> 1,
+        [Gene.Process + Resource.Foliage]: Q >> 1,
+        [Gene.AdultSize]: Q,
+      },
       developmentQ: Q,
     });
     const cell = world.environment.cellIndexFromPosition(
@@ -225,7 +235,7 @@ describe("meat energy", () => {
 
     const expected = qmul(
       bite * world.config.plants.meatEnergyPerUnit,
-      world.ctx.phenotypes.processEfficiencyQ[(eater) * RESOURCE_COUNT + Resource.Meat] as number,
+      world.ctx.phenotypes.processEfficiencyQ[eater * RESOURCE_COUNT + Resource.Meat] as number,
     );
     expect(world.ctx.scratch.feedingAllocated[eater]).toBe(bite);
     expect(world.organisms.meatEnergyEaten[eater]).toBe(expected);

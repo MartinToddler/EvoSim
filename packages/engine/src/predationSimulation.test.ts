@@ -79,7 +79,8 @@ const PREY_BRAIN = skipBrain([
 const PREDATOR_GENES = {
   [Gene.AttackPower]: Q,
   [Gene.Armor]: 0,
-  [Gene.Process + Resource.Meat]: Q, [Gene.Process + Resource.Foliage]: 0,
+  [Gene.Process + Resource.Meat]: Q,
+  [Gene.Process + Resource.Foliage]: 0,
   [Gene.AdultSize]: Q,
   [Gene.MaxSpeed]: Q,
   [Gene.Acceleration]: Q,
@@ -90,7 +91,8 @@ const PREDATOR_GENES = {
 const PREY_GENES = {
   [Gene.AttackPower]: 0,
   [Gene.Armor]: 0,
-  [Gene.Process + Resource.Foliage]: Q, [Gene.Process + Resource.Meat]: 0,
+  [Gene.Process + Resource.Foliage]: Q,
+  [Gene.Process + Resource.Meat]: 0,
 } as const;
 
 interface PlacedOrganism {
@@ -356,7 +358,9 @@ describe("diet selection (docs/07 §5)", () => {
         // A world with no vegetation at all: capacity stays (so world validation
         // still passes) but nothing ever grows in it.
         draft.plants.initialBiomassFractionQ = 0;
-        draft.plants.resources[Resource.Foliage]!.growthRateQByBiome = draft.plants.resources[Resource.Foliage]!.growthRateQByBiome.map(() => 0);
+        draft.plants.resources[Resource.Foliage]!.growthRateQByBiome = draft.plants.resources[
+          Resource.Foliage
+        ]!.growthRateQByBiome.map(() => 0);
         draft.plants.resources[Resource.Foliage]!.seedBankRegenUnits = 0;
       }
     });
