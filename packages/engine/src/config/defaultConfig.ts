@@ -116,6 +116,24 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
     // calibrated survives the split intact and the four new channels are
     // additions on top of it rather than a redistribution of it.
     //
+    // ## Why the energy spread is narrow (30 … 48, measured)
+    //
+    // The first version spread it 30 … 96, on the reasoning that a channel that
+    // is harder to reach should be worth more. Measured on the ordinary engine,
+    // the founder ate 91% DEFENDED growth in its first hundred ticks — the one
+    // channel that damages it, which it has no resistance to, and which it is
+    // bad at processing. The arithmetic is unforgiving: expected gain is
+    // `energyPerUnit x efficiency`, the founder's efficiencies span 0.36 … 0.84
+    // (2.3x) and the energies spanned 3.2x, so the richest channel won for
+    // EVERY genome. A resource whose value beats every genetic difference is a
+    // universal strategy wearing five names, and docs/11 §M17's acceptance
+    // criterion is precisely that no such strategy exists.
+    //
+    // With the spread compressed inside the efficiency spread, the genome
+    // decides instead: the founder gets 25.2/unit from foliage against 15.8
+    // from defended and 17.3 from fruit, and a lineage that specializes flips
+    // that. What a channel is worth is now a fact about the eater.
+    //
     // Each of the other four is placed where foliage is weak, which is what
     // makes them niches rather than decoration: browse in the wet forest
     // foliage already likes but at twice the standing mass and a sixth of the
@@ -172,7 +190,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         growthRateQByBiome: [0, 3, 3, 1, 1, 1],
         seedBankRegenUnits: 1,
         minRegenThreshold: 8,
-        energyPerUnit: 96,
+        energyPerUnit: 48,
         optimumTemperatureCentiC: 2300, // 23 °C — warmer than foliage likes
         temperatureToleranceCentiC: 900, // and much fussier about it
         minMoistureQ: 1638, // 0.40
@@ -192,7 +210,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         growthRateQByBiome: [0, 6, 5, 5, 5, 3],
         seedBankRegenUnits: 12, // the persistence, in one number
         minRegenThreshold: 260,
-        energyPerUnit: 42,
+        energyPerUnit: 38,
         optimumTemperatureCentiC: 1500,
         temperatureToleranceCentiC: 3200, // very wide: underground is buffered
         minMoistureQ: 0, // no moisture floor at all
@@ -211,7 +229,7 @@ const DEFAULT_CONFIG_SOURCE: SimulationConfig = {
         growthRateQByBiome: [0, 10, 9, 12, 6, 7],
         seedBankRegenUnits: 3,
         minRegenThreshold: 20,
-        energyPerUnit: 78,
+        energyPerUnit: 44,
         optimumTemperatureCentiC: 2600, // 26 °C — the hot end
         temperatureToleranceCentiC: 2000,
         minMoistureQ: 0,

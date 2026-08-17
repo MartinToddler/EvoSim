@@ -1,3 +1,4 @@
+import { PLANT_RESOURCE_COUNT } from "./world/resources";
 import { BRAIN_HIDDEN_COUNT, BRAIN_INPUT_COUNT, BRAIN_OUTPUT_COUNT } from "./brain/BrainLayout";
 import { NEURAL_WEIGHT_COUNT, TOPOLOGY_WORD_COUNT } from "./brain/NeuralTopology";
 import { TRAIT_DIMENSIONS } from "./evolution/traitVector";
@@ -59,7 +60,14 @@ export class EngineScratch {
   readonly feedingTargetIndex: Int32Array;
   /** Biomass units actually granted after proportional resolution. */
   readonly feedingAllocated: Uint16Array;
-  /** Total demand per environment cell, cleared through `demandedCells`. */
+  /**
+   * Total demand per environment cell **per channel**, indexed
+   * `resource * cellCount + cell` and cleared through `demandedCells` (M17).
+   *
+   * Five planes, not one. Four organisms grazing the foliage of a cell compete
+   * with each other and not with the one digging its roots, because those are
+   * different stores — so the aggregation key has to carry the channel.
+   */
   readonly plantDemandPerCell: Uint32Array;
   /**
    * First claimant slot per environment cell, -1 when none, chained through
@@ -202,8 +210,8 @@ export class EngineScratch {
     this.feedingTargetType = new Uint8Array(capacity);
     this.feedingTargetIndex = new Int32Array(capacity);
     this.feedingAllocated = new Uint16Array(capacity);
-    this.plantDemandPerCell = new Uint32Array(environmentCellCount);
-    this.plantClaimHead = new Int32Array(environmentCellCount).fill(-1);
+    this.plantDemandPerCell = new Uint32Array(PLANT_RESOURCE_COUNT * environmentCellCount);
+    this.plantClaimHead = new Int32Array(PLANT_RESOURCE_COUNT * environmentCellCount).fill(-1);
     this.claimNext = new Int32Array(capacity).fill(-1);
     this.demandedCells = new Int32Array(capacity);
     this.claimants = new Int32Array(capacity);
