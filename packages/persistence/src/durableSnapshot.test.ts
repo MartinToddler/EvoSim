@@ -69,7 +69,7 @@ describe("durable snapshot container", () => {
     // whole graph: exact typed-array classes included.
     expect(snapshot.organisms.freeSlots).toBeInstanceOf(Int32Array);
     expect(snapshot.organisms.brainWeights).toBeInstanceOf(Int16Array);
-    expect(snapshot.environment.plantBiomass).toBeInstanceOf(Uint16Array);
+    expect(snapshot.environment.resourceBiomass).toBeInstanceOf(Uint16Array);
     expect(snapshot.history.detectors.populationRing).toBeInstanceOf(Float64Array);
     expect(snapshot).toEqual(original);
   });

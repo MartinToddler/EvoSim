@@ -1,3 +1,4 @@
+import { Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { Q } from "../math/fixed";
@@ -277,7 +278,7 @@ describe("founder brain fixture", () => {
   it("encodes the documented conceptual weights symmetrically", () => {
     expect(weights[ioWeightIndex(BrainOutput.Throttle, BrainInput.Bias)]).toBe(1229); // +0.30
     expect(weights[ioWeightIndex(BrainOutput.Throttle, BrainInput.Energy)]).toBe(-1638); // -0.40
-    expect(weights[ioWeightIndex(BrainOutput.Turn, BrainInput.PlantGradientLateral)]).toBe(6144);
+    expect(weights[ioWeightIndex(BrainOutput.Turn, BrainInput.ResourceGradientLateral + Resource.Foliage)]).toBe(6144);
     expect(weights[ioWeightIndex(BrainOutput.Turn, BrainInput.TerrainDangerLateral)]).toBe(7373);
     expect(weights[ioWeightIndex(BrainOutput.Attack, BrainInput.Bias)]).toBe(-3482); // -0.85
     expect(weights[ioWeightIndex(BrainOutput.Reproduce, BrainInput.Energy)]).toBe(5325);
@@ -296,7 +297,7 @@ describe("founder brain fixture", () => {
     sensors[BrainInput.Energy] = 0; // half full
     sensors[BrainInput.Health] = Q;
     sensors[BrainInput.Development] = -Q; // newborn
-    sensors[BrainInput.LocalPlant] = 0; // cell at half capacity
+    sensors[BrainInput.LocalResource + Resource.Foliage] = 0; // cell at half capacity
     sensors[BrainInput.CarcassProximity] = -Q; // no carrion anywhere
     sensors[BrainInput.CreatureProximity] = -Q;
     sensors[BrainInput.ThermalComfort] = Q;
@@ -324,12 +325,12 @@ describe("founder brain fixture", () => {
     const threshold = DEFAULT_CONFIG.organism.feeding.eatOutputThresholdQ;
 
     // localPlant = -0.5 is exactly 25% of capacity: the calibrated floor.
-    sensors[BrainInput.LocalPlant] = -2048;
+    sensors[BrainInput.LocalResource + Resource.Foliage] = -2048;
     expect(
       positiveOutputQ(run(sensors, weights)[BrainOutput.Eat] as number),
     ).toBeGreaterThanOrEqual(threshold);
 
-    sensors[BrainInput.LocalPlant] = -2100;
+    sensors[BrainInput.LocalResource + Resource.Foliage] = -2100;
     expect(positiveOutputQ(run(sensors, weights)[BrainOutput.Eat] as number)).toBeLessThan(
       threshold,
     );
@@ -340,13 +341,13 @@ describe("founder brain fixture", () => {
     sensors[BrainInput.Bias] = Q;
     sensors[BrainInput.CarcassProximity] = -Q;
 
-    sensors[BrainInput.PlantGradientLateral] = 1000; // food to the right
+    sensors[BrainInput.ResourceGradientLateral + Resource.Foliage] = 1000; // food to the right
     expect(run(sensors, weights)[BrainOutput.Turn] as number).toBeGreaterThan(0);
 
-    sensors[BrainInput.PlantGradientLateral] = -1000; // food to the left
+    sensors[BrainInput.ResourceGradientLateral + Resource.Foliage] = -1000; // food to the left
     expect(run(sensors, weights)[BrainOutput.Turn] as number).toBeLessThan(0);
 
-    sensors[BrainInput.PlantGradientLateral] = 0;
+    sensors[BrainInput.ResourceGradientLateral + Resource.Foliage] = 0;
     sensors[BrainInput.TerrainDangerLateral] = Q; // danger on the left
     expect(run(sensors, weights)[BrainOutput.Turn] as number).toBeGreaterThan(0); // turn right
   });

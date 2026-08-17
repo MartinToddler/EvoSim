@@ -86,13 +86,13 @@ describe("100k tick environment soak", () => {
     let remainderOutOfRange = 0;
     let vegetatedWater = 0;
     for (let i = 0; i < environment.cellCount; i += 1) {
-      if ((environment.plantBiomass[i] as number) > (environment.plantCapacity[i] as number)) {
+      if ((environment.resourceBiomass[i] as number) > (environment.resourceCapacity[i] as number)) {
         overCapacity += 1;
       }
       if ((environment.plantGrowthRemainderQ[i] as number) >= Q) {
         remainderOutOfRange += 1;
       }
-      if (environment.biome[i] === Biome.Water && (environment.plantBiomass[i] as number) !== 0) {
+      if (environment.biome[i] === Biome.Water && (environment.resourceBiomass[i] as number) !== 0) {
         vegetatedWater += 1;
       }
     }

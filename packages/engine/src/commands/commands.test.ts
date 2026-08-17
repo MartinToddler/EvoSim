@@ -402,7 +402,7 @@ describe("brush appliers", () => {
     // Dependent data recomputed deterministically: grassland became forest,
     // and the capacity followed the new biome's base.
     expect(world.environment.biome[index]).toBe(Biome.Forest);
-    expect(world.environment.plantCapacity[index]).toBeGreaterThan(0);
+    expect(world.environment.resourceCapacity[index]).toBeGreaterThan(0);
   });
 
   it("terrain lowering floods a cell: water biome, impassable, plants gone — organisms untouched", () => {
@@ -437,8 +437,8 @@ describe("brush appliers", () => {
     expect(world.environment.elevationQ[index]).toBeLessThan(seaLevel);
     expect(world.environment.biome[index]).toBe(Biome.Water);
     expect(world.environment.passable[index]).toBe(0);
-    expect(world.environment.plantCapacity[index]).toBe(0);
-    expect(world.environment.plantBiomass[index]).toBe(0);
+    expect(world.environment.resourceCapacity[index]).toBe(0);
+    expect(world.environment.resourceBiomass[index]).toBe(0);
     // docs/03 §25: organisms on newly flooded cells are NOT deleted; the water
     // rules take over on later ticks.
     expect(world.organisms.alive[slot]).toBe(1);
@@ -481,7 +481,7 @@ describe("brush appliers", () => {
     const world = freshWorld();
     const log = new CommandLog();
     const index = world.environment.cellIndexFromPosition(512 * 256, 512 * 256);
-    const capacity = world.environment.plantCapacity[index] as number;
+    const capacity = world.environment.resourceCapacity[index] as number;
     const ceiling = Math.min(
       65535,
       Math.trunc((capacity * world.config.interventions.biomassOverfillLimitQ) / Q),
@@ -495,8 +495,8 @@ describe("brush appliers", () => {
         i,
       );
     }
-    expect(world.environment.plantBiomass[index]).toBe(ceiling);
-    expect(world.environment.plantBiomass[index]).toBeGreaterThan(capacity);
+    expect(world.environment.resourceBiomass[index]).toBe(ceiling);
+    expect(world.environment.resourceBiomass[index]).toBeGreaterThan(capacity);
 
     world.makeWater(10, 10);
     const water = world.environment.cellIndex(10, 10);
@@ -512,7 +512,7 @@ describe("brush appliers", () => {
       }),
       100,
     );
-    expect(world.environment.plantBiomass[water]).toBe(0);
+    expect(world.environment.resourceBiomass[water]).toBe(0);
   });
 
   it("biomass remove floors at zero and clears the growth carry", () => {
@@ -520,7 +520,7 @@ describe("brush appliers", () => {
     const log = new CommandLog();
     const index = world.environment.cellIndexFromPosition(512 * 256, 512 * 256);
     world.environment.plantGrowthRemainderQ[index] = 1000;
-    const before = world.environment.plantBiomass[index] as number;
+    const before = world.environment.resourceBiomass[index] as number;
     const strength = world.config.interventions.maxBiomassBrushStrengthUnits;
     const passes = Math.ceil(before / strength) + 1;
     for (let i = 0; i < passes; i += 1) {
@@ -531,7 +531,7 @@ describe("brush appliers", () => {
         i,
       );
     }
-    expect(world.environment.plantBiomass[index]).toBe(0);
+    expect(world.environment.resourceBiomass[index]).toBe(0);
     expect(world.environment.plantGrowthRemainderQ[index]).toBe(0);
   });
 
@@ -612,7 +612,7 @@ describe("meteor applier", () => {
     const index = world.environment.cellIndex(32, 32);
     const elevationBefore = world.environment.elevationQ[index] as number;
     const fertilityBefore = world.environment.fertilityQ[index] as number;
-    const biomassBefore = world.environment.plantBiomass[index] as number;
+    const biomassBefore = world.environment.resourceBiomass[index] as number;
 
     const log = new CommandLog();
     const input: CommandInput = {
@@ -636,7 +636,7 @@ describe("meteor applier", () => {
     expect(world.organisms.healthQ[outside]).toBe(Q);
 
     // Environment: biomass lost, terrain depressed, soil scorched at centre.
-    expect(world.environment.plantBiomass[index]).toBeLessThan(biomassBefore);
+    expect(world.environment.resourceBiomass[index]).toBeLessThan(biomassBefore);
     expect(world.environment.elevationQ[index]).toBeLessThan(elevationBefore);
     expect(world.environment.fertilityQ[index]).toBeLessThan(fertilityBefore);
 
@@ -670,7 +670,7 @@ describe("meteor applier", () => {
     applyCommandsForTick(world.ctx, log, 0);
     expect(world.environment.biome[index]).toBe(Biome.Water);
     expect(world.environment.passable[index]).toBe(0);
-    expect(world.environment.plantBiomass[index]).toBe(0);
+    expect(world.environment.resourceBiomass[index]).toBe(0);
   });
 });
 
@@ -679,7 +679,7 @@ describe("applyCommandsForTick", () => {
     const world = createTestWorld();
     const log = new CommandLog();
     const index = world.environment.cellIndexFromPosition(512 * 256, 512 * 256);
-    world.environment.plantBiomass[index] = 100;
+    world.environment.resourceBiomass[index] = 100;
 
     // Same tick: remove 3000 (floors 100 at 0), then add 500 -> 500. In the
     // other order the result would be 0 (100+500 = 600, then -3000 floors at
@@ -690,16 +690,16 @@ describe("applyCommandsForTick", () => {
     log.accept(brush({ kind: InterventionKind.AddBiomass, strength: 500 }), 6);
 
     applyCommandsForTick(world.ctx, log, 4);
-    expect(world.environment.plantBiomass[index]).toBe(100);
+    expect(world.environment.resourceBiomass[index]).toBe(100);
     expect(log.cursor).toBe(0);
 
     applyCommandsForTick(world.ctx, log, 5);
-    expect(world.environment.plantBiomass[index]).toBe(500);
+    expect(world.environment.resourceBiomass[index]).toBe(500);
     expect(log.cursor).toBe(2);
     expect(log.pendingCount).toBe(1);
 
     applyCommandsForTick(world.ctx, log, 6);
-    expect(world.environment.plantBiomass[index]).toBe(1000);
+    expect(world.environment.resourceBiomass[index]).toBe(1000);
     expect(log.pendingCount).toBe(0);
     expect(world.ctx.events.capture().events).toHaveLength(3);
   });

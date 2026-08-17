@@ -143,8 +143,8 @@ const ENVIRONMENT_FIELDS: Readonly<Record<string, FieldSpec>> = {
   baseTemperatureCentiC: typed("i16"),
   temperatureOffsetCentiC: typed("i16"),
   biome: typed("u8"),
-  plantBiomass: typed("u16"),
-  plantCapacity: typed("u16"),
+  resourceBiomass: typed("u16"),
+  resourceCapacity: typed("u16"),
   plantGrowthRemainderQ: typed("u16"),
   founderRegion: object({
     centerCellIndex: number,

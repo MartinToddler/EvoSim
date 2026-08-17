@@ -1,3 +1,4 @@
+import { Resource } from "./world/resources";
 import { describe, expect, it } from "vitest";
 import { createFounderTopology } from "./brain/founderTopology";
 import { SimulationEngine } from "./SimulationEngine";
@@ -78,7 +79,7 @@ const PREY_BRAIN = skipBrain([
 const PREDATOR_GENES = {
   [Gene.AttackPower]: Q,
   [Gene.Armor]: 0,
-  [Gene.Diet]: Q,
+  [Gene.Process + Resource.Meat]: Q, [Gene.Process + Resource.Foliage]: 0,
   [Gene.AdultSize]: Q,
   [Gene.MaxSpeed]: Q,
   [Gene.Acceleration]: Q,
@@ -89,7 +90,7 @@ const PREDATOR_GENES = {
 const PREY_GENES = {
   [Gene.AttackPower]: 0,
   [Gene.Armor]: 0,
-  [Gene.Diet]: 0,
+  [Gene.Process + Resource.Foliage]: Q, [Gene.Process + Resource.Meat]: 0,
 } as const;
 
 interface PlacedOrganism {
@@ -355,8 +356,8 @@ describe("diet selection (docs/07 §5)", () => {
         // A world with no vegetation at all: capacity stays (so world validation
         // still passes) but nothing ever grows in it.
         draft.plants.initialBiomassFractionQ = 0;
-        draft.plants.growthRateQByBiome = draft.plants.growthRateQByBiome.map(() => 0);
-        draft.plants.plantSeedBankRegenUnits = 0;
+        draft.plants.resources[Resource.Foliage]!.growthRateQByBiome = draft.plants.resources[Resource.Foliage]!.growthRateQByBiome.map(() => 0);
+        draft.plants.resources[Resource.Foliage]!.seedBankRegenUnits = 0;
       }
     });
 
@@ -379,7 +380,7 @@ describe("diet selection (docs/07 §5)", () => {
         place(engine, {
           xPos: centre.xPos + (i - COHORT / 2) * spacing,
           yPos: centre.yPos + (species === HERBIVORE_SPECIES ? -spacing : spacing),
-          genesQ: { [Gene.Diet]: dietQ },
+          genesQ: { [Gene.Process + Resource.Meat]: dietQ },
           brainWeights: brain,
           speciesId: species,
           mature: true,

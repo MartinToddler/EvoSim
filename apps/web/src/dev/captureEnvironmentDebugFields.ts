@@ -34,7 +34,7 @@ export function captureEnvironmentDebugFields(engine: SimulationEngine): Environ
   for (let i = 0; i < cells; i += 1) {
     moistureQ[i] = environment.getMoistureQ(i);
     temperatureCentiC[i] = clamp(environment.getTemperatureCentiC(i), INT16_MIN, INT16_MAX);
-    const capacity = environment.plantCapacity[i] as number;
+    const capacity = environment.resourceCapacity[i] as number;
     if (capacity > maxCapacity) {
       maxCapacity = capacity;
     }
@@ -48,12 +48,34 @@ export function captureEnvironmentDebugFields(engine: SimulationEngine): Environ
     temperatureCentiC,
     fertilityQ: new Uint16Array(environment.fertilityQ),
     biome: new Uint8Array(environment.biome),
-    plantCapacity: new Uint16Array(environment.plantCapacity),
-    plantBiomass: new Uint16Array(environment.plantBiomass),
+    // Totals across every channel, one value per cell (M17). The debug layers
+    // are a per-cell map and the underlying arrays are now five planes long, so
+    // copying them raw would draw the foliage plane over a fifth of the world
+    // and index off the end for the rest.
+    plantCapacity: totalPerCell(environment, environment.resourceCapacity),
+    plantBiomass: totalPerCell(environment, environment.resourceBiomass),
     seaLevelQ: config.world.seaLevelQ,
     mountainLevelQ: config.world.mountainLevelQ,
     // A world with no capacity anywhere would be rejected by world validation, but
     // the ramp still needs a positive span, so floor the reference at 1.
     biomassReference: Math.max(maxCapacity, 1),
   };
+}
+
+/** Sum one resource-major field down to one value per cell. */
+function totalPerCell(
+  environment: { cellCount: number },
+  field: Uint16Array,
+): Uint16Array {
+  const { cellCount } = environment;
+  const planes = field.length / cellCount;
+  const out = new Uint16Array(cellCount);
+  for (let cell = 0; cell < cellCount; cell += 1) {
+    let total = 0;
+    for (let plane = 0; plane < planes; plane += 1) {
+      total += field[plane * cellCount + cell] as number;
+    }
+    out[cell] = Math.min(total, 65535);
+  }
+  return out;
 }

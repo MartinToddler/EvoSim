@@ -245,14 +245,14 @@ describe("writeVegetationField and writeTerrainFields", () => {
     writeVegetationField(engine, field);
 
     for (let cell = 0; cell < engine.environment.cellCount; cell += 1) {
-      const capacity = engine.environment.plantCapacity[cell] as number;
+      const capacity = engine.environment.resourceCapacity[cell] as number;
       if (capacity <= 0) {
         // Water has no capacity; a fraction of zero is zero, not NaN.
         expect(field[cell]).toBe(0);
         continue;
       }
       const expected = Math.round(
-        ((engine.environment.plantBiomass[cell] as number) * 255) / capacity,
+        ((engine.environment.resourceBiomass[cell] as number) * 255) / capacity,
       );
       expect(field[cell]).toBe(Math.min(255, Math.max(0, expected)));
     }
@@ -294,7 +294,7 @@ describe("writeVegetationField and writeTerrainFields", () => {
       expect(writer.capacity[cell]).toBe(
         Math.min(
           255,
-          Math.round(((engine.environment.plantCapacity[cell] as number) * 255) / reference),
+          Math.round(((engine.environment.resourceCapacity[cell] as number) * 255) / reference),
         ),
       );
     }
@@ -491,8 +491,8 @@ describe("collectTelemetryAggregates", () => {
     let biomass = 0;
     let capacity = 0;
     for (let cell = 0; cell < engine.environment.cellCount; cell += 1) {
-      biomass += engine.environment.plantBiomass[cell] as number;
-      capacity += engine.environment.plantCapacity[cell] as number;
+      biomass += engine.environment.resourceBiomass[cell] as number;
+      capacity += engine.environment.resourceCapacity[cell] as number;
     }
     expect(aggregates.plantBiomass).toBe(biomass);
     expect(aggregates.plantCapacity).toBe(capacity);

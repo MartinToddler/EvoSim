@@ -115,7 +115,7 @@ describe("durable shape covers everything the engine serializes", () => {
       "config",
       "rngState",
       "generationAttempt",
-      "environment.plantBiomass",
+      "environment.resourceBiomass",
       "environment.globalTemperatureOffsetCentiC",
       "organisms.freeSlots",
       "organisms.nextEntityId",
@@ -167,7 +167,7 @@ describe("shape validation of untrusted payloads", () => {
   it("rejects a typed array of the wrong width", () => {
     const wrong = {
       ...snapshot,
-      environment: { ...snapshot.environment, plantBiomass: new Uint8Array(4) },
+      environment: { ...snapshot.environment, resourceBiomass: new Uint8Array(4) },
     } as unknown;
     expect(() => normalizeSnapshotShape(wrong)).toThrow(/Uint16Array/);
   });

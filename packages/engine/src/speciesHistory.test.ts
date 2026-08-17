@@ -1,3 +1,4 @@
+import { Resource } from "./world/resources";
 import { describe, expect, it } from "vitest";
 import { createFounderTopology } from "./brain/founderTopology";
 import { NEURAL_WEIGHT_COUNT } from "./brain/NeuralTopology";
@@ -67,7 +68,7 @@ const CONFIG: ReadonlySimulationConfig = (() => {
 const PROFILE_A: Partial<Record<number, number>> = {
   [Gene.AdultSize]: Math.trunc(Q * 0.15),
   [Gene.MaxSpeed]: Math.trunc(Q * 0.2),
-  [Gene.Diet]: Math.trunc(Q * 0.1),
+  [Gene.Process + Resource.Meat]: Math.trunc(Q * 0.1),
   [Gene.VisionRange]: Math.trunc(Q * 0.2),
   [Gene.AttackPower]: Math.trunc(Q * 0.1),
   [Gene.MaxAge]: Q,
@@ -76,7 +77,7 @@ const PROFILE_A: Partial<Record<number, number>> = {
 const PROFILE_B: Partial<Record<number, number>> = {
   [Gene.AdultSize]: Math.trunc(Q * 0.85),
   [Gene.MaxSpeed]: Math.trunc(Q * 0.8),
-  [Gene.Diet]: Math.trunc(Q * 0.9),
+  [Gene.Process + Resource.Meat]: Math.trunc(Q * 0.9),
   [Gene.VisionRange]: Math.trunc(Q * 0.8),
   [Gene.AttackPower]: Math.trunc(Q * 0.9),
   [Gene.MaxAge]: Q,

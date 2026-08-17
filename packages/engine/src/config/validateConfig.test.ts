@@ -1,3 +1,4 @@
+import { Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { cloneConfig } from "./cloneConfig";
 import type { SimulationConfig } from "./SimulationConfig";
@@ -60,7 +61,7 @@ describe("validateConfig", () => {
 
   it("rejects biome tables of the wrong length", () => {
     const config = mutatedConfig((c) => {
-      c.plants.baseCapacityByBiome = [0, 1, 2];
+      c.plants.resources[Resource.Foliage]!.baseCapacityByBiome = [0, 1, 2];
     });
     expect(() => validateConfig(config)).toThrowError(/baseCapacityByBiome/);
   });
@@ -202,7 +203,7 @@ describe("validateConfig structural invariants", () => {
 
   it("rejects plant growth in water while aquatic life is out of scope", () => {
     const config = mutatedConfig((c) => {
-      c.plants.baseCapacityByBiome = [100, 36000, 52000, 7000, 10000, 4000];
+      c.plants.resources[Resource.Foliage]!.baseCapacityByBiome = [100, 36000, 52000, 7000, 10000, 4000];
     });
     expect(() => validateConfig(config)).toThrowError(/water biome/);
   });

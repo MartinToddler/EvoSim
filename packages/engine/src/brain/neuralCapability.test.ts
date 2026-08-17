@@ -1,3 +1,4 @@
+import { Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { Q } from "../math/fixed";
@@ -145,12 +146,12 @@ describe("the architecture can represent reflexes (M16)", () => {
     // The simplest thing a brain can be, and the one the founder already is:
     // one skip connection from a gradient to a steering output.
     const net = emptyNetwork();
-    enableInput(net, BrainInput.PlantGradientLateral);
-    wire(net, ioWeightIndex(BrainOutput.Turn, BrainInput.PlantGradientLateral), 2 * weightScale);
+    enableInput(net, BrainInput.ResourceGradientLateral + Resource.Foliage);
+    wire(net, ioWeightIndex(BrainOutput.Turn, BrainInput.ResourceGradientLateral + Resource.Foliage), 2 * weightScale);
 
     const body = newBody();
-    const rightward = tick(net, body, sensors({ [BrainInput.PlantGradientLateral]: Q / 2 }));
-    const leftward = tick(net, body, sensors({ [BrainInput.PlantGradientLateral]: -Q / 2 }));
+    const rightward = tick(net, body, sensors({ [BrainInput.ResourceGradientLateral + Resource.Foliage]: Q / 2 }));
+    const leftward = tick(net, body, sensors({ [BrainInput.ResourceGradientLateral + Resource.Foliage]: -Q / 2 }));
     expect(rightward[BrainOutput.Turn] as number).toBeGreaterThan(0);
     expect(leftward[BrainOutput.Turn] as number).toBeLessThan(0);
   });
@@ -183,7 +184,7 @@ describe("the architecture can represent internal state (M16)", () => {
     // is impossible without memory.
     const net = emptyNetwork();
     enableInput(net, BrainInput.Energy);
-    enableInput(net, BrainInput.LocalPlant);
+    enableInput(net, BrainInput.LocalResource + Resource.Foliage);
     enableHidden(net, 0);
     enableMemory(net, 0);
 
@@ -201,7 +202,7 @@ describe("the architecture can represent internal state (M16)", () => {
     tick(net, hungry, sensors({ [BrainInput.Energy]: -Q }));
 
     // Now show them an identical world and read a different decision.
-    const identical = sensors({ [BrainInput.LocalPlant]: Q / 2 });
+    const identical = sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q / 2 });
     const fedEat = positiveOutputQ(tick(net, wellFed, identical)[BrainOutput.Eat] as number);
     const hungryEat = positiveOutputQ(tick(net, hungry, identical)[BrainOutput.Eat] as number);
     expect(fedEat).not.toBe(hungryEat);
@@ -300,12 +301,12 @@ describe("memory obeys the rules it is given (M16)", () => {
   it("a masked-off connection keeps its weight, so switching it back on restores it", () => {
     // The property that makes structural change reversible rather than a cliff.
     const net = emptyNetwork();
-    enableInput(net, BrainInput.LocalPlant);
-    const index = ioWeightIndex(BrainOutput.Eat, BrainInput.LocalPlant);
+    enableInput(net, BrainInput.LocalResource + Resource.Foliage);
+    const index = ioWeightIndex(BrainOutput.Eat, BrainInput.LocalResource + Resource.Foliage);
     wire(net, index, 2 * weightScale);
 
     const body = newBody();
-    const world = sensors({ [BrainInput.LocalPlant]: Q });
+    const world = sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q });
     const wired = tick(net, body, world)[BrainOutput.Eat] as number;
 
     setMaskBit(net.topology, 0, TOPOLOGY_CONNECTION_WORD, index, false);
@@ -320,14 +321,14 @@ describe("memory obeys the rules it is given (M16)", () => {
 
   it("an inactive sensory channel is not read, whatever the world says", () => {
     const net = emptyNetwork();
-    const index = ioWeightIndex(BrainOutput.Eat, BrainInput.LocalPlant);
+    const index = ioWeightIndex(BrainOutput.Eat, BrainInput.LocalResource + Resource.Foliage);
     wire(net, index, 2 * weightScale);
     // The connection is wired but the input channel is off.
     const body = newBody();
-    expect(tick(net, body, sensors({ [BrainInput.LocalPlant]: Q }))[BrainOutput.Eat]).toBe(0);
-    enableInput(net, BrainInput.LocalPlant);
+    expect(tick(net, body, sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q }))[BrainOutput.Eat]).toBe(0);
+    enableInput(net, BrainInput.LocalResource + Resource.Foliage);
     expect(
-      tick(net, body, sensors({ [BrainInput.LocalPlant]: Q }))[BrainOutput.Eat] as number,
+      tick(net, body, sensors({ [BrainInput.LocalResource + Resource.Foliage]: Q }))[BrainOutput.Eat] as number,
     ).toBeGreaterThan(0);
   });
 

@@ -1,3 +1,4 @@
+import { Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { CONFIG_SCHEMA_VERSION } from "../version";
 import { DEFAULT_CONFIG } from "./defaultConfig";
@@ -16,7 +17,7 @@ describe("DEFAULT_CONFIG", () => {
   it("is deeply frozen", () => {
     expect(Object.isFrozen(DEFAULT_CONFIG)).toBe(true);
     expect(Object.isFrozen(DEFAULT_CONFIG.world)).toBe(true);
-    expect(Object.isFrozen(DEFAULT_CONFIG.plants.baseCapacityByBiome)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_CONFIG.plants.resources[Resource.Foliage]!.baseCapacityByBiome)).toBe(true);
     expect(() => {
       (DEFAULT_CONFIG.world as { sizeLU: number }).sizeLU = 1;
     }).toThrow();

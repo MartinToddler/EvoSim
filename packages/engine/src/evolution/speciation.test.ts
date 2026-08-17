@@ -1,3 +1,4 @@
+import { Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { Gene } from "../genetics/genes";
 import { WorldEventType } from "../history/EventStore";
@@ -22,7 +23,7 @@ import { TRAIT_DIMENSIONS } from "./traitVector";
 const PROFILE_A: Record<number, number> = {
   [Gene.AdultSize]: Math.trunc(Q * 0.15),
   [Gene.MaxSpeed]: Math.trunc(Q * 0.2),
-  [Gene.Diet]: Math.trunc(Q * 0.1),
+  [Gene.Process + Resource.Meat]: Math.trunc(Q * 0.1),
   [Gene.VisionRange]: Math.trunc(Q * 0.2),
   [Gene.AttackPower]: Math.trunc(Q * 0.1),
   [Gene.MaxAge]: Q,
@@ -33,7 +34,7 @@ const PROFILE_A: Record<number, number> = {
 const PROFILE_B: Record<number, number> = {
   [Gene.AdultSize]: Math.trunc(Q * 0.85),
   [Gene.MaxSpeed]: Math.trunc(Q * 0.8),
-  [Gene.Diet]: Math.trunc(Q * 0.9),
+  [Gene.Process + Resource.Meat]: Math.trunc(Q * 0.9),
   [Gene.VisionRange]: Math.trunc(Q * 0.8),
   [Gene.AttackPower]: Math.trunc(Q * 0.9),
   [Gene.MaxAge]: Q,

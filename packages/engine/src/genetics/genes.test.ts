@@ -1,3 +1,5 @@
+import { RESOURCE_COUNT } from "../world/resources";
+import { FOUNDER_PROCESS_TOTAL_Q } from "./founderGenome";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../config/defaultConfig";
 import { Q } from "../math/fixed";
@@ -8,8 +10,6 @@ import {
   Gene,
   accelerationVel,
   adultRadiusPos,
-  carnivoreAffinityQ,
-  dietSignedQ,
   digestionEfficiencyQ,
   effectiveMaxSpeedVel,
   effectiveMaxTurnSteps,
@@ -17,7 +17,6 @@ import {
   geneMaxSpeedVel,
   geneMaxTurnSteps,
   geneToQ,
-  herbivoreAffinityQ,
   hueDegrees,
   maturityAgeTicks,
   maxAgeTicks,
@@ -189,21 +188,34 @@ describe("gene to phenotype mappings", () => {
   });
 });
 
-describe("diet trade-off", () => {
-  it("maps the stored gene onto a signed [-Q, Q] axis", () => {
-    expect(dietSignedQ(0)).toBe(-Q);
-    expect(dietSignedQ(GENE_RAW_MAX)).toBe(Q);
-    expect(dietSignedQ(geneFromQ(Q / 2))).toBe(0);
+describe("processing trade-off (M17)", () => {
+  it("gives every channel its own locus, so none is another's complement", () => {
+    // The single signed `diet` locus made herbivory and carnivory two ends of
+    // one axis, and their affinities summed to Q by construction. M17 replaces
+    // that with six independent loci, which is a deliberate loosening: a
+    // representation that FORCES specialization is a rule about what evolution
+    // may express, where a price merely says what it costs (ADR 0031).
+    const loci = new Set<number>();
+    for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+      loci.add(Gene.Process + resource);
+    }
+    expect(loci.size).toBe(RESOURCE_COUNT);
+    expect(Math.max(...loci)).toBeLessThan(GENE_COUNT);
+    expect(loci.has(Gene.ToxinResistance)).toBe(false);
   });
 
-  it("keeps the two affinities complementary, so specialization must be paid for", () => {
-    for (let dietQ = -Q; dietQ <= Q; dietQ += 64) {
-      const herb = herbivoreAffinityQ(dietQ);
-      const carn = carnivoreAffinityQ(dietQ);
-      expect(herb + carn).toBe(Q);
-      expect(herb).toBeGreaterThanOrEqual(0);
-      expect(carn).toBeGreaterThanOrEqual(0);
-    }
+  it("charges for breadth rather than forbidding it", () => {
+    // The generalist is expressible — that is the point — and pays for it. The
+    // bill is the SUM of the six loci above the founder's total, so a body that
+    // is excellent at everything carries the most gut and the highest upkeep.
+    const specialistTotal = Q + 5 * 0;
+    const generalistTotal = 6 * Q;
+    const excess = (total: number): number => Math.max(0, total - FOUNDER_PROCESS_TOTAL_Q);
+    expect(excess(specialistTotal)).toBe(0);
+    expect(excess(generalistTotal)).toBeGreaterThan(0);
+    // And trimming below the founder earns no rebate: a cost that can go
+    // negative is an energy source (ADR 0029 §3f, ADR 0030 §3a).
+    expect(excess(0)).toBe(0);
   });
 
   it("gives specialists an advantage over a generalist floor", () => {

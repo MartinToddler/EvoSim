@@ -1,3 +1,5 @@
+import { RESOURCE_COUNT, Resource } from "../world/resources";
+import type { ResourceProfile } from "../config/SimulationConfig";
 import { describe, expect, it } from "vitest";
 import { POS_SCALE, Q, qmul } from "../math/fixed";
 import { Gene } from "../genetics/genes";
@@ -9,6 +11,16 @@ import {
   plantBiteUnits,
   resolveFeedingClaims,
 } from "./feedingClaims";
+
+/** The foliage channel of a config, non-optional. M17 made plants a list. */
+function foliageProfile(config: { plants: { resources: readonly ResourceProfile[] } }): ResourceProfile {
+  const profile = config.plants.resources[Resource.Foliage];
+  if (profile === undefined) {
+    throw new Error("config is missing the foliage channel");
+  }
+  return profile;
+}
+
 
 /**
  * Plant feeding allocation (docs/03 §21, task D10).
@@ -29,7 +41,7 @@ function feed(world: TestWorld, eatQ: number = Q): void {
 function totalBiomass(world: TestWorld): number {
   let total = 0;
   for (let i = 0; i < world.environment.cellCount; i += 1) {
-    total += world.environment.plantBiomass[i] as number;
+    total += world.environment.resourceBiomass[i] as number;
   }
   return total;
 }
@@ -132,7 +144,7 @@ describe("conservation", () => {
     }
     feed(world);
     for (let i = 0; i < world.environment.cellCount; i += 1) {
-      expect(world.environment.plantBiomass[i]).toBeGreaterThanOrEqual(0);
+      expect(world.environment.resourceBiomass[i]).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -200,7 +212,7 @@ describe("contested allocation", () => {
 
     // Reverse the entity IDs and the leftovers follow them, proving the rule
     // is about identity rather than storage order.
-    world.environment.plantBiomass.fill(8);
+    world.environment.resourceBiomass.fill(8);
     world.organisms.entityId[a] = 30;
     world.organisms.entityId[b] = 20;
     world.organisms.entityId[c] = 10;
@@ -249,8 +261,8 @@ describe("energy conversion", () => {
 
     const allocated = world.ctx.scratch.feedingAllocated[slot] as number;
     const expected = qmul(
-      allocated * world.config.plants.plantEnergyPerBiomass,
-      world.ctx.phenotypes.plantEfficiencyQ[slot] as number,
+      allocated * foliageProfile(world.config).energyPerUnit,
+      world.ctx.phenotypes.processEfficiencyQ[(slot) * RESOURCE_COUNT + Resource.Foliage] as number,
     );
     expect(world.organisms.energy[slot]).toBe(expected);
     expect(world.organisms.plantEnergyEaten[slot]).toBe(expected);
@@ -262,13 +274,13 @@ describe("energy conversion", () => {
     const herbivore = spawnTestOrganism(world, {
       xPos: center.xPos,
       yPos: center.yPos,
-      genesQ: { [Gene.Diet]: 0 },
+      genesQ: { [Gene.Process + Resource.Foliage]: Q, [Gene.Process + Resource.Meat]: 0 },
       energyFractionQ: 0,
     });
     const carnivore = spawnTestOrganism(world, {
       xPos: center.xPos + 4,
       yPos: center.yPos,
-      genesQ: { [Gene.Diet]: Q },
+      genesQ: { [Gene.Process + Resource.Meat]: Q, [Gene.Process + Resource.Foliage]: 0 },
       energyFractionQ: 0,
     });
     feed(world);

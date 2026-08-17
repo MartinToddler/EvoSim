@@ -40,8 +40,8 @@ describe("generateEnvironment determinism", () => {
     expect(Array.from(a.baseTemperatureCentiC)).toEqual(Array.from(b.baseTemperatureCentiC));
     expect(Array.from(a.fertilityQ)).toEqual(Array.from(b.fertilityQ));
     expect(Array.from(a.biome)).toEqual(Array.from(b.biome));
-    expect(Array.from(a.plantCapacity)).toEqual(Array.from(b.plantCapacity));
-    expect(Array.from(a.plantBiomass)).toEqual(Array.from(b.plantBiomass));
+    expect(Array.from(a.resourceCapacity)).toEqual(Array.from(b.resourceCapacity));
+    expect(Array.from(a.resourceBiomass)).toEqual(Array.from(b.resourceBiomass));
   });
 
   it("produces different worlds for different seeds", () => {
@@ -80,7 +80,7 @@ describe("generated world invariants (docs/03 §27)", () => {
   it("never lets biomass exceed capacity", () => {
     let violations = 0;
     for (let i = 0; i < environment.cellCount; i += 1) {
-      if ((environment.plantBiomass[i] as number) > (environment.plantCapacity[i] as number)) {
+      if ((environment.resourceBiomass[i] as number) > (environment.resourceCapacity[i] as number)) {
         violations += 1;
       }
     }
@@ -92,8 +92,8 @@ describe("generated world invariants (docs/03 §27)", () => {
     for (let i = 0; i < environment.cellCount; i += 1) {
       if (
         environment.biome[i] === Biome.Water &&
-        ((environment.plantCapacity[i] as number) > 0 ||
-          (environment.plantBiomass[i] as number) > 0)
+        ((environment.resourceCapacity[i] as number) > 0 ||
+          (environment.resourceBiomass[i] as number) > 0)
       ) {
         vegetatedWater += 1;
       }
@@ -225,7 +225,7 @@ describe("founder region (docs/03 §26, task C08)", () => {
   it("sits on productive land", () => {
     const index = world.founderRegion.centerCellIndex;
     expect(world.environment.biome[index]).not.toBe(Biome.Water);
-    expect(world.environment.plantCapacity[index] as number).toBeGreaterThan(0);
+    expect(world.environment.resourceCapacity[index] as number).toBeGreaterThan(0);
   });
 
   it("sits inside the largest connected land component", () => {
@@ -254,7 +254,7 @@ describe("founder region (docs/03 §26, task C08)", () => {
     for (let dy = -4; dy <= 4; dy += 1) {
       for (let dx = -4; dx <= 4; dx += 1) {
         const index = world.environment.cellIndex(centerGridX + dx, centerGridY + dy);
-        if ((world.environment.plantCapacity[index] as number) > 0) {
+        if ((world.environment.resourceCapacity[index] as number) > 0) {
           productiveNeighbours += 1;
         }
       }

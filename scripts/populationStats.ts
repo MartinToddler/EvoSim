@@ -7,7 +7,8 @@
  * makes that structural rather than a promise. It is also why floating point is
  * fine here and would not be inside a tick phase.
  */
-import { GENE_COUNT, Gene, Q, type SimulationEngine, geneToQ } from "@eon/engine";
+import {
+  Resource, GENE_COUNT, Gene, Q, type SimulationEngine, geneToQ } from "@eon/engine";
 
 export interface PopulationStats {
   population: number;
@@ -82,7 +83,7 @@ export function summarizePopulation(engine: SimulationEngine): PopulationStats {
   // engine's phenotype mapping does (docs/03 §24).
   let dietSum = 0;
   for (const slot of slots) {
-    dietSum += (geneToQ(genomes.gene(slot, Gene.Diet)) * 2 - Q) / Q;
+    dietSum += (geneToQ(genomes.gene(slot, Gene.Process + Resource.Meat)) * 2 - Q) / Q;
   }
   const varianceByGeneQ2 = new Array<number>(GENE_COUNT).fill(0);
   let traitVarianceQ2 = 0;

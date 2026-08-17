@@ -1,3 +1,4 @@
+import { Resource } from "../world/resources";
 import { describe, expect, it } from "vitest";
 import { ANGLE_STEPS, POS_SCALE, Q } from "../math/fixed";
 import { Gene } from "../genetics/genes";
@@ -80,31 +81,31 @@ describe("plant sensing", () => {
   it("reads local density against the cell's own capacity", () => {
     const world = createTestWorld({ plantCapacity: 1000, plantBiomass: 500 });
     const slot = spawnTestOrganism(world, world.cellCenter(10, 10));
-    expect(sensorsOf(world, slot)[BrainInput.LocalPlant]).toBe(0);
+    expect(sensorsOf(world, slot)[BrainInput.LocalResource + Resource.Foliage]).toBe(0);
 
-    world.environment.plantBiomass.fill(1000);
-    expect(sensorsOf(world, slot)[BrainInput.LocalPlant]).toBe(Q);
+    world.environment.resourceBiomass.fill(1000);
+    expect(sensorsOf(world, slot)[BrainInput.LocalResource + Resource.Foliage]).toBe(Q);
 
-    world.environment.plantBiomass.fill(0);
-    expect(sensorsOf(world, slot)[BrainInput.LocalPlant]).toBe(-Q);
+    world.environment.resourceBiomass.fill(0);
+    expect(sensorsOf(world, slot)[BrainInput.LocalResource + Resource.Foliage]).toBe(-Q);
   });
 
   it("reports a barren cell as empty rather than dividing by zero", () => {
     const world = createTestWorld({ plantCapacity: 0, plantBiomass: 0 });
     const slot = spawnTestOrganism(world, world.cellCenter(10, 10));
-    expect(sensorsOf(world, slot)[BrainInput.LocalPlant]).toBe(-Q);
+    expect(sensorsOf(world, slot)[BrainInput.LocalResource + Resource.Foliage]).toBe(-Q);
   });
 
   it("projects the food gradient onto forward and lateral, not into a bearing", () => {
     const world = createTestWorld({ plantCapacity: 1000, plantBiomass: 100 });
     const center = world.cellCenter(10, 10);
     // Richer ground to the east (+x).
-    world.environment.plantBiomass[world.environment.cellIndex(11, 10)] = 900;
+    world.environment.resourceBiomass[world.environment.cellIndex(11, 10)] = 900;
 
     const facingEast = spawnTestOrganism(world, { ...center, angle: 0 });
     const east = sensorsOf(world, facingEast);
-    expect(east[BrainInput.PlantGradientForward]).toBeGreaterThan(0);
-    expect(east[BrainInput.PlantGradientLateral]).toBe(0);
+    expect(east[BrainInput.ResourceGradientForward + Resource.Foliage]).toBeGreaterThan(0);
+    expect(east[BrainInput.ResourceGradientLateral + Resource.Foliage]).toBe(0);
 
     // Facing north (a quarter turn anticlockwise on screen), the same food is
     // now to the right, which is the positive lateral direction.
@@ -112,9 +113,9 @@ describe("plant sensing", () => {
       ...world.cellCenter(10, 12),
       angle: (3 * ANGLE_STEPS) / 4,
     });
-    world.environment.plantBiomass[world.environment.cellIndex(11, 12)] = 900;
+    world.environment.resourceBiomass[world.environment.cellIndex(11, 12)] = 900;
     const north = sensorsOf(world, facingNorth);
-    expect(north[BrainInput.PlantGradientLateral]).toBeGreaterThan(0);
+    expect(north[BrainInput.ResourceGradientLateral + Resource.Foliage]).toBeGreaterThan(0);
   });
 });
 

@@ -22,7 +22,7 @@ describe("hashEnvironment", () => {
   it("changes when a single authoritative cell changes", () => {
     const environment = createWorld(DEFAULT_CONFIG, FIXTURE_SEED).environment;
     const before = hashEnvironment(environment);
-    environment.plantBiomass[0] = (environment.plantBiomass[0] as number) ^ 1;
+    environment.resourceBiomass[0] = (environment.resourceBiomass[0] as number) ^ 1;
     expect(hashEnvironment(environment)).not.toBe(before);
   });
 

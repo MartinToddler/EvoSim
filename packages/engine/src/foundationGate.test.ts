@@ -107,21 +107,21 @@ describe("snapshot value validation (foundation-gate §5)", () => {
     const snapshot = snapshotOf(engine);
     // Find a vegetated cell.
     let cell = -1;
-    for (let i = 0; i < snapshot.environment.plantCapacity.length; i += 1) {
-      if ((snapshot.environment.plantCapacity[i] as number) > 100) {
+    for (let i = 0; i < snapshot.environment.resourceCapacity.length; i += 1) {
+      if ((snapshot.environment.resourceCapacity[i] as number) > 100) {
         cell = i;
         break;
       }
     }
     expect(cell).toBeGreaterThanOrEqual(0);
-    const capacity = snapshot.environment.plantCapacity[cell] as number;
+    const capacity = snapshot.environment.resourceCapacity[cell] as number;
 
     // 2x capacity is the sanctioned ADD_BIOMASS overfill — loadable.
-    snapshot.environment.plantBiomass[cell] = Math.min(65535, capacity * 2);
+    snapshot.environment.resourceBiomass[cell] = Math.min(65535, capacity * 2);
     expect(() => SimulationEngine.fromSnapshot(snapshot)).not.toThrow();
 
     // Beyond the ceiling is corruption.
-    snapshot.environment.plantBiomass[cell] = Math.min(65535, capacity * 2 + 1);
+    snapshot.environment.resourceBiomass[cell] = Math.min(65535, capacity * 2 + 1);
     expect(() => SimulationEngine.fromSnapshot(snapshot)).toThrow(/overfill ceiling/);
   });
 

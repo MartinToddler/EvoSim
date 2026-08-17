@@ -46,8 +46,8 @@ describe("captureEnvironmentDebugFields", () => {
     expect(Array.from(fields.elevationQ)).toEqual(Array.from(environment.elevationQ));
     expect(Array.from(fields.fertilityQ)).toEqual(Array.from(environment.fertilityQ));
     expect(Array.from(fields.biome)).toEqual(Array.from(environment.biome));
-    expect(Array.from(fields.plantCapacity)).toEqual(Array.from(environment.plantCapacity));
-    expect(Array.from(fields.plantBiomass)).toEqual(Array.from(environment.plantBiomass));
+    expect(Array.from(fields.plantCapacity)).toEqual(Array.from(environment.resourceCapacity));
+    expect(Array.from(fields.plantBiomass)).toEqual(Array.from(environment.resourceBiomass));
   });
 
   it("folds player offsets into effective moisture and temperature", () => {
@@ -89,7 +89,7 @@ describe("captureEnvironmentDebugFields", () => {
   it("uses the world's highest per-cell capacity as the shared vegetation reference", () => {
     const fields = captureEnvironmentDebugFields(engine);
     let max = 0;
-    for (const capacity of engine.environment.plantCapacity) {
+    for (const capacity of engine.environment.resourceCapacity) {
       if (capacity > max) {
         max = capacity;
       }

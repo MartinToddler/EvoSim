@@ -23,6 +23,7 @@
  *   pnpm exec tsx scripts/speciationScenario.ts --flat        # noise control
  */
 import {
+  Resource,
   BrushFalloff,
   DEFAULT_CONFIG,
   ENGINE_VERSION,
@@ -137,9 +138,13 @@ function scenarioConfig(options: Options) {
     config.world.climate.poleTemperatureDropCentiC = options.dropCentiC;
   }
 
-  config.plants.baseCapacityByBiome = config.plants.baseCapacityByBiome.map((base, biome) =>
-    biome === 0 ? base : Math.floor((base * options.capacityFactorPct) / 100),
-  );
+  // Every channel, so a capacity-scaled scenario scales the whole ecology and
+  // not just the field this script was written against (M17).
+  for (const profile of config.plants.resources) {
+    profile.baseCapacityByBiome = profile.baseCapacityByBiome.map((base: number, biome: number) =>
+      biome === 0 ? base : Math.floor((base * options.capacityFactorPct) / 100),
+    );
+  }
 
   config.species.splitDistanceThresholdQ = options.splitThresholdQ;
   config.species.candidateCentroidContinuityThresholdQ = options.continuityQ;
@@ -174,7 +179,7 @@ const GENE_DIMS: readonly number[] = [
   Gene.TurnRate,
   Gene.VisionRange,
   Gene.VisionFov,
-  Gene.Diet,
+  Gene.Process + Resource.Meat,
   Gene.AttackPower,
   Gene.Armor,
   Gene.MetabolicPace,
@@ -274,7 +279,7 @@ function twoMeans(engine: SimulationEngine): ClusterReport | null {
       widestDim = d;
     }
   }
-  const dietIndex = GENE_DIMS.indexOf(Gene.Diet);
+  const dietIndex = GENE_DIMS.indexOf(Gene.Process + Resource.Meat);
   const sizeA = assign.filter((bucket) => bucket === 0).length;
   return {
     separationRmsQ: Math.round(Math.sqrt(sumSq / dims)),
@@ -316,7 +321,7 @@ function hemispheres(engine: SimulationEngine): HemisphereReport {
   for (let slot = 0; slot < organisms.slotHighWater; slot += 1) {
     if (organisms.alive[slot] !== 1) continue;
     const thermal = geneToQ(genomes.gene(slot, Gene.ThermalOptimum));
-    const diet = geneToQ(genomes.gene(slot, Gene.Diet));
+    const diet = geneToQ(genomes.gene(slot, Gene.Process + Resource.Meat));
     if ((organisms.y[slot] as number) < halfPos) {
       report.northPop += 1;
       report.northThermal += thermal;
