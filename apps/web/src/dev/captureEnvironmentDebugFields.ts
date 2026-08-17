@@ -63,10 +63,7 @@ export function captureEnvironmentDebugFields(engine: SimulationEngine): Environ
 }
 
 /** Sum one resource-major field down to one value per cell. */
-function totalPerCell(
-  environment: { cellCount: number },
-  field: Uint16Array,
-): Uint16Array {
+function totalPerCell(environment: { cellCount: number }, field: Uint16Array): Uint16Array {
   const { cellCount } = environment;
   const planes = field.length / cellCount;
   const out = new Uint16Array(cellCount);

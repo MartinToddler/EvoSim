@@ -7,8 +7,7 @@
  * makes that structural rather than a promise. It is also why floating point is
  * fine here and would not be inside a tick phase.
  */
-import {
-  Resource, GENE_COUNT, Gene, Q, type SimulationEngine, geneToQ } from "@eon/engine";
+import { Resource, GENE_COUNT, Gene, Q, type SimulationEngine, geneToQ } from "@eon/engine";
 
 export interface PopulationStats {
   population: number;

@@ -294,10 +294,7 @@ describe("writeVegetationField and writeTerrainFields", () => {
         Math.round(((engine.environment.fertilityQ[cell] as number) * 255) / Q),
       );
       expect(writer.capacity[cell]).toBe(
-        Math.min(
-          255,
-          Math.round((engine.environment.totalPlantCapacity(cell) * 255) / reference),
-        ),
+        Math.min(255, Math.round((engine.environment.totalPlantCapacity(cell) * 255) / reference)),
       );
     }
     // The default world must actually exercise the temperature range interior:
