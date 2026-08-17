@@ -505,10 +505,14 @@ function validatePlants(config: DeepReadonly<SimulationConfig>): void {
           `which leaves the seed bank as its only production`,
       );
     }
-    // Positive, not merely non-negative: with the regeneration threshold gone
-    // this is the only way a cell grazed to zero ever comes back, so a channel
-    // configured at 0 is one that grazing permanently sterilises.
-    checkPositiveInt(profile.seedBankRegenUnits, `${name}.seedBankRegenUnits`);
+    // Non-negative, and 0 is a legitimate choice rather than a mistake: it means
+    // a cell grazed to nothing in this channel never comes back, which is a real
+    // world to want. `fixtures/morphologySelection.ts` wants exactly it, so that
+    // the patchwork's barren gaps stay barren and there is something to travel
+    // between. This was briefly tightened to positive on the reasoning that the
+    // seed bank is now the only recovery path; that is true and still not a
+    // reason to forbid a world from declining to have one.
+    checkNonNegativeInt(profile.seedBankRegenUnits, `${name}.seedBankRegenUnits`);
     checkPositiveInt(profile.energyPerUnit, `${name}.energyPerUnit`);
     checkCentiCelsius(profile.optimumTemperatureCentiC, `${name}.optimumTemperatureCentiC`);
     checkPositiveInt(profile.temperatureToleranceCentiC, `${name}.temperatureToleranceCentiC`);

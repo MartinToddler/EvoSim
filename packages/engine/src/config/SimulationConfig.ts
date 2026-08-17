@@ -155,6 +155,10 @@ export interface ResourceProfile {
    * anywhere above zero is a capacity-independent food source that grazing can
    * pin open, and it will set the population ceiling on its own — see
    * `growPlants`.
+   *
+   * Zero is meaningful and allowed: it makes the channel one that never returns
+   * once a cell is emptied. `fixtures/morphologySelection.ts` uses it to keep
+   * the patchwork world's barren gaps barren.
    */
   seedBankRegenUnits: number;
   /** Energy per consumed biomass unit, before the eater's own efficiency. */

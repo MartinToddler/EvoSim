@@ -183,8 +183,16 @@ export const PATCHWORK_CONFIG: ReadonlySimulationConfig = (() => {
   // Rich but slow: a grazed patch stays grazed for a long time, so the living
   // is made by reaching the next one.
   foliage(config).growthRateQByBiome = [0, 12, 12, 0, 0, 0];
-  // Barren ground stays barren: without this the seed bank refills every dead
-  // cell to the regeneration floor and the gaps stop being gaps.
+  // Barren ground stays barren, and a grazed patch stays grazed: a cell emptied
+  // here never comes back, so the gaps remain something to cross rather than
+  // something to wait out.
+  //
+  // This used to be load-bearing for a different reason. Until engine 0.12.1
+  // the seed bank fired below a per-channel threshold rather than at zero, so
+  // without this line every grazed cell was refilled to that threshold and the
+  // gaps stopped being gaps (ADR 0031 §5e). The engine no longer does that to
+  // any world; the line is kept because zero regeneration is still the sharper
+  // version of this experiment, not because it is the only thing holding it up.
   foliage(config).seedBankRegenUnits = 0;
   return config;
 })();
