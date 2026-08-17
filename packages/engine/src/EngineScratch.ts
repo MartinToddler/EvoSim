@@ -295,8 +295,9 @@ export class EngineScratch {
   }
 
   /** Record that `cell` now has demand, so it can be cleared cheaply later. */
-  noteDemandedCell(cell: number): void {
-    this.demandedCells[this.#demandedCellCount] = cell;
+  /** Note a contested store. Since M17 the key is `resource * cellCount + cell`. */
+  noteDemandedCell(demandIndex: number): void {
+    this.demandedCells[this.#demandedCellCount] = demandIndex;
     this.#demandedCellCount += 1;
   }
 

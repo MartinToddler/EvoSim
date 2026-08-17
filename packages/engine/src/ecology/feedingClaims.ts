@@ -387,12 +387,16 @@ function distributeRemainder(ctx: EngineContext, headSlot: number, available: nu
 function distributePlantRemainders(ctx: EngineContext): void {
   const { environment, scratch } = ctx;
   for (let i = 0; i < scratch.demandedCellCount; i += 1) {
-    const cell = scratch.demandedCells[i] as number;
-    const biomass = environment.resourceBiomass[cell] as number;
-    if ((scratch.plantDemandPerCell[cell] as number) <= biomass) {
+    // A channel-keyed index (`resource * cellCount + cell`), not a cell (M17).
+    // The whole demand pipeline shares this key, so the contested store is one
+    // channel of one cell — which is what makes a grazer and a digger standing
+    // on the same ground not competitors.
+    const demandIndex = scratch.demandedCells[i] as number;
+    const biomass = environment.resourceBiomass[demandIndex] as number;
+    if ((scratch.plantDemandPerCell[demandIndex] as number) <= biomass) {
       continue;
     }
-    distributeRemainder(ctx, scratch.plantClaimHead[cell] as number, biomass);
+    distributeRemainder(ctx, scratch.plantClaimHead[demandIndex] as number, biomass);
   }
 }
 
